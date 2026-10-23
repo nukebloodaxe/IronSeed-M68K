@@ -168,13 +168,12 @@ c2_mainloop:
 	bne.s	.i
 	moveq	#0,d0
 .i:	move.w	d0,c2_index
-	bsr	mousehide
-	move.w	c2_index,d0
-	lsl.w	#8,d0
+	move.w	c2_index,d0		; mousehide; mousesetcursor; mouseshow - kbd_cursor_set swaps
+	lsl.w	#8,d0			; the frame in at once, so no hide (it made the cursor flicker)
 	lea	c2_tmpm,a0
 	add.w	d0,a0
 	bsr	kbd_cursor_set
-	bsr	mouseshow
+	bsr	ms_flush		; (mouseshow's flush)
 	move.w	GS_TSLICE(a6),d0	; delay(tslice*FADE_TSLICE_MUL_COMM2)
 	mulu	#6,d0
 	bsr	delay

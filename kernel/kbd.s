@@ -48,6 +48,7 @@ kbd_init:
 	move.l	sys_kbdv,a0
 	move.l	16(a0),kbd_oldmouse
 	move.l	#kbd_mouse_handler,16(a0)
+	move.l	#kbd_cur_var,kbd_cur_vp
 	lea	kbd_default_cursor,a0
 	bsr	kbd_cursor_set
 	rts
@@ -244,9 +245,11 @@ kbd_cursor_build:
 	tst.w	kbd_cur_ready
 	beq	.none
 	movem.l	d3-d7/a3-a4,-(sp)
-	move.w	kbd_cur_on,-(sp)
-	bsr	kbd_cursor_hide
-	lea	kbd_cur_var,a2		; 4 x (16 mask words + 64 plane words)
+	lea	kbd_cur_var,a2		; build into the set not in use (4 x (16 mask words + 64 plane
+	cmp.l	kbd_cur_vp,a2		; words)), then swap at once: no hide, so an animated cursor
+	bne.s	.set			; (the ship logs change it every pass) never flickers
+	lea	kbd_cur_var2,a2
+.set:	move.l	a2,-(sp)
 	lea	vid_luts,a3
 	moveq	#4-1,d6			; bands
 .band:	lea	kbd_cur_src,a0
@@ -287,10 +290,12 @@ kbd_cursor_build:
 	lea	64*2(a2),a2		; skip this variant's planes
 	lea	256(a3),a3
 	dbf	d6,.band
-	move.w	(sp)+,d0
-	beq.s	.x
-	bsr	kbd_cursor_show
-.x:	movem.l	(sp)+,d3-d7/a3-a4
+	move.l	(sp)+,a2		; (before DI: it pushes sr)
+	DI
+	move.l	a2,kbd_cur_vp
+	move.l	#-1,kbd_drawn		; the VBL redraws it (restore + draw) with the new set
+	EI
+	movem.l	(sp)+,d3-d7/a3-a4
 .none:	rts
 
 kbd_cursor_show:
@@ -373,7 +378,7 @@ kbd_cur_draw:
 	moveq	#0,d2
 	move.b	0(a2,d0.w),d2
 	mulu	#KBD_VAR,d2
-	lea	kbd_cur_var,a2
+	move.l	kbd_cur_vp,a2
 	add.w	d2,a2
 	move.w	d3,d2
 	add.w	d2,d2
@@ -446,6 +451,8 @@ kbd_save_rows:	ds.w	1
 kbd_cur_ready:	ds.w	1
 kbd_cur_src:	ds.b	256
 kbd_cur_var:	ds.b	4*KBD_VAR
+kbd_cur_var2:	ds.b	4*KBD_VAR		; (the other set: kbd_cursor_build swaps)
+kbd_cur_vp:	ds.l	1		; the set the VBL draws with
 kbd_save:	ds.b	16*16
 kbd_mbuttons:	ds.b	1
 kbd_mclick:	ds.b	1

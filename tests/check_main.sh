@@ -34,6 +34,7 @@ for S in ${@:-m1 m2 m3 m4 m5 m6 m7 m8 m9 m10 m11 m12 m13 m14 m15 m16 m17 m18 m19
   ST=""; if [ -f hatari/c/STREAM.BIN ]; then   # music streamed: the ring must never have run dry
     read sm su sn se <<< $(python3 -I -c "import struct; print('%d %d %d %d' % struct.unpack('>3LH', open('hatari/c/STREAM.BIN','rb').read()[:14]))")
     ST=", music stream: ring >= $((sm/1024)) KB"; [ "$su" != 0 -o "$se" != 0 ] && { echo "FAIL main $S music stream ($su underrun pairs, $se read errors)"; fail=1; }
+    [ "$sm" = 2147483647 ] && { echo "FAIL main $S music stream (read but never played: the VBL is broken)"; fail=1; }
   fi
   [ $n -gt 0 ] && [ $bad = 0 ] && echo "PASS main $S state ($n dumps identical with Linux$ST)" || { echo "FAIL main $S state ($bad of $n dumps differ)"; fail=1; }
   for D in $O/home/.ironseed/save[0-9]; do      # games saved in the session (slot 3 is the start)
