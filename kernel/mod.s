@@ -8,6 +8,9 @@
 ; mod_start   start playback (the mixer in snd.s calls mod_tick as samples are used)
 ; mod_stop    silence
 ; mod_tick    one tick of the replay. trashes: d0-d7/a0-a5 (called from snd_fill only)
+; mod_load    in: a0 = file name. Stops the current song, loads the new one into the music
+;             region (MOD_REGION bytes, taken from the pool at start-up) and starts it.
+;             carry set on error (the song is then silent).  trashes: d0-d2/a0-a2
 
 SMP_ADDR	equ	0	; l  mixing copy (data up to the loop end + padding)
 SMP_LEN		equ	4	; l
@@ -38,6 +41,7 @@ CH_SIDE		equ	39	; b
 CH_SIZE		equ	40
 
 MOD_PAD		equ	2600	; > longest run of sample bytes one mixing chunk can read
+MOD_REGION	equ	1024*1024	; music memory: the file at the top, padded samples from the bottom
 
 	section	text
 ; ---------------------------------------------------------------
@@ -121,7 +125,7 @@ mod_init:
 	add.l	d6,d4
 .nl:	move.l	d4,d0
 	add.l	#MOD_PAD,d0
-	bsr	mem_alloc
+	bsr	mod_alloc
 	bcs	.err
 	move.l	a0,SMP_ADDR(a3)
 	move.l	mod_src,a1
@@ -645,3 +649,68 @@ mod_cnt:	ds.w	1
 mod_smp:	ds.b	31*SMP_SIZE
 mod_chans:	ds.b	8*CH_SIZE
 	even
+
+	section	text
+mod_region_init:			; called once from snd_init
+	move.l	#MOD_REGION,d0
+	bsr	mem_alloc
+	bcs.s	.x
+	move.l	a0,mod_rbase
+.x:	rts
+
+; allocator used by mod_init: the music region when mod_load is in charge, else the pool
+mod_alloc:
+	tst.l	mod_rlim
+	beq	mem_alloc
+	move.l	mod_rtop,a0
+	add.l	#15,d0
+	and.w	#$fff0,d0
+	move.l	a0,d1
+	add.l	d0,d1
+	cmp.l	mod_rlim,d1
+	bhi.s	.full
+	move.l	d1,mod_rtop
+	and.b	#$fe,ccr
+	rts
+.full:	or.b	#1,ccr
+	rts
+
+mod_load:
+	movem.l	d3/a3,-(sp)
+	move.l	a0,a3
+	bsr	mod_stop
+	clr.l	mod_rlim
+	tst.l	mod_rbase
+	beq.s	.err
+	move.l	a3,a0
+	bsr	fil_size
+	bcs.s	.err
+	move.l	d0,d3
+	move.l	mod_rbase,a1		; file goes to the top of the region
+	add.l	#MOD_REGION,a1
+	sub.l	d3,a1
+	move.l	a1,d0
+	and.w	#$fff0,d0
+	move.l	d0,a1
+	move.l	a1,mod_rlim		; samples may grow up to the file
+	move.l	mod_rbase,mod_rtop
+	move.l	a3,a0
+	move.l	d3,d0
+	bsr	fil_load
+	bcs.s	.err
+	move.l	mod_rlim,a0
+	bsr	mod_init
+	bcs.s	.err
+	bsr	mod_start
+	movem.l	(sp)+,d3/a3
+	and.b	#$fe,ccr
+	rts
+.err:	clr.l	mod_rlim
+	movem.l	(sp)+,d3/a3
+	or.b	#1,ccr
+	rts
+
+	section	bss
+mod_rbase:	ds.l	1
+mod_rtop:	ds.l	1
+mod_rlim:	ds.l	1

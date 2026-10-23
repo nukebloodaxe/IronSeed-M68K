@@ -1,0 +1,15 @@
+# intro test: credits, title, menu by keys, quit
+wait 800
+shot CRED
+wait 5000
+shot TITLE
+key ^80
+wait 400
+shot MENU1
+key ^75
+wait 400
+shot MENU3
+key ^80
+wait 400
+shot MENU4
+key #13

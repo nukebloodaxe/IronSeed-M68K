@@ -23,3 +23,4 @@
 	include	"txt.s"
 	include	"pic.s"
 	include	"mod.s"
+	include	"scr.s"

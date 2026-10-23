@@ -1,30 +1,137 @@
 INFO : Hatari v2.4.1, compiled on:  Apr  1 2024, 05:56:46
 INFO : GEMDOS HDD emulation, C: <-> /home/claude/ironseed-ste/hatari/c.
-Reading debugger commands from '/tmp/tmp.1ewklejIE4/start.ini'...
-Changed to input file dir '/tmp/tmp.1ewklejIE4'.
-> b VBL = 2000 :quiet :once :file /tmp/tmp.1ewklejIE4/a.ini
-> b VBL = 2300 :quiet :file /tmp/tmp.1ewklejIE4/b.ini
+Reading debugger commands from '/tmp/tmp.nVEPc1BKGl/start.ini'...
+Changed to input file dir '/tmp/tmp.nVEPc1BKGl'.
+> b VBL = 2400 :trace :once :file /tmp/tmp.nVEPc1BKGl/a.ini
+CPU condition breakpoint 1 with 1 condition(s) added:
+	VBL = 2400
+-> Break only once, and delete breakpoint afterwards.
+-> Trace (just show breakpoint info, instead of dropping to debugger).
+-> Execute debugger commands from '/tmp/tmp.nVEPc1BKGl/a.ini' file on hit.
+> b VBL = 2700 :file /tmp/tmp.nVEPc1BKGl/b.ini
+CPU condition breakpoint 2 with 1 condition(s) added:
+	VBL = 2700
+-> Execute debugger commands from '/tmp/tmp.nVEPc1BKGl/b.ini' file on hit.
 Changed back to '/home/claude/ironseed-ste' dir.
 WARN : Bus Error writing at address $41fffe, PC=$e0017c addr_e3=e0017c op_e3=d443
 INFO : OS clock ticks / second: 100
-Reading debugger commands from '/tmp/tmp.1ewklejIE4/a.ini'...
-Changed to input file dir '/tmp/tmp.1ewklejIE4'.
+1. CPU breakpoint condition(s) matched 1 times.
+	VBL = 2400 :once :trace :file /tmp/tmp.nVEPc1BKGl/a.ini
+Reading debugger commands from '/tmp/tmp.nVEPc1BKGl/a.ini'...
+Changed to input file dir '/tmp/tmp.nVEPc1BKGl'.
 > symbols prg
-Reading symbols from program '/home/claude/ironseed-ste/hatari/c/KTS.PRG' symbol table...
+Reading symbols from program '/home/claude/ironseed-ste/hatari/c/INTRO.PRG' symbol table...
 TOS executable, DRI / GST symbol table, reloc=0, program flags: PRIVATE (0x0)
 Program section sizes:
-  text: 0x1d2e, data: 0xf026, bss: 0x1b0f0, symtab: 0x40dc
-Trying to load DRI symbol table at offset 0x10d70...
+  text: 0x290a, data: 0x133d8, bss: 0x24414, symtab: 0x476c
+Trying to load DRI symbol table at offset 0x15cfe...
 Offsetting BSS/DATA symbols from their own sections.
 Skipping duplicate address & symbol name checks when autoload is enabled.
-Loaded 703 symbols (81 TEXT) from '/home/claude/ironseed-ste/hatari/c/KTS.PRG'.
+Loaded 782 symbols (119 TEXT) from '/home/claude/ironseed-ste/hatari/c/INTRO.PRG'.
 > profile on
 Profiling enabled.
-> c
-Returning to emulation...
 Changed back to '/home/claude/ironseed-ste' dir.
 Allocated CPU profile buffer (35 MB).
-Allocated CPU profile callsite buffer for 81 symbols.
+Allocated CPU profile callsite buffer for 119 symbols.
+Removed CPU breakpoint 1:
+	VBL = 2400 :once :trace :file /tmp/tmp.nVEPc1BKGl/a.ini
+1. CPU breakpoint condition(s) matched 1 times.
+	VBL = 2700 :file /tmp/tmp.nVEPc1BKGl/b.ini
+Finalizing costs for 1 non-returned functions:
+- 1. 0x0147e2: compose +0xb5c (vid_vbl_handler +0x0)
+Allocated CPU profile address buffer (5 KB).
+Normal RAM (0-0x400000):
+- active address range:
+  0x0139f8-0x0160dc
+- active instruction addresses:
+  773 (77.38% of all areas)
+- executed instructions:
+  3037485 (97.48% of all areas)
+- used cycles:
+  38835880 (96.89% of all areas)
+  = 4.84163s
+ROM TOS (0xE00000-0xE40000):
+- active address range:
+  0xe00794-0xe28d00
+- active instruction addresses:
+  226 (22.62% of all areas)
+- executed instructions:
+  78556 (2.52% of all areas)
+- used cycles:
+  1245320 (3.11% of all areas)
+  = 0.15525s
+Cartridge ROM (0xFA0000-FC0000):
+- no activity
+
+= 4.99688s
+
+CPU profiling warning counts:
+Reading debugger commands from '/tmp/tmp.nVEPc1BKGl/b.ini'...
+Changed to input file dir '/tmp/tmp.nVEPc1BKGl'.
+> profile stats
+Normal RAM (0-0x400000):
+- active address range:
+  0x0139f8-0x0160dc
+- active instruction addresses:
+  773 (77.38% of all areas)
+- executed instructions:
+  3037485 (97.48% of all areas)
+- used cycles:
+  38835880 (96.89% of all areas)
+  = 4.84163s
+ROM TOS (0xE00000-0xE40000):
+- active address range:
+  0xe00794-0xe28d00
+- active instruction addresses:
+  226 (22.62% of all areas)
+- executed instructions:
+  78556 (2.52% of all areas)
+- used cycles:
+  1245320 (3.11% of all areas)
+  = 0.15525s
+Cartridge ROM (0xFA0000-FC0000):
+- no activity
+
+= 4.99688s
+
+CPU profiling warning counts:
+> profile callers
+# <callee>: <caller1> = <calls> <types>[ <inclusive/totals>[ <exclusive/totals>]], <caller2> ..., <callee name>
+# types: u = unknown PC change, n = PC moved to next instruction, b = branch/jump, s = subroutine call, r = return from subroutine, e = exception, x = return from exception, 
+# totals: calls/instructions/cycles/i-misses/d-hits
+0x13b12: 0x13a3e = 48 s 96/336/5760 48/240/4032, 0xe00916 = 1 x, drawcursor
+0x13b74: 0x13c90 = 49 s 49/357/4744 49/357/4744, buf_index
+0x13b92: 0x13a46 = 49 s 245/1625/24336 49/792/10812, findmouse
+0x13c86: 0x13a3a = 49 s 6002/2627844/34032056 49/973169/15762992, compose
+0x143c4: 0x139f8 = 49 s 49/343/4116 49/343/4116, tim_ms
+0x1477a: 0x13a42 = 49 s 1225/444790/5508740 49/117481/1884584, vid_flip
+0x147e2: 0x13d32 = 36 u, 0x14786 = 35 u, 0x13d04 = 23 u, 0x13d00 = 18 u, 0x13d18 = 16 u, 0x13d36 = 15 u, 0x13d44 = 15 u, 0x1478c = 14 b, 0x13d4e = 11 b, 0x13d1a = 9 u, 0x13d46 = 9 u, 0x13d30 = 9 u, 0x13d3a = 9 u, 0x13d3e = 8 u, 0x13d4c = 8 u, 0x13d42 = 7 u, 0x13d48 = 6 u, 0x13d40 = 5 u, 0x13d4a = 5 u, 0xe04466 = 5 x, 0x13cf8 = 4 u, 0x13cf2 = 4 u, 0x13d1c = 3 b, 0x13d20 = 3 u, 0x13cf0 = 3 u, 0x13d14 = 3 b, 0x13cf6 = 3 u, 0x13d08 = 2 u, 0x13d10 = 2 b, 0x13d22 = 2 b, 0xffffffff = 1 u, 0x13cfc = 1 u, 0x13a3e = 1 s 25/6520/72680 1/219/3324, 0x13d0e = 1 u, 0x13cec = 1 u, 0x13d16 = 1 u, 0x13cee = 1 u, 0x13cfe = 1 b, vid_vbl_handler
+0x1487e: 0x151f4 = 30 u, 0x15210 = 27 b, 0x151bc = 25 u, 0x151ae = 24 u, 0x151a4 = 23 u, 0x151a0 = 22 u, 0x151ea = 20 u, 0x151fc = 20 u, 0x151ca = 20 u, 0x151f8 = 20 u, 0x15206 = 18 u, 0x151ce = 18 u, 0x151a8 = 17 u, 0x151b6 = 17 u, 0x151b2 = 16 u, 0x151c4 = 16 u, 0x151c0 = 13 u, 0x151dc = 13 u, 0x151e0 = 13 u, 0x15202 = 13 u, 0x15282 = 12 u, 0x151e6 = 11 u, 0x151d2 = 10 u, 0x1520a = 10 u, 0x151d6 = 10 u, 0x151d8 = 10 u, 0x151ee = 9 u, 0x151aa = 9 u, 0x15176 = 9 u, 0x15284 = 9 u, 0x15240 = 8 r, 0x15146 = 8 u, 0x1517e = 8 u, 0x151b8 = 8 u, 0x151ba = 8 u, 0x1512e = 8 u, 0x15166 = 7 u, 0x14fea = 7 u, 0x14fe6 = 7 s 7/3307/39056 7/3307/39056, 0x14fc0 = 7 u, 0x15286 = 6 b, 0x1513a = 6 u, 0x15136 = 6 u, 0x14fdc = 6 b, 0x1512a = 6 u, 0x15182 = 6 u, 0x151ac = 6 u, 0x1520c = 6 u, 0x1521a = 5 u, 0x151e4 = 5 u, 0x14fd8 = 5 u, 0x14fcc = 5 u, 0x15200 = 5 u, 0x15194 = 5 u, 0x1521e = 5 u, 0x150d8 = 5 u, 0x151c8 = 5 u, 0x151f2 = 5 u, 0x14fbe = 5 b, 0x15172 = 5 u, 0x150d6 = 4 u, 0x15e56 = 4 u, 0x150e6 = 4 b, 0x1520e = 4 u, 0x1514e = 4 u, 0x150ce = 4 u, 0x151f0 = 4 u, 0x15d76 = 4 u, 0x14fd2 = 3 u, 0x150d2 = 3 u, 0x14fb2 = 3 u, 0x14f9e = 3 u, 0x1515e = 3 u, 0x15224 = 3 u, 0x1513e = 3 u, 0x151e2 = 3 u, 0x150ae = 3 u, 0x15142 = 3 u, 0x150dc = 3 u, 0x1518a = 3 b, 0xe04414 = 3 u, 0x14fe0 = 3 u, 0x14fc4 = 3 b, 0x151d4 = 3 u, 0x15152 = 2 u, 0x1518e = 2 b, 0x15228 = 2 u, 0x15d7a = 2 b, 0x150e8 = 2 u, 0x15dba = 2 u, 0x14fba = 2 u, 0x15dbe = 2 b, 0x15004 = 2 u, 0x1516a = 2 u, 0x15264 = 2 u, 0x15a84 = 2 u, 0x14fde = 2 u, 0x150f4 = 2 u, 0x150ee = 2 u, 0x15c62 = 2 u, 0x150c6 = 2 u, 0x15dca = 2 b, 0x14ff4 = 2 b, 0x1511e = 2 u, 0x15c98 = 2 u, 0x14ef6 = 2 b, 0x1514c = 2 u, 0x15b02 = 2 u, 0x15162 = 2 u, 0x151fe = 2 u, 0x150e2 = 2 u, 0x14faa = 2 u, 0x14fee = 2 u, 0x15b52 = 2 s 2/110/2024 2/110/2024, 0x15158 = 2 u, 0x15100 = 2 b, 0x15ad2 = 2 u, 0x15e5c = 2 b, 0x14fac = 2 u, 0x14fa2 = 2 b, 0x15198 = 2 u, 0x1517a = 2 u, 0x15104 = 2 u, 0xe0a160 = 2 u, 0xe28c96 = 2 u, 0x15dc0 = 2 u, 0x148ea = 2 u, 0x15254 = 2 u, 0x1595a = 1 u, 0x1515a = 1 u, 0xe04466 = 1 x, 0x15114 = 1 b, 0x1514a = 1 u, 0x1510a = 1 u, 0x15b28 = 1 u, 0x150fc = 1 u, 0x15b0e = 1 u, 0x15b24 = 1 u, 0x15272 = 1 u, 0x15b08 = 1 u, 0x1519c = 1 u, 0x15140 = 1 u, 0x1519e = 1 b, 0x15a0a = 1 u, 0x14f30 = 1 s 1/123/1848 1/123/1848, 0x15222 = 1 b, 0x15d80 = 1 b, 0x15df2 = 1 b, 0x14fca = 1 u, 0x159fc = 1 u, 0x15af8 = 1 u, 0x15afe = 1 u, 0x152a4 = 1 b, 0x150c8 = 1 u, 0x151c6 = 1 u, 0x14fa4 = 1 u, 0x15232 = 1 u, 0x15c6c = 1 b, 0x14ef8 = 1 s 2/275/3268 1/62/1188, 0x159ee = 1 u, 0x150fa = 1 u, 0x1516e = 1 u, 0x15294 = 1 b, 0xe0a156 = 1 u, 0xe28c5c = 1 u, 0x15900 = 1 u, 0x14f2e = 1 s 8/4073/45324 1/246/3452, 0x15c78 = 1 u, 0x15b72 = 1 b, 0x15b16 = 1 u, 0x15b20 = 1 u, 0x15062 = 1 u, 0x15132 = 1 u, 0x1510c = 1 u, 0x150cc = 1 u, 0x15c8a = 1 u, 0x15262 = 1 u, 0x15bc8 = 1 b, 0x15106 = 1 u, 0x15d00 = 1 b, 0x15b94 = 1 u, 0x15944 = 1 u, 0x15188 = 1 u, 0x1522c = 1 b, 0x14f28 = 1 u, 0x15a9e = 1 u, 0x15a82 = 1 u, 0x15aaa = 1 r, 0x15214 = 1 u, 0x15156 = 1 u, 0x159ea = 1 b, 0x1526a = 1 u, vid_tb_handler
+0x148ea: 0x13d04 = 49 u, 0x13d32 = 48 u, 0x13d00 = 41 u, 0x14786 = 36 u, 0x1478c = 24 b, 0x148e8 = 22 x, 0x13d36 = 19 u, 0x13d44 = 19 u, 0x13d46 = 16 u, 0x15284 = 15 u, 0x13d08 = 15 u, 0x15282 = 14 u, 0x13d4c = 14 u, 0x13d3a = 13 u, 0x13d3e = 12 u, 0x151e6 = 12 u, 0x13d42 = 12 u, 0x1512e = 11 u, 0x13d1c = 11 b, 0x151ce = 11 u, 0x13d40 = 10 u, 0x14c46 = 10 u, 0x151b2 = 10 u, 0x15206 = 9 u, 0x14c9a = 9 u, 0x15286 = 9 b, 0x14ca0 = 9 b, 0x151dc = 9 u, 0x151d8 = 9 u, 0x151a4 = 9 u, 0x151f8 = 9 u, 0x13d1a = 9 u, 0x151fc = 9 u, 0x151d2 = 8 u, 0x13d4e = 8 b, 0x13d30 = 8 u, 0x151c0 = 8 u, 0x14c6c = 8 u, 0x151ae = 8 u, 0x13d4a = 7 u, 0x14c8c = 7 u, 0x15152 = 7 u, 0x151a0 = 7 u, 0x13d18 = 7 u, 0x13d48 = 7 u, 0x151bc = 7 u, 0x151f4 = 7 u, 0x15210 = 7 b, 0x14bc8 = 7 u, 0x151ee = 6 u, 0x1520a = 6 u, 0x15176 = 6 u, 0x151b6 = 6 u, 0x1523c = 6 u, 0x15202 = 5 u, 0x13d10 = 5 b, 0x14c8a = 5 u, 0x14c90 = 5 u, 0x1512a = 5 u, 0x13d0a = 5 u, 0x14c9e = 5 u, 0x13cee = 5 u, 0x15172 = 5 u, 0x1514e = 4 u, 0x13cf0 = 4 u, 0x1515a = 4 u, 0x151e0 = 4 u, 0x14c88 = 4 u, 0x14c96 = 4 u, 0x13cf2 = 4 u, 0x13d20 = 4 u, 0x151d6 = 4 u, 0x151ca = 4 u, 0x151c8 = 4 u, 0x14c94 = 3 b, 0xe0180e = 3 b, 0x1513a = 3 u, 0x1515e = 3 u, 0x151aa = 3 u, 0x15228 = 3 u, 0x1521e = 3 u, 0x15182 = 3 u, 0x14c84 = 3 u, 0x15194 = 3 u, 0x14c80 = 3 u, 0x151e2 = 3 u, 0x15136 = 3 u, 0x15166 = 3 u, 0x1520e = 3 u, 0x151ac = 3 u, 0x14fb2 = 3 u, 0x13d0e = 3 u, 0x15232 = 3 u, 0x151ea = 2 u, 0xe00846 = 2 u, 0x150f4 = 2 u, 0x14fee = 2 u, 0x14c62 = 2 u, 0x1518a = 2 b, 0x151f0 = 2 u, 0x14f9e = 2 u, 0x151c4 = 2 u, 0x13d16 = 2 u, 0x15e5c = 2 b, 0x13cf8 = 2 u, 0x151c6 = 2 u, 0x14fe6 = 2 s 2/1094/13312 2/1094/13312, 0x150cc = 2 u, 0x151a8 = 2 u, 0x14c42 = 2 u, 0x14c64 = 2 u, 0x14f90 = 2 u, 0x150d2 = 2 u, 0x14c5a = 2 u, 0x150b4 = 2 r, 0x14ba8 = 2 u, 0x15142 = 2 u, 0x14bc0 = 2 u, 0x1510c = 2 u, 0x14bc4 = 2 u, 0x14c86 = 2 u, 0x14ca4 = 2 u, 0x1511e = 2 u, 0x14fa2 = 2 b, 0x151ba = 2 u, 0x13cfe = 2 b, 0x150e6 = 2 b, 0x151d4 = 2 u, 0x14c68 = 2 u, 0x15198 = 2 u, 0x14c82 = 2 u, 0x15c62 = 1 u, 0x14fcc = 1 u, 0x150d6 = 1 u, 0x1517a = 1 u, 0x13d14 = 1 b, 0x15b52 = 1 s 1/19/276 1/19/276, 0xe008f0 = 1 b, 0x15156 = 1 u, 0x13cfa = 1 u, 0x1517e = 1 u, 0x14c32 = 1 u, 0x15218 = 1 u, 0x14fba = 1 u, 0xe0158e = 1 b, 0x14fd2 = 1 u, 0x13bc2 = 1 b, 0x15222 = 1 b, 0x15146 = 1 u, 0x14c92 = 1 u, 0x15134 = 1 u, 0xe00808 = 1 u, 0x150ce = 1 u, 0x14fe0 = 1 u, 0x15140 = 1 u, 0xe017fe = 1 s 1/47/580 1/47/580, 0x14fd8 = 1 u, 0x14fc4 = 1 b, 0x1522c = 1 b, 0x15224 = 1 u, 0x15b98 = 1 b, 0x1516a = 1 u, 0x15114 = 1 b, 0x15b0c = 1 u, 0xe0367c = 1 b, 0x15c98 = 1 u, 0x147e6 = 1 u, 0x14824 = 1 u, 0x15200 = 1 u, 0x13d22 = 1 b, 0x1485c = 1 u, 0x1514a = 1 u, 0x14c40 = 1 u, 0x151e4 = 1 u, 0x15aaa = 1 r, 0x1508c = 1 b, 0x1506e = 1 b, 0x14bf8 = 1 u, 0x15298 = 1 u, 0x14e86 = 1 u, 0x13cfc = 1 u, 0x14eae = 1 u, 0x14f22 = 1 u, 0x150ca = 1 u, 0x15116 = 1 u, 0x15c86 = 1 u, 0x1514c = 1 u, 0x13cec = 1 u, 0x14c56 = 1 u, 0x15164 = 1 u, 0x13a04 = 1 u, 0x15240 = 1 r, 0x1516e = 1 u, 0x14ca8 = 1 b, 0x15274 = 1 u, 0x15a98 = 1 u, 0x14c8e = 1 u, 0x14c4a = 1 u, 0x150e8 = 1 u, 0x15132 = 1 u, 0x14c74 = 1 u, 0x15236 = 1 b, 0x15162 = 1 u, 0x14fa4 = 1 u, 0x151fe = 1 u, 0xe00812 = 1 u, 0xe00858 = 1 u, 0x1521a = 1 u, 0x14f82 = 1 u, 0xe01800 = 1 u, 0x1500a = 1 u, 0x15e56 = 1 u, 0x14fb8 = 1 b, 0x150ee = 1 u, 0x151b8 = 1 u, 0x14f30 = 1 s 1/189/2336 1/189/2336, 0x147e2 = 1 u, 0x14828 = 1 u, 0x15100 = 1 b, 0x14856 = 1 u, 0x15dc6 = 1 u, 0x14bbe = 1 u, 0x14c5c = 1 u, 0x15bc8 = 1 b, 0x14bd0 = 1 b, 0x14fbe = 1 b, vid_tc_wrap
+0x149fe: 0x13b98 = 49 s 98/343/5488 49/196/3332, kbd_mouse_xy
+0x14a10: 0x13b92 = 49 s 98/490/8036 49/343/5880, kbd_mouse_status
+0x14a38: 0x13a52 = 49 s 98/2948/43544 49/2801/41388, kbd_keypressed
+0x14b8a: 0x1486a = 300 s 900/485264/4844740 300/2100/97200, kbd_vbl
+0x14ba0: 0x14b96 = 300 s 300/31494/578880 300/31494/578880, kbd_cur_restore
+0x14bd6: 0x14b98 = 300 s 300/451670/4168660 300/451670/4168660, kbd_cur_draw
+0x14e7c: 0x1486e = 300 s 6279/1521705/17323856 300/7290/175948, snd_vbl
+0x14eda: 0x14ec6 = 300 s 5979/1514415/17147908 300/12548/181216, snd_fill
+0x14f5c: 0x14f2e = 533 s 4152/1318991/14825380 533/109771/1419252, 0x148e8 = 1 x, snd_mix
+0x150c6: 0x14fe6 = 3617 s 3617/1208646/13395632 3617/1208646/13395632, 0x148e8 = 6 x, 0xe04466 = 3 x, snd_voice
+0x15242: 0x14f30 = 532 s 532/106101/1296156 532/106101/1296156, 0x148e8 = 1 x, 0xe04466 = 1 x, snd_out
+0x152d4: 0x13b18 = 49 s 49/98/1764 49/98/1764, gfx_set_target
+0x158f4: 0x159a4 = 41 s 41/658/8384 41/658/8384, mod_trigger
+0x15938: 0x15b52 = 469 s 510/6517/66720 469/5859/58336, 0x148e8 = 2 x, 0xe04466 = 1 x, mod_apply_note
+0x159c6: 0x14ef8 = 235 s 983/72115/792380 235/5465/86860, 0x148e8 = 1 x, mod_tick
+0x15aac: 0x159ce = 59 s 572/26413/294884 59/19767/225864, mod_row_
+0x15c72: 0x159d4 = 177 s 177/40450/412716 177/40450/412716, mod_ticks
+0x15f5a: 0x14a10 = 49 s 49/147/2156 49/147/2156, 0x149fe = 49 s 49/147/2156 49/147/2156, 0x14a38 = 49 s 49/147/2156 49/147/2156, scr_tick
+> screenshot /tmp/tmp.nVEPc1BKGl/done.png
+Screen dump to '/tmp/tmp.nVEPc1BKGl/done.png' succeeded
+Changed back to '/home/claude/ironseed-ste' dir.
+Freed previous CPU profile buffers.
+Allocated CPU profile buffer (35 MB).
+Allocated CPU profile callsite buffer for 119 symbols.
 
 ----------------------------------------------------------------------
 You have entered debug mode. Type c to continue emulation, h for help.
@@ -40,6 +147,6 @@ Cartridge ROM (0xFA0000-FC0000):
 
 CPU profiling warning counts:
 
-CPU=$12dc4, VBL=2000, FrameCycles=132, HBL=0, LineCycles=132, DSP=N/A
-00012dc4 48e7 fff0                movem.l d0-d7/a0-a3,-(a7)
+CPU=$147e2, VBL=2700, FrameCycles=132, HBL=0, LineCycles=132, DSP=N/A
+000147e2 48e7 fff0                movem.l d0-d7/a0-a3,-(a7)
 > 

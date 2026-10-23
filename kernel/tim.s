@@ -3,7 +3,7 @@
 ;
 ; tim_ticks   out: d0.l = 200 Hz ticks since boot
 ; tim_delay   in: d0.w = milliseconds (original delay()); waits at least that long
-;             trashes: d0-d1
+;             (advances a test script meanwhile)  trashes: d0-d1
 ; tim_ms      out: d0.l = milliseconds since tim_init (5 ms resolution)  trashes: d1
 
 	section	text
@@ -30,7 +30,8 @@ tim_delay:
 	divu	#5,d0			; ms -> ticks, rounded up
 	and.l	#$ffff,d0
 	add.l	HZ200.w,d0
-.w:	move.l	HZ200.w,d1
+.w:	bsr	scr_tick		; test scripts keep running during waits
+	move.l	HZ200.w,d1
 	cmp.l	d0,d1
 	blo.s	.w
 	rts

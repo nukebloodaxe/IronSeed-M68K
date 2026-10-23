@@ -10,10 +10,12 @@
 
 SND_RING	equ	4096		; bytes = 1024 stereo pairs (82 ms at 12517 Hz)
 SND_CHUNK	equ	1024		; most pairs mixed in one go
+SFX_SLOTS	equ	2		; simultaneous sound effects
 
 	section	text
 snd_init:
-	moveq	#0,d0
+	bsr	mod_region_init
+	moveq	#1,d0			; 6258 Hz: David's choice (warmer than 12517 on the STE)
 	bra	snd_set_rate
 
 snd_exit:
@@ -59,6 +61,8 @@ snd_set_rate:
 	rts
 
 snd_capture:
+	clr.l	snd_pairs		; pair numbers (snd_sfxlog) count from the capture start
+	clr.l	snd_sfxlog
 	move.l	a0,snd_cap
 	add.l	a0,d0
 	move.l	d0,snd_capend
@@ -70,6 +74,91 @@ snd_cpu:
 
 snd_mute:
 	move.b	d0,snd_mutemask
+	rts
+
+; snd_sfx_load  in: a0 = file name, a1 = sample entry (SMP_SIZE bytes, caller's)
+;               loads a signed 8-bit .SAM with zero padding for the mixer. carry on error.
+;               trashes d0-d2/a0-a2
+snd_sfx_load:
+	movem.l	d3/a3-a4,-(sp)
+	move.l	a0,a4
+	move.l	a1,a3
+	bsr	fil_size
+	bcs.s	.err
+	move.l	d0,d3
+	add.l	#MOD_PAD,d0
+	bsr	mem_alloc
+	bcs.s	.err
+	move.l	a0,SMP_ADDR(a3)
+	move.l	d3,SMP_LEN(a3)
+	clr.l	SMP_LS(a3)
+	clr.l	SMP_LL(a3)
+	move.w	#64,SMP_VOL(a3)
+	lea	0(a0,d3.l),a1		; zero the padding
+	move.w	#MOD_PAD/2-1,d0
+.z:	clr.w	(a1)+
+	dbf	d0,.z
+	move.l	a4,a0
+	move.l	SMP_ADDR(a3),a1
+	move.l	d3,d0
+	bsr	fil_load
+	bcs.s	.err
+	movem.l	(sp)+,d3/a3-a4
+	and.b	#$fe,ccr
+	rts
+.err:	movem.l	(sp)+,d3/a3-a4
+	or.b	#1,ccr
+	rts
+
+; snd_sfx_play  in: a0 = loaded sample entry, d0.w = playback rate in Hz (original soundeffect)
+;               Uses a free slot, else replaces the oldest. trashes d0-d2/a0-a2
+snd_sfx_play:
+	moveq	#0,d2			; output rate
+	move.w	#6258,d2
+	tst.w	snd_rate
+	bne.s	.r
+	move.w	#12517,d2
+.r:	moveq	#0,d1
+	move.w	d0,d1
+	divu	d2,d1			; d1.w = rate / out, high word = remainder
+	moveq	#0,d0
+	move.w	d1,d0
+	swap	d0			; integer part << 16
+	clr.w	d1			; remainder << 16
+	divu	d2,d1			; = fraction (remainder < out, so it fits)
+	move.w	d1,d0			; step 16.16 = rate * 65536 // out
+	lea	snd_sfxch,a1
+	moveq	#SFX_SLOTS-1,d1
+.f:	tst.b	CH_ON(a1)
+	beq.s	.use
+	lea	CH_SIZE(a1),a1
+	dbf	d1,.f
+	move.w	snd_sfxnext,d1		; all busy: round robin
+	addq.w	#1,snd_sfxnext
+	and.w	#SFX_SLOTS-1,snd_sfxnext
+	mulu	#CH_SIZE,d1
+	lea	snd_sfxch,a1
+	add.w	d1,a1
+.use:	DI
+	move.l	a0,CH_SMP(a1)
+	clr.l	CH_POS(a1)
+	clr.w	CH_FRAC(a1)
+	move.w	#64,CH_VOL(a1)
+	clr.w	CH_DELAY(a1)
+	move.l	a1,d1			; step slot = same index
+	sub.l	#snd_sfxch,d1
+	divu	#CH_SIZE,d1
+	lsl.w	#2,d1
+	lea	snd_sfxstep,a2
+	move.l	d0,0(a2,d1.w)
+	st	CH_ON(a1)
+	EI
+	rts
+
+; snd_sfx_room  in: d0.w = 1 to reserve mixing headroom for sound effects (music one
+;               voice quieter so music + effect can't overflow), 0 for none. Set per screen.
+snd_sfx_room:
+	move.w	d0,snd_sfxroom
 	rts
 
 ; ---------------------------------------------------------------
@@ -108,7 +197,7 @@ snd_fill:
 .loop:	tst.w	snd_need
 	beq	.done
 	tst.w	mod_on
-	beq.s	.silent
+	beq.s	.nomus
 	tst.w	mod_tickleft
 	bne.s	.mix
 	bsr	mod_tick
@@ -126,19 +215,13 @@ snd_fill:
 	bsr	snd_mix
 	bsr	snd_out
 	bra.s	.loop
-.silent:
-	move.w	snd_need,d0
+.nomus:	move.w	snd_need,d0		; no music: chunks of up to SND_CHUNK (SFX only, or silence)
 	cmp.w	#SND_CHUNK,d0
 	bls.s	.s1
 	move.w	#SND_CHUNK,d0
 .s1:	sub.w	d0,snd_need
 	move.w	d0,snd_k
-	lea	snd_accl,a0		; zero both sides
-	lea	snd_accr,a1
-	subq.w	#1,d0
-.sz:	clr.b	(a0)+
-	clr.b	(a1)+
-	dbf	d0,.sz
+	bsr	snd_mix
 	bsr	snd_out
 	bra	.loop
 .done:	rts
@@ -146,18 +229,20 @@ snd_fill:
 ; snd_mix: mix snd_k samples of every active voice into snd_accl / snd_accr
 snd_mix:
 	clr.w	snd_wrote		; bit 0 left side written, bit 1 right
+	move.w	mod_ch,d0		; volume table: channels/2 (+1 with SFX headroom)
+	lsr.w	#1,d0
+	add.w	snd_sfxroom,d0
+	subq.w	#2,d0
+	lsl.w	#2,d0
+	lea	snd_vtabs,a5
+	move.l	0(a5,d0.w),a5
+	move.l	a5,snd_vt
+	tst.w	mod_on
+	beq	.sfx
 	lea	mod_chans,a3
 	move.w	mod_ch,d0
 	subq.w	#1,d0
 	move.w	d0,snd_vcnt
-	move.w	mod_ch,d0		; volume table for this channel count
-	lea	snd_vt2,a5
-	cmp.w	#6,d0
-	bne.s	.v8
-	lea	snd_vt3,a5
-.v8:	cmp.w	#8,d0
-	bne.s	.voice
-	lea	snd_vt4,a5
 .voice:	tst.b	CH_ON(a3)
 	beq	.nextv
 	move.w	mod_ch,d0		; channel number = ch - 1 - vcnt
@@ -173,23 +258,86 @@ snd_mix:
 .pk:	lsl.w	#2,d0
 	move.l	snd_steptab,a0
 	move.l	0(a0,d0.w),d4		; step 16.16
+	moveq	#1,d6			; side bit
+	tst.b	CH_SIDE(a3)
+	beq.s	.l
+	moveq	#2,d6
+.l:	move.l	snd_vt,a5
+	bsr	snd_voice
+.nextv:	lea	CH_SIZE(a3),a3
+	subq.w	#1,snd_vcnt
+	bpl	.voice
+.sfx:	lea	snd_sfxch,a3		; sound effects: both sides, full volume
+	lea	snd_sfxstep,a4
+	moveq	#SFX_SLOTS-1,d0
+.sl:	move.w	d0,snd_vcnt
+	tst.b	CH_ON(a3)
+	beq.s	.ns
+	move.l	a4,-(sp)
+	tst.l	snd_sfxlog		; first chunk of this effect: log the output pair (tests)
+	bne.s	.lg
+	tst.w	CH_DELAY(a3)
+	bne.s	.lg
+	move.l	snd_pairs,snd_sfxlog
+.lg:	move.w	#1,CH_DELAY(a3)		; (CH_DELAY = "started" flag for SFX slots)
+	move.l	CH_POS(a3),-(sp)	; left pass, then rewind for the right pass
+	move.w	CH_FRAC(a3),-(sp)
+	move.l	(a4),d4
+	moveq	#1,d6
+	move.l	snd_vt,a5
+	bsr	snd_voice
+	move.w	(sp)+,CH_FRAC(a3)
+	move.l	(sp)+,CH_POS(a3)
+	st	CH_ON(a3)
+	move.l	(sp),a4
+	move.l	(a4),d4
+	moveq	#2,d6
+	move.l	snd_vt,a5
+	bsr	snd_voice
+	move.l	(sp)+,a4
+.ns:	lea	CH_SIZE(a3),a3
+	addq.l	#4,a4
+	move.w	snd_vcnt,d0
+	dbf	d0,.sl
+	; sides nobody wrote: silence
+	btst	#0,snd_wrote+1
+	bne.s	.zr
+	lea	snd_accl,a0
+	bsr.s	.zero
+.zr:	btst	#1,snd_wrote+1
+	bne.s	.x
+	lea	snd_accr,a0
+.zero:	move.w	snd_k,d0
+	addq.w	#3,d0
+	lsr.w	#2,d0
+	subq.w	#1,d0
+.z:	clr.l	(a0)+
+	dbf	d0,.z
+.x:	move.w	snd_k,d0
+	ext.l	d0
+	add.l	d0,snd_pairs
+	rts
+
+snd_vtabs:	dc.l	snd_vt2,snd_vt3,snd_vt4,snd_vt5
+
+; snd_voice: mix snd_k samples of one voice into one side.
+; in: a3 = channel (CH_*), a5 = volume table, d4.l = step 16.16, d6 = side bit (1 L, 2 R)
+; trashes d0-d7/a0-a2/a4/a6
+snd_voice:
 	move.w	d4,d3			; frac step
-	swap	d4			; int step (low word)
+	swap	d4			; int step
 	move.l	CH_SMP(a3),a4
 	move.l	SMP_ADDR(a4),a1
 	add.l	CH_POS(a3),a1		; sample base for this chunk
 	move.w	CH_VOL(a3),d0
 	lsl.w	#8,d0
 	lea	0(a5,d0.w),a2		; volume row
-	moveq	#1,d6			; side bit
 	lea	snd_accl,a0
-	tst.b	CH_SIDE(a3)
+	cmp.w	#1,d6
 	beq.s	.l
-	moveq	#2,d6
 	lea	snd_accr,a0
 .l:	move.w	CH_FRAC(a3),d1
 	moveq	#0,d2			; offset from a1
-	moveq	#0,d0
 	; Duff's device: d7 = k/8 passes, enter so the first pass does k%8 (or 8) samples
 	move.w	snd_k,d7
 	move.w	d7,d5
@@ -307,24 +455,7 @@ snd_mix:
 	blo.s	.st
 	clr.b	CH_ON(a3)
 .st:	move.l	d2,CH_POS(a3)
-.nextv:	lea	CH_SIZE(a3),a3
-	subq.w	#1,snd_vcnt
-	bpl	.voice
-	; sides nobody wrote: silence
-	btst	#0,snd_wrote+1
-	bne.s	.zr
-	lea	snd_accl,a0
-	bsr.s	.zero
-.zr:	btst	#1,snd_wrote+1
-	bne.s	.x
-	lea	snd_accr,a0
-.zero:	move.w	snd_k,d0
-	addq.w	#3,d0
-	lsr.w	#2,d0
-	subq.w	#1,d0
-.z:	clr.l	(a0)+
-	dbf	d0,.z
-.x:	rts
+	rts
 
 WBLK	equ	12			; bytes per unrolled sample, write variant
 ABLK	equ	14			; add variant
@@ -390,6 +521,13 @@ snd_need:	ds.w	1
 snd_k:		ds.w	1
 snd_vcnt:	ds.w	1
 snd_wrote:	ds.w	1
+snd_sfxroom:	ds.w	1
+snd_sfxnext:	ds.w	1
+snd_vt:		ds.l	1
+snd_pairs:	ds.l	1		; output pairs mixed so far
+snd_sfxlog:	ds.l	1		; snd_pairs when the first effect started (tests)
+snd_sfxstep:	ds.l	SFX_SLOTS
+snd_sfxch:	ds.b	SFX_SLOTS*CH_SIZE
 snd_mutemask:	ds.b	1
 	even
 snd_accl:	ds.b	SND_CHUNK+4

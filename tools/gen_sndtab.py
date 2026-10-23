@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """gen_sndtab.py OUT.i - mixer tables shared with tools/modref.py:
 step tables (16.16, period 0..1023) for 12517 and 6258 Hz, and volume tables
-vt[v][s] = floor(signed(s) * v / (64 * vps)) for vps = 2, 3, 4 (4/6/8 channels)."""
+vt[v][s] = floor(signed(s) * v / (64 * vps)) for vps = 2..5 (4/6/8 channels, +1 with SFX headroom)."""
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from modref import steptab, voltab
@@ -16,7 +16,7 @@ for rate, name in ((12517, 'snd_tick12'), (6258, 'snd_tick6')):
     t = [0] + [rate * 5 * 65536 // (2 * b) for b in range(1, 256)]
     for i in range(0, 256, 8):
         L.append('\tdc.l\t' + ','.join('$%x' % v for v in t[i:i + 8]))
-for vps in (2, 3, 4):
+for vps in (2, 3, 4, 5):
     L.append('snd_vt%d:\t\t\t; 65 volumes x 256 sample bytes' % vps)
     for row in voltab(vps):
         for i in range(0, 256, 32):

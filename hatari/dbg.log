@@ -1,26 +1,33 @@
 INFO : Hatari v2.4.1, compiled on:  Apr  1 2024, 05:56:46
 INFO : GEMDOS HDD emulation, C: <-> /home/claude/ironseed-ste/hatari/c.
-Reading debugger commands from '/tmp/tmp.oNNWlhiEQM/start.ini'...
-Changed to input file dir '/tmp/tmp.oNNWlhiEQM'.
-> b VBL = 2150 :quiet :file /tmp/tmp.oNNWlhiEQM/hit.ini
+Reading debugger commands from '/tmp/tmp.J7VVH2hk0o/start.ini'...
+Changed to input file dir '/tmp/tmp.J7VVH2hk0o'.
+> b VBL = 3100 :quiet :file /tmp/tmp.J7VVH2hk0o/hit.ini
 Changed back to '/home/claude/ironseed-ste' dir.
 WARN : Bus Error writing at address $41fffe, PC=$e0017c addr_e3=e0017c op_e3=d443
 INFO : OS clock ticks / second: 100
-Reading debugger commands from '/tmp/tmp.oNNWlhiEQM/hit.ini'...
-Changed to input file dir '/tmp/tmp.oNNWlhiEQM'.
-> m $ff8900 16
-00FF8900: 00 03 00 03 00 cf 00 72 00 03 00 d3 00 88 00 03   .......r........
-> screenshot /tmp/tmp.oNNWlhiEQM/done.png
-Screen dump to '/tmp/tmp.oNNWlhiEQM/done.png' succeeded
+Reading debugger commands from '/tmp/tmp.J7VVH2hk0o/hit.ini'...
+Changed to input file dir '/tmp/tmp.J7VVH2hk0o'.
+> symbols prg
+Reading symbols from program '/home/claude/ironseed-ste/hatari/c/INTRO.PRG' symbol table...
+TOS executable, DRI / GST symbol table, reloc=0, program flags: PRIVATE (0x0)
+Program section sizes:
+  text: 0x2938, data: 0x133d8, bss: 0x24418, symtab: 0x4788
+Trying to load DRI symbol table at offset 0x15d2c...
+Offsetting BSS/DATA symbols from their own sections.
+Skipping duplicate address & symbol name checks when autoload is enabled.
+Loaded 783 symbols (119 TEXT) from '/home/claude/ironseed-ste/hatari/c/INTRO.PRG'.
+> m tframes 4
+0004D89C: 00 00 00 b5 00 16 0d f0 00 00 57 0d 00 00 00 00   ..........W.....
+> m vid_frames 4
+00032032: 00 00 05 3b 00 03 21 be 03 53 00 00 00 00 00 10   ...;..!..S......
+> screenshot /tmp/tmp.J7VVH2hk0o/done.png
+Screen dump to '/tmp/tmp.J7VVH2hk0o/done.png' succeeded
 Changed back to '/home/claude/ironseed-ste' dir.
 
 ----------------------------------------------------------------------
 You have entered debug mode. Type c to continue emulation, h for help.
-Reading symbols from program '/home/claude/ironseed-ste/hatari/c/DEMO.PRG' symbol table...
-TOS executable, DRI / GST symbol table, reloc=0, program flags: PRIVATE (0x0)
-ERROR: symbol table missing from the program!
-ERROR: reading symbols from '/home/claude/ironseed-ste/hatari/c/DEMO.PRG' failed!
 
-CPU=$12e0c, VBL=2150, FrameCycles=132, HBL=0, LineCycles=132, DSP=N/A
-00012e0c 48e7 fff0                movem.l d0-d7/a0-a3,-(a7)
+CPU=$147e2, VBL=3100, FrameCycles=128, HBL=0, LineCycles=128, DSP=N/A
+000147e2 48e7 fff0                movem.l d0-d7/a0-a3,-(a7)
 > 

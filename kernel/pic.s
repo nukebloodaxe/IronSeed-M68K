@@ -5,6 +5,9 @@
 ;             out: carry set on error.  trashes: d0-d2/a0-a2
 ; File: 'ISP1', w.w, h.w, BANDS (2 + 4*34 bytes), 4 x 256 LUT bytes, planar data.
 
+; pal_load    in: a0 = name of a bands+LUTs file (tools/mkpal.py, 'ISP1' with w = h = 0)
+;             sets the bands (at the current fade level) and LUTs. carry set on error.
+
 ISP_BANDS	equ	8
 ISP_LUTS	equ	ISP_BANDS+2+4*34
 ISP_DATA	equ	ISP_LUTS+1024
@@ -55,3 +58,29 @@ pic_load:
 	movem.l	(sp)+,d3-d7/a3-a5
 	or.b	#1,ccr
 	rts
+
+pal_load:
+	movem.l	d3/a3,-(sp)
+	lea	pic_palbuf,a1
+	move.l	#ISP_DATA,d0
+	bsr	fil_load
+	bcs.s	.err
+	cmp.l	#ISP_DATA,d0
+	bne.s	.err
+	lea	pic_palbuf,a3
+	cmp.l	#'ISP1',(a3)
+	bne.s	.err
+	lea	ISP_BANDS(a3),a0
+	bsr	vid_set_bands
+	lea	ISP_LUTS(a3),a0
+	bsr	vid_set_luts
+	movem.l	(sp)+,d3/a3
+	and.b	#$fe,ccr
+	rts
+.err:	movem.l	(sp)+,d3/a3
+	or.b	#1,ccr
+	rts
+
+	section	bss
+pic_palbuf:	ds.b	ISP_DATA
+	even

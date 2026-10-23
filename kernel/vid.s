@@ -8,14 +8,20 @@
 ;
 ; vid_set_bands   in: a0 = band table            trashes: d0-d2/a0-a2
 ; vid_set_fade    in: d0.w = 0 (black) .. 16 (full)  trashes: d0-d2/a0-a2
-; vid_flip        show the back buffer at the next VBL and wait for it; swaps vid_log/vid_phys
+; vid_flip        show vid_log from the next frame on; returns as soon as the VBL has taken it
+;                 (at most one VBL). Triple buffering: a base written in a VBL is displayed from
+;                 the following frame, so the buffer shown until then is still busy; vid_log
+;                 becomes the third buffer, which is free. vid_phys = the buffer just flipped.
 ; vid_vsync       wait for the next VBL                trashes: d0
+; vid_fade_ms     in: d0.w = from level, d1.w = to level (0-16), d2.w = total milliseconds
+;                 steps one level at a time, timed with _hz_200   trashes: d0-d2/a0-a2
 ; vid_clear       in: a0 = screen                      trashes: d0-d2/a0-a2
 ; vid_set_luts    in: a0 = 4 x 256-byte LUTs (original palette index -> slot 0-15, one per band);
 ;                 builds vid_line_lut / vid_line_band from the current bands; rebuilds the cursor
 ;                 trashes: d0-d2/a0-a2
 ; vid_lut_y       in: d1.w = y   out: a1 = LUT for that line           trashes: nothing else
-; Screens: vid_phys = shown, vid_log = back buffer (both 256-byte aligned, 32000 bytes).
+; Screens: vid_scr = 3 buffers (256-byte aligned, 32000 bytes); vid_log = where to draw next;
+; vid_phys = last flipped (or the start-up screen); programs that never flip draw into vid_phys.
 
 BAND_SIZE	equ	2+32
 
@@ -26,6 +32,7 @@ vid_init:
 	move.l	vid_scr,vid_shown
 	move.l	vid_scr,vid_written
 	move.l	vid_scr+4,vid_log
+	move.l	vid_scr+8,vid_spare
 	; fade table: level 0..16 x STE nibble -> STE nibble
 	lea	vid_fadetab,a0
 	moveq	#0,d1			; level
@@ -189,12 +196,14 @@ vid_vsync:
 
 vid_flip:
 	move.l	vid_log,d0
-	move.l	vid_phys,vid_log
-	move.l	d0,vid_phys
 	move.l	d0,vid_pending
 .w:	tst.l	vid_pending		; taken by the VBL
 	bne.s	.w
-	bra	vid_vsync		; and now being displayed
+	move.l	vid_phys,d1		; previous buffer: still on screen this frame
+	move.l	d0,vid_phys
+	move.l	vid_spare,vid_log	; draw into the free one
+	move.l	d1,vid_spare		; becomes free after the next VBL
+	rts
 
 vid_clear:
 	movem.l	d3-d7/a3-a5,-(sp)
@@ -309,7 +318,8 @@ vid_black_bands:
 vid_cur:	dc.l	vid_bands_a
 
 	section	bss
-vid_scr:	ds.l	2
+vid_scr:	ds.l	3
+vid_spare:	ds.l	1
 vid_phys:	ds.l	1
 vid_log:	ds.l	1
 vid_shown:	ds.l	1
@@ -328,4 +338,34 @@ vid_luts:	ds.b	4*256
 vid_line_lut:	ds.l	SCR_H
 vid_line_band:	ds.b	SCR_H
 	even
-vid_screens:	ds.b	2*SCR_SIZE+256
+vid_screens:	ds.b	3*SCR_SIZE+256
+
+	section	text
+vid_fade_ms:
+	movem.l	d3-d5,-(sp)
+	move.w	d0,d3			; level
+	move.w	d1,d4			; target
+	move.w	d1,d5
+	sub.w	d0,d5
+	bpl.s	.p
+	neg.w	d5
+.p:	tst.w	d5
+	beq.s	.last
+	ext.l	d2
+	divu	d5,d2			; ms per step
+	move.w	d2,d5
+.lp:	cmp.w	d4,d3
+	beq.s	.last
+	blt.s	.up
+	subq.w	#1,d3
+	bra.s	.set
+.up:	addq.w	#1,d3
+.set:	move.w	d3,d0
+	bsr	vid_set_fade
+	move.w	d5,d0
+	bsr	tim_delay
+	bra.s	.lp
+.last:	move.w	d4,d0
+	bsr	vid_set_fade
+	movem.l	(sp)+,d3-d5
+	rts

@@ -23,4 +23,24 @@ for spec in GAME:0:12517 INTRO1:1:6258; do
     echo "PASS kts $song $hz Hz (6 s of mixer output bit-exact with tools/modref.py)"
   else echo "FAIL kts $song $hz Hz"; fail=1; fi
 done
+cp "$S/sound/INTRO1.MOD" hatari/c/SONG.MOD; cp "$S/sound/EXPLODE3.SAM" hatari/c/SFX.SAM; rm -f hatari/c/SND.*
+ASMDEFS="-DSFX=1" tools/asm.sh tests/kts.s hatari/c/KTS.PRG > /dev/null
+tools/run_hatari.sh 3000 /tmp/kts.png --auto 'C:\KTS.PRG' > /dev/null
+ST=$(python3 -I -c "import struct; print(struct.unpack('>5I', open('hatari/c/SND.TXT','rb').read())[4])" 2>/dev/null)
+python3 -I tools/modref.py "$S/sound/INTRO1.MOD" /tmp/ref.raw --rate 6258 --seconds 6 --sfx "$S/sound/EXPLODE3.SAM:9000:$ST" > /dev/null
+if [ -n "$ST" ] && cmp -s <(head -c 75096 /tmp/ref.raw) <(head -c 75096 hatari/c/SND.RAW); then
+  echo "PASS kts+sfx INTRO1 + EXPLODE3 6258 Hz (effect at pair $ST, bit-exact)"
+else echo "FAIL kts+sfx"; fail=1; fi
+# --- the intro (game folder via tools/mkgame.sh): credits vs Linux, scripted menu, quit to desktop
+tools/mkgame.sh > /dev/null
+sed 's/$/\r/' tests/intro_input.txt > hatari/c/INPUT.INT; rm -f hatari/c/*.SCR
+tools/run_hatari.sh 2700 /tmp/intro_end.png --auto 'C:\IS.PRG' > /dev/null
+rm -f hatari/c/INPUT.INT
+python3 tests/check_cred.py hatari/c/CRED.SCR hatari/c/DATA/CREDITS.ISL tests/ref/linux_credits.raw > /tmp/cred.txt \
+  && echo "PASS intro credits ($(cat /tmp/cred.txt))" || { echo "FAIL intro credits: $(cat /tmp/cred.txt)"; fail=1; }
+if [ -s hatari/c/MENU4.SCR ] && python3 -I -c "
+from PIL import Image; import sys
+sys.exit(0 if Image.open('/tmp/intro_end.png').convert('RGB').getpixel((300,200))==(0,255,0) else 1)"; then
+  echo "PASS intro title menu (keys select entries, Quit returns to the desktop)"
+else echo "FAIL intro title menu"; fail=1; fi
 exit $fail

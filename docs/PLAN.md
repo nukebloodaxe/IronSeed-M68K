@@ -94,7 +94,7 @@ TOS + basepages ~150 KB · program code (one of the four executables at a time) 
 | **0. Spikes (go/no-go)** | Toolchain and the risky numbers | ✅ vasm + Hatari + TOS 1.62 headless · ✅ `SPLIT.PRG` 64 colours · ✅ c2p benchmark (§7) · ✅ split timing under load: 4 500/4 500 on time (§7) · ✅ mixer cost measured: 39 % naive (§7) · ✅ Linux oracle harness: deterministic state dumps + scripted input (§7) · ☐ `SPLIT.PRG` on real STE (David) |
 | **1. Kernel (HAL)** — done except the SFX voice | Hardware layer in asm | Video (double buffer, split manager, planar primitives, dirty c2p), sound (optimised mixer ≤ 20 %, MOD replay, SFX voice), IKBD mouse/keys, timing, file I/O, memory, `.cpr`/planar picture loader, font; written register ABI; test PRG shows a converted picture with 4 bands, fades it, plays a MOD, moves the cursor |
 | **2. Data pipeline** | Host tools | Converter for typed `.dta` files; offline palette quantiser + LUT generator for `.cpr`; `.SAM` sign conversion; packed `IRONSEED` folder for Hatari |
-| **3. Launcher + intro** | First real code | `IS.PRG` → `INTRO.PRG` via `Pexec`, intro sequence runs with music |
+| **3. Launcher + intro** — 2a done (credits, title, menu); 2b scenes next | First real code | `IS.PRG` → `INTRO.PRG` via `Pexec`, intro sequence runs with music |
 | **4. Crew generation** | First playable program | `CREWGEN.PRG` complete; save data read back correctly by the Linux build after reverse conversion (cross-check of the converter) |
 | **5. Main game** | `MAIN.PRG` runs | Star map, travel, planet scan, comms, cargo, combat, save/load all work; game finishable (slowly) |
 | **6. Speed** | Playable at 8 MHz | Profiled hot spots fixed (§3.7); targets: UI response < 100 ms, combat ≥ 10 fps |
@@ -151,3 +151,8 @@ The mixer and replay are bit-exact with `tools/modref.py`. Measured in Hatari (`
 | 8-channel (12 songs), all voices busy | ≈ 80 % | ≈ 40 % |
 
 Silent channels cost nothing (skipped), so real songs often sit below these numbers. `snd_mute` drops channels from the mix at no other cost. Options for David: (a) 6 258 Hz everywhere; (b) 12 517 Hz on menu/static screens, 6 258 Hz on real-time ones; (c) a per-song channel budget (mute the least important 2-4 channels of 6/8-channel songs during real-time screens); (d) offline 4-channel reductions of the 6/8-channel songs. Listening samples: `dist/*_12517Hz.wav` / `*_6258Hz.wav` (exactly what the STE mixes, before its analogue filter).
+
+### Phase 2a (14 Oct 2026)
+- Sound defaults to 6 258 Hz (David's choice). Two sound-effect slots (`snd_sfx_load` / `snd_sfx_play`, the original `soundeffect`), optional headroom per screen (`snd_sfx_room`); music + effect output bit-exact with `tools/modref.py --sfx`.
+- IS.PRG launcher and INTRO.PRG: credits (pixel-exact with Linux on the shared lines), title screen (cloud scrolling under the logo, ~11 fps with the 8-channel title music), menu by mouse and keys, Introduction replays the intro, Quit returns to the desktop. The story scenes are Phase 2b.
+- Kernel: triple buffering (`vid_flip` no longer waits a second VBL), cursor redrawn only when it moves (saved 10 % CPU), timed fades, music region (`mod_load`), palette-only files, selectable font, scripted input for tests (`scr.s`).

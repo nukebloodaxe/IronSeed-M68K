@@ -51,9 +51,11 @@ sys_init:
 	; two screens, 256-byte aligned
 	move.l	#vid_screens+255,d0
 	and.l	#$ffffff00,d0
-	move.l	d0,vid_scr
+	move.l	d0,vid_scr		; three screens (triple buffering, see vid_flip)
 	add.l	#SCR_SIZE,d0
 	move.l	d0,vid_scr+4
+	add.l	#SCR_SIZE,d0
+	move.l	d0,vid_scr+8
 	dc.w	$a000			; Line-A: hide the GEM mouse
 	dc.w	$a00a
 	move.w	#0,-(sp)		; Setscreen(scr0, scr0, low)

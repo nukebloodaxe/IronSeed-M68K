@@ -18,6 +18,8 @@ Model (both implementations):
   each output sample reads sample[pos] then advances pos by step; volume table
   vt[v][s] = floor(s * v / (64 * vps)) where vps = channels/2; per side the
   contributions are summed (no clipping needed by construction).
+- Sound effects (play_sound): signed 8-bit, both sides at full volume through the same
+  volume table; with effects enabled the table is vt for channels/2 + 1 (headroom).
 - Sample end: looped samples (looplen > 2) wrap pos -= looplen while pos >= loopstart+looplen;
   others go silent at pos >= length. A looped sample triggered (9xx) past its loop end starts at
   loopstart + (offset - loopstart) mod looplen.
@@ -77,9 +79,9 @@ class Chan:
 
 
 class Player:
-    def __init__(self, mod, rate):
+    def __init__(self, mod, rate, sfxroom=0):
         self.m = mod; self.rate = rate
-        self.step = steptab(rate); self.vt = voltab(mod.ch // 2)
+        self.step = steptab(rate); self.vt = voltab(mod.ch // 2 + sfxroom)
         self.ch = [Chan((0, 1, 1, 0)[c % 4]) for c in range(mod.ch)]
         self.speed = 6; self.bpm = 125; self.tick = 0; self.row = 0; self.pos = 0
         self.tickacc = 0; self.tickleft = 0
@@ -233,15 +235,33 @@ class Player:
         return bytes(out)
 
 
+def add_sfx(data, smp, sfx_rate, out_rate, start, vps):
+    """Add one sound effect (signed bytes) to rendered stereo pairs from pair 'start':
+    full volume (vt[64]) on both sides, step = sfx_rate*65536//out_rate, stop at the end."""
+    out = bytearray(data); vt = voltab(vps)[64]
+    step = sfx_rate * 65536 // out_rate; pos = 0
+    for i in range(start, len(out) // 2):
+        k = pos >> 16
+        if k >= len(smp): break
+        v = vt[smp[k]]
+        out[2 * i] = (out[2 * i] + v) & 255; out[2 * i + 1] = (out[2 * i + 1] + v) & 255
+        pos += step
+    return bytes(out)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('mod'); ap.add_argument('out')
     ap.add_argument('--rate', type=int, default=12517)
     ap.add_argument('--seconds', type=float, default=10)
     ap.add_argument('--wav'); ap.add_argument('--ticks')
+    ap.add_argument('--sfx', help='SAMPLE.SAM:rate:startpair (adds headroom: music at channels/2+1)')
     a = ap.parse_args()
-    p = Player(Mod(open(a.mod, 'rb').read()), a.rate)
+    p = Player(Mod(open(a.mod, 'rb').read()), a.rate, sfxroom=1 if a.sfx else 0)
     data = p.render(int(a.rate * a.seconds))
+    if a.sfx:
+        fn, r, st = a.sfx.split(':')
+        data = add_sfx(data, open(fn, 'rb').read(), int(r), a.rate, int(st), p.m.ch // 2 + 1)
     open(a.out, 'wb').write(data)
     if a.wav:
         import wave

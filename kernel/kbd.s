@@ -72,11 +72,13 @@ kbd_mouse_handler:
 	rts
 
 kbd_mouse_xy:
+	bsr	scr_tick
 	move.w	kbd_mx,d0
 	move.w	kbd_my,d1
 	rts
 
 kbd_mouse_status:
+	bsr	scr_tick
 	DI
 	move.b	kbd_mclick,d0
 	clr.b	kbd_mclick
@@ -89,6 +91,9 @@ kbd_mouse_move:
 	rts
 
 kbd_keypressed:
+	bsr	scr_tick
+	tst.b	scr_key
+	bne.s	.yes
 	tst.b	kbd_pending
 	bne.s	.yes
 	move.w	#2,-(sp)
@@ -102,8 +107,16 @@ kbd_keypressed:
 
 kbd_readkey:
 	move.b	kbd_pending,d0
-	beq.s	.read
+	beq.s	.scr
 	clr.b	kbd_pending
+	rts
+.scr:	move.b	scr_key,d0		; scripted key?
+	beq.s	.read
+	clr.b	scr_key
+	cmp.b	#$ff,d0
+	bne.s	.x
+	move.b	scr_ext,kbd_pending	; extended: 0 now, scan code next
+	moveq	#0,d0
 	rts
 .read:	move.w	#2,-(sp)
 	BIOS	BI_BCONIN,4
@@ -191,6 +204,15 @@ kbd_cursor_hide:
 kbd_vbl:
 	tst.w	kbd_cur_on
 	beq.s	.x
+	tst.l	kbd_save_at		; already drawn, same place, same screen: nothing to do
+	beq.s	.draw
+	move.l	vid_shown,d0
+	cmp.l	kbd_save_scr,d0
+	bne.s	.draw
+	move.l	kbd_mx,d0		; (x and y as one long)
+	cmp.l	kbd_drawn,d0
+	beq.s	.x
+.draw:	move.l	kbd_mx,kbd_drawn
 	movem.l	d0-d7/a0-a5,-(sp)
 	bsr	kbd_cur_restore
 	bsr	kbd_cur_draw
@@ -201,9 +223,8 @@ kbd_cur_restore:
 	move.l	kbd_save_at,d0
 	beq.s	.x
 	clr.l	kbd_save_at
-	move.l	kbd_save_scr,d1
-	cmp.l	vid_shown,d1
-	bne.s	.x			; drawn on a screen that is no longer shown: forget it
+	; restore on the screen it was drawn on, shown or not: after a flip that screen is the
+	; back buffer, and main code only draws into it once vid_flip has returned (after this VBL)
 	move.l	d0,a0
 	lea	kbd_save,a1
 	move.w	kbd_save_rows,d1
@@ -313,8 +334,9 @@ kbd_default_cursor:			; game colours: 0 outline, 31 fill, 255 transparent
 kbd_oldmouse:	ds.l	1
 kbd_save_at:	ds.l	1
 kbd_save_scr:	ds.l	1
-kbd_mx:		ds.w	1
+kbd_mx:		ds.w	1		; kbd_mx/kbd_my must stay together (read as one long)
 kbd_my:		ds.w	1
+kbd_drawn:	ds.l	1
 kbd_cur_on:	ds.w	1
 kbd_save_rows:	ds.w	1
 kbd_cur_ready:	ds.w	1

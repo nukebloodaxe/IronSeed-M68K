@@ -6,7 +6,10 @@
 	include	"kmac.i"
 	include	"layout.i"
 	ifnd	RATE
-RATE	equ	0
+RATE	equ	1
+	endc
+	ifnd	SFX
+SFX	equ	0			; 1: also play C:\SFX.SAM at 9000 Hz about 2 s in
 	endc
 	ifnd	NOSND
 NOSND	equ	0
@@ -39,6 +42,14 @@ start:	move.l	4(sp),a0
 	ifne	NOMOD
 	move.l	#(12517>>RATE)*SECS*2,d0
 	endc
+	ifne	SFX
+	moveq	#1,d0
+	bsr	snd_sfx_room
+	lea	fn_sfx,a0
+	lea	sfxsmp,a1
+	bsr	snd_sfx_load
+	bcs	.fail
+	endc
 	move.l	#CAPBYTES,d0		; capture buffer
 	bsr	mem_alloc
 	bcs	.fail
@@ -57,6 +68,19 @@ start:	move.l	4(sp),a0
 .busy:	addq.l	#1,d5
 	moveq	#100,d0
 .b:	dbf	d0,.b
+	ifne	SFX
+	tst.w	sfxdone
+	bne.s	.sd
+	move.l	HZ200.w,d0
+	sub.l	t0,d0
+	cmp.l	#400,d0
+	blo.s	.sd
+	move.w	#1,sfxdone
+	lea	sfxsmp,a0
+	move.w	#9000,d0
+	bsr	snd_sfx_play
+.sd:
+	endc
 	ifne	NOSND
 	move.l	HZ200.w,d0		; no capture: run 6 s by the clock
 	sub.l	t0,d0
@@ -78,13 +102,14 @@ start:	move.l	4(sp),a0
 	bsr	snd_cpu
 	move.l	d0,res+8
 	move.l	d5,res+12
+	move.l	snd_sfxlog,res+16
 	lea	fn_raw,a0
 	move.l	capbuf,a1
 	move.l	#CAPBYTES,d0
 	bsr	fil_save
 	lea	fn_txt,a0
 	lea	res,a1
-	moveq	#16,d0
+	moveq	#20,d0
 	bsr	fil_save
 	moveq	#0,d0
 	bra	sys_exit
@@ -99,8 +124,11 @@ CAPBYTES equ	(12517>>RATE)*SECS*2
 fn_mod:	dc.b	"C:\SONG.MOD",0
 fn_raw:	dc.b	"C:\SND.RAW",0
 fn_txt:	dc.b	"C:\SND.TXT",0
+fn_sfx:	dc.b	"C:\SFX.SAM",0
 	even
 	section	bss
 capbuf:	ds.l	1
 t0:	ds.l	1
-res:	ds.l	4
+res:	ds.l	5
+sfxdone: ds.w	1
+sfxsmp:	ds.b	SMP_SIZE

@@ -5,6 +5,10 @@
 ;             original) and bkcolor (255 = transparent); font = ship.options[OPT_FONT].
 ;             Glyph pixels at x1+5.., rows y1+1..y1+6, 5 pixels per character.
 ;             trashes: d0-d2/a0-a2
+; txt_set_font  in: a0 = font table (3 bytes per glyph), or 0 for the game font chosen in
+;               ship.options[OPT_FONT]. txt_font_intro selects intro.pas's font, which also
+;               draws chr(1)/chr(2) as the two halves of a (c) sign (glyphs 83/84; chr(2)
+;               moves one pixel left, as in intro.pas printxy).
 ; Needs GS_TCOLOR, GS_BKCOLOR, GS_SHIP, SHIP_OPTIONS (layout.i).
 
 OPT_FONT	equ	7
@@ -20,7 +24,11 @@ txt_print:
 	move.w	d0,d6
 	addq.w	#5,d6			; x of the first glyph column (x1+4+1)
 	move.w	d1,d5			; y1
-	moveq	#0,d0
+	move.l	txt_fontptr,d0
+	beq.s	.game
+	move.l	d0,a4
+	bra.s	.char
+.game:	moveq	#0,d0
 	move.b	GS_SHIP+SHIP_OPTIONS+OPT_FONT-1(a6),d0
 	cmp.w	#2,d0
 	bls.s	.f
@@ -30,7 +38,19 @@ txt_print:
 	add.w	d0,a4			; this font
 .char:	moveq	#0,d0
 	move.b	(a5)+,d0
-	bsr	txt_letter		; d0 -> glyph index 1..82
+	cmp.l	#txt_font_intro,a4	; intro font: chr(1) / chr(2) = (c) sign
+	bne.s	.nc
+	cmp.b	#1,d0
+	bne.s	.c2
+	moveq	#83,d0
+	bra.s	.gl
+.c2:	cmp.b	#2,d0
+	bne.s	.nc
+	moveq	#84,d0
+	subq.w	#1,d6
+	bra.s	.gl
+.nc:	bsr	txt_letter		; d0 -> glyph index 1..82
+.gl:
 	subq.w	#1,d0
 	mulu	#3,d0
 	lea	0(a4,d0.w),a3		; 3 glyph bytes
@@ -57,6 +77,10 @@ txt_print:
 	addq.w	#5,d6
 	dbf	d7,.char
 .done:	movem.l	(sp)+,d3-d7/a3-a5
+	rts
+
+txt_set_font:
+	move.l	a0,txt_fontptr
 	rts
 
 ; d0.b = char -> d0.w = glyph index (printxy's case statement)
@@ -150,6 +174,9 @@ txt_row:
 	dbf	d1,.pl
 	movem.l	(sp)+,d4-d7
 	rts
+
+	section	bss
+txt_fontptr:	ds.l	1
 
 	section	data
 	include	"font.i"

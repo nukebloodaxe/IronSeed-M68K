@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""gen_font.py data.pas OUT.i - extract the 3 x 82 glyph 4x6 font (const 'font') as dc.b."""
+"""gen_font.py data.pas OUT.i [intro.pas] - extract the 3 x 82 glyph 4x6 font (const 'font') as dc.b,
+and, if intro.pas is given, the intro's own 84-glyph font (font 2 plus the two halves of a (c) sign)
+as txt_font_intro."""
 import re, sys
 src = open(sys.argv[1], encoding='latin-1').read()
 m = re.search(r'font:\s*array\[0\.\.2,1\.\.82\] of fonttype\s*=\s*\((.*?)\);', src, re.S)
@@ -11,5 +13,13 @@ for f in range(3):
     for g in range(82):
         i = (f * 82 + g) * 3
         L.append('\tdc.b\t%d,%d,%d' % tuple(nums[i:i + 3]))
+if len(sys.argv) > 3:
+    isrc = open(sys.argv[3], encoding='latin-1').read()
+    m = re.search(r'font:\s*array\[1\.\.84\] of fonttype\s*=\s*\((.*?)\);', isrc, re.S)
+    inums = [int(x) for x in re.findall(r'\d+', m.group(1))]
+    assert len(inums) == 84 * 3, len(inums)
+    L.append('txt_font_intro:\t\t\t; intro.pas font, 84 glyphs (83/84 = the (c) sign)')
+    for g in range(84):
+        L.append('\tdc.b\t%d,%d,%d' % tuple(inums[g * 3:g * 3 + 3]))
 open(sys.argv[2], 'w').write('\n'.join(L) + '\n')
 print('font: %d glyphs' % (3 * 82))

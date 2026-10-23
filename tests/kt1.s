@@ -13,6 +13,8 @@ start:	move.l	4(sp),a0
 	bsr	bars
 	move.l	vid_scr+4,a1
 	bsr	bars
+	move.l	vid_scr+8,a1
+	bsr	bars
 	lea	bands,a0
 	bsr	vid_set_bands
 	moveq	#0,d0
