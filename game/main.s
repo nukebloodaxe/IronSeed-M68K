@@ -10,15 +10,10 @@
 	include	"hw.i"
 	include	"kmac.i"
 	include	"layout.i"
+	include	"ids.i"			; build/: data.pas's constants (tools/mkids.py)
+	include	"pmac.i"		; the ported Pascal's drawing/string macros
 
-OPT_TIMESLICE	equ	2		; ship.options[] (1-based in Pascal: OPTIONS+n-1)
-OPT_SOUND	equ	3
-OPT_ANIMATION	equ	6
-OPT_FONT_	equ	7
-OPT_VOLUME	equ	9
-MAXCARGO	equ	145
-TOTALCREATION	equ	123
-NEARBYMAX	equ	20
+OPT_FONT_	equ	7		; (ids.i has OPT_FONT; kept for the older code)
 SL_LOAD		equ	1		; saveload.s: with sl_loadgame
 
 	section	text
@@ -322,6 +317,9 @@ screensaver:				; weird.pas screensaver (after 750 idle frames)
 	include	"journey.s"
 	include	"usecode.s"
 	include	"crewtick.s"
+	include	"usecode2.s"
+	include	"display.s"
+	include	"fp.s"
 
 	section	data
 fn_script:	dc.b	"INPUT.MN",0
@@ -352,6 +350,8 @@ files:	dc.l	ICONARRAY_SIZEOF,GS_ICONS,0
 	dc.l	COLORDISPLAY_SIZEOF,GS_COLORDISPLAY,0
 	dc.l	128+LAND_SIZEOF,GS_LANDFORM,0	; (+128 before: the original writes landform^[0,y])
 	dc.l	22000,0,u2_sphere		; DATA\SPHERE.DAT
+	dc.l	12402,GS_STARMAPSCREEN,0
+	dc.l	400,GS_TEMPICON,0
 	dc.l	0
 
 	section	bss

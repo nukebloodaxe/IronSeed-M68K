@@ -21,7 +21,9 @@
 ;             a txt_mask mask: ~5x faster for long lines. trashes: d0-d2/a0-a2
 ; Needs GS_TCOLOR, GS_BKCOLOR, GS_SHIP, SHIP_OPTIONS (layout.i).
 
+	ifnd	OPT_FONT
 OPT_FONT	equ	7
+	endif
 
 	section	text
 txt_print:

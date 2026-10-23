@@ -122,6 +122,42 @@ orc_blocks:
 	dc.w	GS_COLORS,768
 	dc.b	"colors",0
 	even
+	dc.w	GS_NEARBY,NEARBYARRAY_SIZEOF
+	dc.b	"nearby",0
+	even
+	dc.w	GS_T1,8
+	dc.b	"t1",0
+	even
+	dc.w	GS_TARGET,2
+	dc.b	"target",0
+	even
+	dc.w	GS_CURPLAN,2
+	dc.b	"curplan",0
+	even
+	dc.w	GS_VIEWMODE,2
+	dc.b	"viewmode",0
+	even
+	dc.w	GS_VIEWMODE2,2
+	dc.b	"viewmode2",0
+	even
+	dc.w	GS_VIEWLEVEL,2
+	dc.b	"viewlevel",0
+	even
+	dc.w	GS_VIEWINDEX,2
+	dc.b	"viewindex",0
+	even
+	dc.w	GS_VIEWINDEX2,2
+	dc.b	"viewindex2",0
+	even
+	dc.w	GS_ALERT,2
+	dc.b	"alert",0
+	even
+	dc.w	GS_ACTION,2
+	dc.b	"action",0
+	even
+	dc.w	GS_SHOWPLANET,1
+	dc.b	"showplanet",0
+	even
 	dc.w	-1
 
 	section	bss

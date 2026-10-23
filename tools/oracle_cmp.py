@@ -11,6 +11,7 @@ field as a path (ship.crew[3].xp: 120 != 121).
 """
 import json, struct, sys
 
+BOOLS = ('showplanet',)
 INTF = {'u8': 'B', 's8': 'b', 's16': 'h', 'u16': 'H', 's32': 'i', 'u32': 'I', 'u64': 'Q', 's64': 'q', 'f64': 'd', 'f32': 'f'}
 
 
@@ -71,6 +72,7 @@ def load(layout, fn):
             res[n] = data; continue
         st = st_file if desc['size_st'] == desc['size_dos'] else len(data) == desc['size_st']
         res[n] = decode(desc, data, 0, st)
+        if n in BOOLS: res[n] = bool(res[n])   # Pascal true = 1; the ST's st = 255
     return res
 
 

@@ -9,7 +9,7 @@ O=build/oracle_s4; fail=0
 tools/oracle_run.sh s4 $O > /dev/null || { echo "FAIL crewgen: no oracle"; exit 1; }
 python3 tools/st_script.py oracle/scripts/s4.intro hatari/c/INPUT.INT
 python3 tools/st_script.py oracle/scripts/s4.crewgen hatari/c/INPUT.CG
-rm -rf hatari/c/*.SCR hatari/c/D0*.BIN hatari/c/CRASH.TXT hatari/c/SAVE? hatari/c/SAVEGAME.DIR hatari/c/TEMP
+rm -rf hatari/c/*.SCR hatari/c/D0*.BIN hatari/c/CRASH.TXT hatari/c/SAVE? hatari/c/SAVEGAME.DIR hatari/c/TEMP hatari/c/INPUT.MN  # (a stale INPUT.MN: MAIN would overwrite the dumps)
 tools/run_hatari.sh 9500 /tmp/cg_end.png --auto 'C:\IS.PRG' > /dev/null
 rm -f hatari/c/INPUT.INT hatari/c/INPUT.CG
 n=0; bad=0

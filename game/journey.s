@@ -12,15 +12,9 @@
 ; showtime / addtime
 ; (all trash d0-d2/a0-a2)
 
-ALRT_REST	equ	0
-ALRT_ALERT	equ	1
-ALRT_COMBAT	equ	2
 SHLD_LOWERED	equ	1		; ship.shieldopt[] (1-based)
 SHLD_ALERT	equ	2
 SHLD_COMBAT	equ	3
-ID_NOSHIELD	equ	1500
-ID_REFLECTIVEHULL equ	1501
-DMG_SHIELD	equ	2
 TXT_LINE	equ	31		; textdisplay: array[0..30] of string[30]
 FADE_MUL_JOURNEY equ	2
 MAXIDLE2	equ	2*750
@@ -53,7 +47,8 @@ bridge:
 	bsr	mouseshow
 	tst.b	GS_SHOWPLANET(a6)
 	bne.s	.sp2
-	bra	notported		; readystarmap(1): deep space, not ported yet
+	moveq	#1,d0			; deep space: the star map
+	bsr	readystarmap
 .sp2:	bsr	checkpendingevent
 	bsr	readystatus
 	bsr	mainloop
@@ -337,17 +332,28 @@ loaddata:
 	lea	GS_NEARBY(a6),a0
 	add.w	d0,a0
 	move.w	d7,NEARBY_INDEX(a0)
-	ext.l	d3
-	ext.l	d4
-	ext.l	d5
-	move.l	d3,NEARBY_X(a0)
-	move.l	d4,NEARBY_Y(a0)
-	move.l	d5,NEARBY_Z(a0)
+	move.l	a0,a4			; nearby[i].x := x/10 (and y, z): reals (SSE)
+	FSSE
+	move.w	d3,d0
+	bsr	.tenth
+	lea	NEARBY_X(a4),a0
+	bsr	fp_std
+	move.w	d4,d0
+	bsr	.tenth
+	lea	NEARBY_Y(a4),a0
+	bsr	fp_std
+	move.w	d5,d0
+	bsr	.tenth
+	lea	NEARBY_Z(a4),a0
+	bsr	fp_std
 	bset	#0,SYSTEM_NOTES(a3)
 .n:	lea	SYSTEM_SIZEOF(a3),a3
 	addq.w	#1,d7
 	cmp.w	#250,d7
-	ble.s	.s
+	ble	.s
+	move.w	d3,GS_X(a6)		; (the globals x, y, z keep the last system's)
+	move.w	d4,GS_Y(a6)
+	move.w	d5,GS_Z(a6)
 	lea	GS_NEARBY(a6),a0	; nearbybackup := nearby
 	lea	GS_NEARBYBACKUP(a6),a1
 	move.w	#NEARBYARRAY_SIZEOF/2-1,d0
@@ -374,6 +380,10 @@ loaddata:
 	bpl.s	.a
 	neg.w	d0
 .a:	rts
+.tenth:	ext.l	d0			; push d0.w / 10
+	bsr	fp_ldi
+	FLDI	10
+	bra	fp_div
 
 ; the first nearby slot (1-20) whose system is at the ship's position, or 0
 jy_findhere:
@@ -1190,10 +1200,24 @@ mainloop:
 	bsr	screensaver
 .ni:	cmp.w	#16000,GS_SHIP+SHIP_WANDERING+ONEALIEN_ALIENID(a6)
 	bge.s	.nw
-	bra	notported		; movewandering
-.nw:	tst.w	GS_VIEWMODE2(a6)
-	bne	notported		; star map, history map, scans: not ported yet
-	tst.b	GS_SHOWPLANET(a6)
+	bsr	movewandering
+.nw:	move.w	GS_VIEWMODE2(a6),d0
+	beq.s	.vm0
+	cmp.w	#1,d0
+	bne.s	.vm2
+	bsr	displaystarmap
+	bra	.anim
+.vm2:	cmp.w	#2,d0
+	bne.s	.vm3
+	bsr	displayhistorymap
+	bra	.anim
+.vm3:	cmp.w	#3,d0
+	bne.s	.vm4
+	bsr	displayshortscan
+	bra	.anim
+.vm4:	bsr	displaylongscan
+	bra	.anim
+.vm0:	tst.b	GS_SHOWPLANET(a6)
 	beq.s	.anim
 	cmp.b	#1,GS_SHIP+SHIP_OPTIONS+OPT_ANIMATION-1(a6)
 	bne.s	.anim
@@ -1233,8 +1257,16 @@ mainloop:
 	st	GS_ANYCHANGE(a6)
 	bra.s	.vd
 .v1:	cmp.w	#1,d0
-	bne	notported		; the other right-hand panels: not ported yet
+	bne.s	.v2
 	bsr	displaystatus
+	bra.s	.vd
+.v2:	cmp.w	#11,d0
+	bhi.s	.vd
+	lsl.w	#2,d0
+	lea	jy_panels-8,a0
+	move.l	0(a0,d0.w),a0
+	move.w	GS_COMMAND(a6),d0
+	jsr	(a0)
 .vd:	clr.w	GS_COMMAND(a6)
 	bsr	checkstats
 .nc:	cmp.w	#10,GS_BATINDEX(a6)	; the clock: every 11th frame
@@ -1319,7 +1351,74 @@ jy_processkey:
 	bsr	rotatecube
 	moveq	#20,d0
 	bra	processcube
-.k8:	rts				; (Alt-1..4/0, Alt-N/P orbits, the eggs: not ported yet)
+.k8:	cmp.w	#120,d1			; Alt-1..4 / Alt-0: an orbit of this system
+	blt.s	.k9
+	cmp.w	#123,d1
+	ble.s	.alt
+	cmp.w	#129,d1
+	bne.s	.k9
+.alt:	tst.b	GS_SHOWPLANET(a6)
+	beq	.nosys
+	moveq	#0,d2
+	cmp.w	#129,d1
+	beq.s	.alt0
+	move.w	d1,d2
+	sub.w	#119,d2
+.alt0:	move.w	GS_CURPLAN(a6),d0
+	bsr	jy_plansys
+	move.w	d2,d1
+	bra	gotoorbit
+.k9:	cmp.w	#49,d1			; Alt-N / Alt-P: the next / previous orbit
+	beq.s	.np
+	cmp.w	#25,d1
+	bne.s	.k10
+.np:	tst.b	GS_SHOWPLANET(a6)
+	beq.s	.nosys
+	move.w	d1,-(sp)
+	move.w	GS_CURPLAN(a6),d0
+	bsr	getplanetorbit
+	move.w	d0,d2
+	move.w	(sp)+,d1
+	cmp.w	#49,d1
+	bne.s	.pp
+	addq.w	#1,d2
+	bra.s	.np2
+.pp:	subq.w	#1,d2
+.np2:	move.w	GS_CURPLAN(a6),d0
+	bsr	jy_plansys
+	move.w	d2,d1
+	bra	gotoorbit
+.nosys:	PRTLN
+	TCOL	94
+	PRT	"NAVIGATION: Not near a system."
+	rts
+.k10:	cmp.w	#22,d1			; Alt-U: the original's artifact shortcut
+	bne.s	.k11
+	moveq	#42,d0
+	bsr	event
+	move.w	#ID_ART_DETONATOR,d0
+	st	d1
+	bsr	addcargo
+	moveq	#24,d0
+	bsr	event
+	move.w	#ID_ART_HOMING_DEVICE,d0
+	st	d1
+	bsr	addcargo
+	moveq	#25,d0
+	bsr	event
+	moveq	#27,d0
+	bsr	event
+	moveq	#30,d0
+	bsr	event
+	moveq	#28,d0
+	bra	event
+.k11:	cmp.w	#117,d1			; the eggs (Ctrl-End, Ctrl-PgDn... Alt-7): not ported
+	beq	notported
+	cmp.w	#103,d1
+	beq	notported
+	cmp.w	#126,d1
+	beq	notported
+	rts
 .asc:	cmp.b	#'a',d0			; upcase
 	blo.s	.up
 	cmp.b	#'z',d0
@@ -1366,12 +1465,14 @@ jy_processkey:
 	bne.s	.p
 	tst.w	GS_VIEWMODE2(a6)
 	beq.s	.es2
-	bra	notported		; removestarmap
+	bsr	removestarmap
 .es2:	st	d0
 	bra	cleanright
 .p:	cmp.b	#'P',d0
-	bne.s	.kx
-	bra	notported		; arm/raise or power down/lower: not ported yet
+	bne.s	.bq
+	bra	u3_panic
+.bq:	cmp.b	#'`',d0
+	beq	notported		; bossmode
 .kx:	rts
 
 ; journey.pas findmouse (the parts of the bridge that are ported)
@@ -1511,54 +1612,714 @@ jy_findmouse:
 .c4:	cmp.w	#8,d3			; 0-8, y > 182: the panic button
 	bgt.s	.c5
 	cmp.w	#182,d4
-	ble	.cx
-	bra	notported		; arm/raise or power down/lower
+	ble	.cc0
+	bsr	u3_panic
+	bra	.cc0
 .c5:	cmp.w	#300,d3			; 300-313: the status lights -> ship status
 	blt.s	.c6
 	cmp.w	#313,d3
 	bgt.s	.c6
 	moveq	#3,d0			; the lights at 19-38, 49-58, 69-78, 89-98 (clickcode: the egg)
 	cmp.w	#19,d4
-	blt.s	.cc0
+	blt	.cc0
 	cmp.w	#38,d4
 	ble.s	.lt
+	moveq	#2,d0
 	cmp.w	#49,d4
 	blt.s	.cc0
 	cmp.w	#58,d4
 	ble.s	.lt
+	moveq	#1,d0
 	cmp.w	#69,d4
 	blt.s	.cc0
 	cmp.w	#78,d4
 	ble.s	.lt
+	moveq	#0,d0
 	cmp.w	#89,d4
 	blt.s	.cc0
 	cmp.w	#98,d4
 	bgt.s	.cc0
-.lt:	cmp.w	#1,GS_VIEWMODE(a6)
-	beq.s	.cx
+.lt:	move.w	d0,-(sp)		; (d0: the light 0-3 from the bottom, 3 = top)
+	cmp.w	#1,GS_VIEWMODE(a6)
+	beq.s	.lt2
 	st	d0
 	bsr	cleanright
 	bsr	readystatus
-	bra.s	.cx			; (clickcode / easteregg5: not ported)
+	move.w	(sp),d0			; clickcode: lights 4, 3, 2 then 1 (bottom to top) = the egg
+	bsr	jy_clickcode
+.lt2:	addq.l	#2,sp
+	bra	.cx
 .c6:	cmp.w	#27,d3			; 27-143: the star map (viewmode2 1 or 2)
 	blt.s	.cc0
 	cmp.w	#143,d3
 	bgt.s	.cc0
+	clr.w	jy_clickcode_v
 	move.w	GS_VIEWMODE2(a6),d0
 	beq.s	.cx
 	cmp.w	#2,d0
 	bgt.s	.cx
-	bra	notported		; targetstar
-.cc0:
+	cmp.w	#124,d4
+	bge.s	.cx
+	cmp.w	#16,d4
+	ble.s	.cx
+	move.w	d3,d0
+	move.w	d4,d1
+	bsr	targetstar
+	bra.s	.cx
+.cc0:	clr.w	jy_clickcode_v		; (any other click: clickcode := 0)
 .cx:	tst.b	GS_PANELON(a6)
 	beq.s	.np
-	bra	notported		; the right-hand panels' buttons
+	move.w	d3,d0
+	move.w	d4,d1
+	bsr	jy_panelmouse
+	st	GS_ANYCHANGE(a6)
 .np:	move.w	GS_CUBE(a6),d0
 	cmp.w	jy_oldcube,d0
 	beq.s	.ni
 	bsr	msg2
 .ni:	clr.w	GS_IDLETIME(a6)
 .x:	movem.l	(sp)+,d3-d4
+	rts
+
+; the system of planet d0 -> d0.w
+jy_plansys:
+	mulu	#PLANET_SIZEOF,d0
+	move.l	GS_TEMPPLAN(a6),a0
+	moveq	#0,d1
+	move.b	-PLANET_SIZEOF+PLANET_SYSTEM(a0,d0.l),d1
+	move.w	d1,d0
+	rts
+
+; clickcode (the easter egg sequence): light d0 (0 bottom .. 3 top) clicked
+jy_clickcode:
+	move.w	jy_clickcode_v,d1
+	cmp.w	#3,d0			; top: clickcode 3 -> the egg
+	bne.s	.l2
+	cmp.w	#3,d1
+	bne.s	.x
+	clr.w	jy_clickcode_v
+	bra	notported		; easteregg5
+.l2:	cmp.w	#2,d0			; 49-58: 2 -> 3 else 0
+	bne.s	.l1
+	moveq	#0,d2
+	cmp.w	#2,d1
+	bne.s	.s
+	moveq	#3,d2
+	bra.s	.s
+.l1:	cmp.w	#1,d0			; 69-78: 1 -> 2 else 0
+	bne.s	.l0
+	moveq	#0,d2
+	cmp.w	#1,d1
+	bne.s	.s
+	moveq	#2,d2
+	bra.s	.s
+.l0:	tst.w	d1			; 89-98: 0 -> 1
+	bne.s	.x
+	moveq	#1,d2
+.s:	move.w	d2,jy_clickcode_v
+.x:	rts
+
+; journey.pas findmouse's panel part (panelon): the top buttons give command; else by viewmode
+jy_panelmouse:
+	movem.l	d3-d6,-(sp)
+	move.w	d0,d3			; x
+	move.w	d1,d4			; y
+	cmp.w	#8,d4
+	ble.s	.vm
+	cmp.w	#24,d4
+	bge.s	.vm
+	cmp.w	#153,d3
+	ble.s	.vm
+	cmp.w	#291,d3
+	bge.s	.vm
+	move.w	d3,d0			; command := (x-137) div 17
+	sub.w	#137,d0
+	ext.l	d0
+	divs	#17,d0
+	move.w	d0,GS_COMMAND(a6)
+	bra	.x
+.vm:	move.w	GS_VIEWMODE(a6),d0
+	cmp.w	#2,d0
+	bne	.v3
+	tst.w	GS_VIEWLEVEL(a6)	; 2: weapons - a gun node by row
+	bne	.x
+	bsr	.inpanel31
+	beq	.x
+	move.w	d4,d5			; i := (y-32) div 7; j: the i-th node with a weapon
+	sub.w	#32,d5
+	ext.l	d5
+	divs	#7,d5
+	moveq	#1,d6
+.w:	move.w	d6,d0
+	lea	GS_SHIP+SHIP_GUNNODES-1(a6),a0
+	tst.b	0(a0,d0.w)
+	beq.s	.wn
+	subq.w	#1,d5
+.wn:	addq.w	#1,d6
+	cmp.w	#10,d6
+	bgt.s	.wd
+	tst.w	d5
+	bge.s	.w
+.wd:	cmp.w	#11,d6
+	bge	.x
+	subq.w	#1,d6
+	move.w	d6,GS_VIEWINDEX(a6)
+	bra	.x
+.v3:	cmp.w	#3,d0
+	bne.s	.v4
+	tst.w	GS_VIEWLEVEL(a6)	; 3: system info - the list scrolls to the row
+	bne	.x
+	bsr	.inpanel37
+	beq	.x
+	bsr	.listrow		; d5 = rows to move (-6..)
+	lea	GS_TARGET(a6),a3
+	moveq	#0,d6			; the target: by systems with nearby[].index <> 0
+	bsr	.scrollnear
+	bra	.x
+.v4:	cmp.w	#4,d0
+	bne	.v5
+	move.w	GS_VIEWLEVEL(a6),d0	; 4: shields
+	bne	.v4b
+	lea	jy_shdrows,a0		; rows: (lo, hi, viewindex, set opt)
+.sr:	move.w	(a0)+,d1
+	bmi	.x
+	move.w	(a0)+,d2
+	move.w	(a0)+,d5
+	move.w	(a0)+,d6
+	cmp.w	d1,d4
+	blt.s	.sr
+	cmp.w	d2,d4
+	bgt.s	.sr
+	move.w	d5,GS_VIEWINDEX(a6)
+	tst.w	d6
+	beq	.x
+	cmp.w	#172,d3			; x 173..273: shieldopt[viewindex] := x-173
+	ble	.x
+	cmp.w	#274,d3
+	bge	.x
+	move.w	d3,d0
+	sub.w	#173,d0
+	lea	GS_SHIP+SHIP_SHIELDOPT-1(a6),a0
+	move.b	d0,0(a0,d5.w)
+	bra	.x
+.v4b:	cmp.w	#2,d0
+	bne	.x
+	tst.w	GS_VIEWINDEX2(a6)
+	ble	.x
+	bsr	.inpanel37
+	beq	.x
+	bsr	.listrow
+	moveq	#2,d6			; shields in cargo
+	bsr	.scrollcargo
+	bra	.x
+.v5:	cmp.w	#5,d0
+	bne	.v6
+	cmp.w	#165,d3			; 5: damage control
+	ble	.x
+	cmp.w	#279,d3
+	bge	.x
+	cmp.w	#31,d4
+	ble	.x
+	move.w	GS_VIEWLEVEL(a6),d0
+	cmp.w	#1,d0
+	bne.s	.v5b
+	moveq	#1,d0			; the three teams' rows
+	cmp.w	#36,d4
+	blt	.x
+	cmp.w	#49,d4
+	ble.s	.v5s
+	moveq	#2,d0
+	cmp.w	#63,d4
+	blt	.x
+	cmp.w	#76,d4
+	ble.s	.v5s
+	moveq	#3,d0
+	cmp.w	#90,d4
+	blt	.x
+	cmp.w	#103,d4
+	bgt	.x
+.v5s:	move.w	d0,GS_VIEWINDEX(a6)
+	bra	.x
+.v5b:	cmp.w	#2,d0
+	bne	.x
+	move.w	d4,d5			; i := (y-46) div 7: the repair to do
+	sub.w	#46,d5
+	ext.l	d5
+	divs	#7,d5
+	bsr	dp_team
+	move.l	a0,a3
+	tst.w	TEAM_JOBTYPE(a3)
+	bne	.x
+	cmp.w	#9,d5
+	bge	.x
+	TCOL	191			; (the old marker: ' ' on bkcolor 5)
+	bsr	dp_team_unmark
+	move.w	d5,TEAM_JOB(a3)
+	move.w	GS_VIEWINDEX(a6),d0
+	bsr	dp_team_time
+	bra	.x
+.v6:	cmp.w	#6,d0
+	bne.s	.v7
+	bsr	.inpanel37		; 6: options - viewindex := (y-27) div 9
+	beq	.x
+	move.w	d4,d0
+	sub.w	#27,d0
+	ext.l	d0
+	divs	#9,d0
+	move.w	d0,GS_VIEWINDEX(a6)
+	bra	.x
+.v7:	cmp.w	#7,d0
+	bne.s	.v8
+	tst.w	GS_VIEWLEVEL(a6)	; 7: logs - the list of visited systems
+	bne	.x
+	tst.w	GS_VIEWINDEX(a6)
+	ble	.x
+	bsr	.inpanel37
+	beq	.x
+	bsr	.listrow
+	moveq	#1,d6
+	lea	GS_VIEWINDEX(a6),a3
+	bsr	.scrollsys
+	bra	.x
+.v8:	cmp.w	#8,d0
+	bne.s	.v10
+	move.w	d3,d0			; 8: the system view
+	move.w	d4,d1
+	bsr	targetplanet
+	bra	.x
+.v10:	cmp.w	#10,d0
+	bne	.v11
+	tst.w	GS_VIEWLEVEL(a6)	; 10: configure - a gun node, or the weapons in cargo
+	bne.s	.v10b
+	move.w	d3,d0
+	move.w	d4,d1
+	bsr	findgunnode
+	bra	.x
+.v10b:	cmp.w	#34,d3
+	ble	.x
+	cmp.w	#136,d3
+	bge	.x
+	cmp.w	#31,d4
+	ble	.x
+	cmp.w	#114,d4
+	bge	.x
+	move.w	d4,d5			; i: rows from the middle (-5 above 68)
+	cmp.w	#68,d5
+	bge.s	.v10l
+	sub.w	#38,d5
+	ext.l	d5
+	divs	#6,d5
+	subq.w	#5,d5
+	bra.s	.v10s
+.v10l:	sub.w	#68,d5
+	ext.l	d5
+	divs	#6,d5
+.v10s:	moveq	#3,d6			; weapons in cargo (the original's own bounds)
+	bsr	.scrollcargo
+	bra	.x
+.v11:	cmp.w	#11,d0
+	bne	.x
+	bsr	.inpanel37		; 11: bots
+	beq	.x
+	move.w	GS_VIEWLEVEL(a6),d0
+	bne.s	.v11b
+	move.w	d4,d5			; i := (y-31) div 10: the i-th used cache slot
+	sub.w	#31,d5
+	ext.l	d5
+	divs	#10,d5
+	move.w	GS_CURPLAN(a6),d0
+	bsr	dp_plan
+	lea	PLANET_CACHE(a0),a3
+	moveq	#0,d6			; viewindex
+.cs:	addq.w	#1,d6
+	move.w	d6,d0
+	add.w	d0,d0
+	tst.w	-2(a3,d0.w)
+	beq.s	.csn
+	subq.w	#1,d5
+.csn:	tst.w	d5
+	blt.s	.csd
+	cmp.w	#7,d6
+	bne.s	.cs
+.csd:	cmp.w	#7,d6
+	bne.s	.csx
+	tst.w	12(a3)			; viewindex 7 with nothing there: back to a used one
+	bne.s	.csx
+.cb:	tst.w	d6
+	ble.s	.csx
+	move.w	d6,d0
+	add.w	d0,d0
+	tst.w	-2(a3,d0.w)
+	bne.s	.csx
+	subq.w	#1,d6
+	bra.s	.cb
+.csx:	move.w	d6,GS_VIEWINDEX(a6)
+	bra	.x
+.v11b:	cmp.w	#1,d0
+	bne.s	.v11c
+	bsr	.listrow		; the cargo list
+	moveq	#0,d6			; any cargo
+	bsr	.scrollcargo
+	bra	.x
+.v11c:	move.w	d4,d5			; level 2: which bot (y-38) div 6
+	sub.w	#38,d5
+	ext.l	d5
+	divs	#6,d5
+	move.w	GS_CURPLAN(a6),d0
+	bsr	dp_plan
+	cmp.b	#7,PLANET_STATE(a0)
+	beq.s	.b5
+	move.w	#ID_MINEBOT,d0
+	moveq	#1,d1
+	bsr	.bot
+	move.w	#ID_MANUFACTORY,d0
+	moveq	#2,d1
+	bsr	.bot
+	move.w	#ID_FABRICATOR,d0
+	moveq	#4,d1
+	bsr	.bot
+	bra.s	.bd
+.b5:	move.w	#ID_STARMINER,d0
+	moveq	#5,d1
+	bsr	.bot
+.bd:	cmp.w	#90,d5
+	ble	.x
+	bsr	mousehide
+	TCOL	191
+	BKCOL	5
+	bsr	showbotstuff
+	bsr	mouseshow
+	bra	.x
+.bot:	move.w	d1,-(sp)		; if incargo(item) > 0 then dec(y); if y < 0: viewindex2, y := 99
+	bsr	incargo
+	move.w	(sp)+,d1
+	tst.w	d0
+	ble.s	.bt
+	subq.w	#1,d5
+.bt:	tst.w	d5
+	bge.s	.btx
+	move.w	d1,GS_VIEWINDEX2(a6)
+	moveq	#99,d5
+.btx:	rts
+.x:	movem.l	(sp)+,d3-d6
+	rts
+.inpanel31:				; 165 < x < 279 and 31 < y < 116 ?  (Z clear = yes)
+	moveq	#31,d0
+	bra.s	.inp
+.inpanel37:
+	moveq	#37,d0
+.inp:	cmp.w	#165,d3
+	ble.s	.no
+	cmp.w	#279,d3
+	bge.s	.no
+	cmp.w	d0,d4
+	ble.s	.no
+	cmp.w	#116,d4
+	bge.s	.no
+	moveq	#1,d0
+	rts
+.no:	moveq	#0,d0
+	rts
+.listrow:				; d5 := i: y < 74: -6 + (y-38) div 6, else (y-74) div 6
+	move.w	d4,d5
+	cmp.w	#74,d5
+	bge.s	.lr
+	sub.w	#38,d5
+	ext.l	d5
+	divs	#6,d5
+	subq.w	#6,d5
+	rts
+.lr:	sub.w	#74,d5
+	ext.l	d5
+	divs	#6,d5
+	rts
+; the target moves d5 rows through the nearby systems (index <> 0)
+.scrollnear:
+	tst.w	d5
+	beq.s	.snx
+	bpl.s	.snd
+.snu:	subq.w	#1,(a3)			; up
+	move.w	(a3),d0
+	ble.s	.sn1
+	bsr	dp_near
+	tst.w	NEARBY_INDEX(a0)
+	beq.s	.snc
+	addq.w	#1,d5
+.snc:	tst.w	d5
+	bne.s	.snu
+	bra.s	.snx
+.sn1:	move.w	#1,(a3)			; target := 1; while nearby[target].index = 0 do inc(target)
+.sn1l:	move.w	(a3),d0
+	bsr	dp_near
+	tst.w	NEARBY_INDEX(a0)
+	bne.s	.snx
+	addq.w	#1,(a3)
+	bra.s	.sn1l
+.snd:	addq.w	#1,(a3)			; down
+	move.w	(a3),d0
+	cmp.w	#NEARBYMAX,d0
+	bgt.s	.sn2
+	bsr	dp_near
+	tst.w	NEARBY_INDEX(a0)
+	beq.s	.snd2
+	subq.w	#1,d5
+.snd2:	tst.w	d5
+	bne.s	.snd
+	bra.s	.snx
+.sn2:	move.w	#NEARBYMAX,(a3)		; target := nearbymax; while nearby[target].index = 0 do dec
+.sn2l:	move.w	(a3),d0
+	bsr	dp_near
+	tst.w	NEARBY_INDEX(a0)
+	bne.s	.snx
+	subq.w	#1,(a3)
+	bra.s	.sn2l
+.snx:	rts
+; viewindex (a3) moves d5 rows through the visited systems
+.scrollsys:
+	tst.w	d5
+	beq.s	.ssx
+	bpl.s	.ssd
+.ssu:	subq.w	#1,(a3)
+	move.w	(a3),d0
+	ble.s	.ss1
+	bsr	dp_sys
+	tst.w	SYSTEM_VISITS(a0)
+	beq.s	.ssc
+	addq.w	#1,d5
+.ssc:	tst.w	d5
+	bne.s	.ssu
+	bra.s	.ssx
+.ss1:	move.w	#1,(a3)
+.ss1l:	move.w	(a3),d0
+	bsr	dp_sys
+	tst.w	SYSTEM_VISITS(a0)
+	bne.s	.ssx
+	addq.w	#1,(a3)
+	bra.s	.ss1l
+.ssd:	addq.w	#1,(a3)
+	move.w	(a3),d0
+	cmp.w	#250,d0
+	bgt.s	.ss2
+	bsr	dp_sys
+	tst.w	SYSTEM_VISITS(a0)
+	beq.s	.ssd2
+	subq.w	#1,d5
+.ssd2:	tst.w	d5
+	bne.s	.ssd
+	bra.s	.ssx
+.ss2:	move.w	#250,(a3)
+.ss2l:	move.w	(a3),d0
+	bsr	dp_sys
+	tst.w	SYSTEM_VISITS(a0)
+	bne.s	.ssx
+	subq.w	#1,(a3)
+	bra.s	.ss2l
+.ssx:	rts
+; viewindex2 moves d5 rows through the cargo slots of a kind (d6: 0 any, 2 shields
+; NOSHIELD..NOTHING-2, 3 weapons DIRK..NOSHIELD-2), the original's own bounds per panel
+.scrollcargo:
+	lea	GS_VIEWINDEX2(a6),a3
+	tst.w	d5
+	beq	.scx
+	bpl.s	.scd
+.scu:	subq.w	#1,(a3)
+	move.w	(a3),d0
+	ble.s	.sc1
+	bsr	.kind
+	beq.s	.scc
+	addq.w	#1,d5
+.scc:	tst.w	d5
+	bne.s	.scu
+	bra	.scx
+.sc1:	move.w	#1,(a3)			; viewindex2 := 1; skip the slots not of the kind (wide test)
+.sc1l:	cmp.w	#3,d6
+	bne.s	.sc1t
+	cmp.w	#251,(a3)		; (weapons: while (vi2 < 251) and ...; 251 -> 0)
+	blt.s	.sc1t
+	clr.w	(a3)
+	bra	.scx
+.sc1t:	move.w	(a3),d0
+	bsr	.wide
+	bne	.scx
+	addq.w	#1,(a3)
+	bra.s	.sc1l
+.scd:	addq.w	#1,(a3)
+	move.w	(a3),d0
+	cmp.w	#250,d0
+	bgt.s	.sc2
+	bsr	.kind
+	beq.s	.scd2
+	subq.w	#1,d5
+.scd2:	tst.w	d5
+	bne.s	.scd
+	bra.s	.scx
+.sc2:	move.w	#250,(a3)
+.sc2l:	cmp.w	#3,d6
+	bne.s	.sc2t
+	tst.w	(a3)
+	ble.s	.scx
+.sc2t:	move.w	(a3),d0
+	bsr	.wide
+	bne.s	.scx
+	subq.w	#1,(a3)
+	bra.s	.sc2l
+.scx:	rts
+.kind:	bsr	dp_cargoitem		; the narrow test used while moving (Z clear = of the kind)
+	tst.w	d6
+	bne.s	.k2
+	tst.w	d1
+	rts
+.k2:	cmp.w	#2,d6
+	bne.s	.k3
+	cmp.w	#ID_NOSHIELD,d1
+	blt.s	.kn
+	cmp.w	#ID_NOTHING-1,d1
+	bge.s	.kn
+	bra.s	.ky
+.k3:	cmp.w	#ID_DIRK,d1
+	blt.s	.kn
+	cmp.w	#ID_NOSHIELD-1,d1
+	bge.s	.kn
+.ky:	moveq	#1,d1
+	rts
+.kn:	moveq	#0,d1
+	rts
+.wide:	bsr	dp_cargoitem		; the wide test used to settle (Z clear = of the kind)
+	tst.w	d6
+	bne.s	.w2
+	tst.w	d1
+	rts
+.w2:	cmp.w	#2,d6
+	bne.s	.w3
+	cmp.w	#ID_NOSHIELD,d1
+	blt.s	.kn
+	cmp.w	#ID_NOTHING,d1
+	bge.s	.kn
+	bra.s	.ky
+.w3:	cmp.w	#ID_DIRK,d1
+	blt.s	.kn
+	cmp.w	#ID_NOSHIELD,d1
+	bge.s	.kn
+	bra.s	.ky
+
+; journey.pas adjustwanderer(ofs d0): the alien ship moves (combat when close and hostile)
+adjustwanderer:
+	movem.l	d3/a3,-(sp)
+	move.w	d0,d3
+	lea	GS_SHIP+SHIP_WANDERING(a6),a3
+	cmp.w	#16000,ONEALIEN_ALIENID(a3)
+	bgt	.x
+	lea	ONEALIEN_RELX(a3),a0
+	moveq	#3-1,d2
+.c:	move.w	(a0),d0
+	move.w	d0,d1
+	bpl.s	.p
+	neg.w	d1
+.p:	cmp.w	#499,d1
+	ble.s	.n
+	tst.w	d0
+	bpl.s	.m
+	add.w	d3,(a0)
+	bra.s	.n
+.m:	sub.w	d3,(a0)
+.n:	addq.l	#2,a0
+	dbf	d2,.c
+	lea	ONEALIEN_RELX(a3),a0	; all within 500 and a reason to fight: combat
+	moveq	#3-1,d2
+.cl:	move.w	(a0)+,d0
+	bpl.s	.cp
+	neg.w	d0
+.cp:	cmp.w	#500,d0
+	bge.s	.far
+	dbf	d2,.cl
+	cmp.w	#WNDACT_ATTACK,GS_ACTION(a6)
+	beq	notported		; initiatecombat
+	cmp.w	#WNDORDER_ATTACK,ONEALIEN_ORDERS(a3)
+	beq	notported
+	move.w	ONEALIEN_ANGER(a3),d0
+	move.w	ONEALIEN_CONGENIALITY(a3),d1
+	bsr	calc_anger
+	cmp.w	#3,d0
+	bgt	notported
+.far:	lea	ONEALIEN_RELX(a3),a0	; any beyond 23000: gone
+	moveq	#3-1,d2
+.fl:	move.w	(a0)+,d0
+	bpl.s	.fp
+	neg.w	d0
+.fp:	cmp.w	#23000,d0
+	bgt.s	.gone
+	dbf	d2,.fl
+	bra.s	.x
+.gone:	move.w	#20000,ONEALIEN_ALIENID(a3)
+	cmp.w	#WNDACT_RETREAT,GS_ACTION(a6)
+	bne.s	.na
+	PRTLN
+	TCOL	63
+	PRT	"SECURITY: Evasion successful!"
+.na:	clr.w	GS_ACTION(a6)
+.x:	movem.l	(sp)+,d3/a3
+	rts
+
+; journey.pas movewandering
+movewandering:
+	move.w	GS_ACTION(a6),d0
+	cmp.w	#WNDACT_RETREAT,d0
+	beq.s	.r
+	cmp.w	#WNDACT_ATTACK,d0
+	bne.s	.o
+	bsr.s	.ofs			; closer: round((accelmax div 4)*(100-dmg)/100)
+	bsr	adjustwanderer
+	bra.s	.o
+.r:	bsr.s	.ofs			; away: round(-(accelmax div 4)*(100-dmg)/100)
+	neg.w	d0
+	bsr	adjustwanderer
+.o:	move.w	GS_SHIP+SHIP_WANDERING+ONEALIEN_ORDERS(a6),d0
+	cmp.w	#WNDORDER_ATTACK,d0
+	bne.s	.o2
+	cmp.w	#WNDACT_MASKING,GS_ACTION(a6)
+	bne.s	.a30
+	moveq	#12,d0			; 5-random(12)
+	bsr	mt_random
+	neg.w	d0
+	addq.w	#5,d0
+	bra	adjustwanderer
+.a30:	moveq	#30,d0
+	bra	adjustwanderer
+.o2:	cmp.w	#WNDORDER_RETREAT,d0
+	bne.s	.o3
+	moveq	#-70,d0
+	cmp.w	#WNDACT_MASKING,GS_ACTION(a6)
+	bne	adjustwanderer
+	moveq	#-50,d0
+	bra	adjustwanderer
+.o3:	cmp.w	#WNDORDER_NONE,d0
+	bne.s	.x
+	moveq	#-30,d0
+	bra	adjustwanderer
+.x:	rts
+.ofs:	move.w	GS_SHIP+SHIP_ACCELMAX(a6),d0	; (accelmax div 4)*(100-dmg) / 100, banker's
+	ext.l	d0
+	divs	#4,d0
+	moveq	#100,d1
+	sub.b	GS_SHIP+SHIP_DAMAGES+DMG_ENGINES-1(a6),d1
+	and.w	#$ff,d1
+	muls	d1,d0
+	move.l	d0,d1
+	bpl.s	.op
+	neg.l	d1
+.op:	divu	#100,d1
+	move.l	d1,d2
+	swap	d2
+	cmp.w	#50,d2
+	blo.s	.ot
+	bhi.s	.ou
+	btst	#0,d1
+	beq.s	.ot
+.ou:	addq.w	#1,d1
+.ot:	tst.l	d0
+	bpl.s	.os
+	neg.w	d1
+.os:	move.w	d1,d0
 	rts
 
 	section	data
@@ -1596,6 +2357,12 @@ jy_menunames:	dc.b	11," Psy Eval  ",11,"Planet Comm",11,"Planet Comm",11," Psy E
 jy_keys:	dc.b	'Q',1,'A',2,'Z',3,'T',4,'G',5,'B',6
 		dc.b	'W',$80,'E',$81,'R',$82,'S',$83,'D',$84,'F',$85,'X',$86,'C',$87,'V',$88,0
 	even
+; the right-hand panels by viewmode 2-11
+jy_panels:	dc.l	displayweaponinfo,displaysysteminfo,displayshieldopts,displaydamagecontrol
+		dc.l	displayoptions,displaylogs,displaysystem,displayshipinfo,displayconfigure
+		dc.l	displaybotinfo
+; the shield panel's mouse rows: lo, hi, viewindex, sets shieldopt (1)
+jy_shdrows:	dc.w	61,68,1,0, 70,74,1,1, 79,86,2,0, 88,92,2,1, 97,104,3,0, 106,110,3,1, -1
 jy_eventsystems: dc.w	211,12,129,13,182,15,31,14,98,16,138,17,229,20,28,24,182,14,119,10000
 		dc.w	182,10002,14,25,-1
 
@@ -1603,6 +2370,7 @@ jy_eventsystems: dc.w	211,12,129,13,182,15,31,14,98,16,138,17,229,20,28,24,182,1
 jy_cubecols:	ds.b	21*77*2		; DATA\CUBE.DAT (read at start-up)
 jy_cuberows:	ds.b	20*67*2
 jy_oldcube:	ds.w	1
+jy_clickcode_v:	ds.w	1
 jy_shadow:	ds.b	1
 	even
 jy_s1:		ds.b	32

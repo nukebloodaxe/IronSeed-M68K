@@ -1,0 +1,31 @@
+vtime
+args /playseed 3
+# m5: travel by the system info panel: its buttons pick the next target, run the targeting
+# computer, then engage; the flight to the other star and the arrival; quit
+wait 3000
+key #27
+wait 2000
+key g
+wait 1500
+key v
+wait 3000
+click 213 16
+wait 1500
+click 213 16
+wait 2000
+shot T1
+click 247 16
+wait 9000
+shot T2
+click 264 16
+wait 5000
+shot T3
+wait 30000
+shot T4
+wait 30000
+shot T5
+key #291
+wait 1500
+key y
+wait 3000
+quit

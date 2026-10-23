@@ -31,3 +31,11 @@ EI	macro
 STECOL	macro
 	dc.w	((((\1)&1)<<3)|((\1)>>1))<<8|((((\2)&1)<<3)|((\2)>>1))<<4|((((\3)&1)<<3)|((\3)>>1))
 	endm
+
+; fp.s precision: FSSE = double expressions (SSE, 53 bits), FX87 = x87 expressions (64 bits)
+FSSE	macro
+	clr.w	fp_mode
+	endm
+FX87	macro
+	move.w	#1,fp_mode
+	endm

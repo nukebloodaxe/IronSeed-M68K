@@ -30,12 +30,14 @@ sl_savegamedata:
 	movem.l	d3-d7/a3-a5,-(sp)
 	move.w	d0,sl_alt
 	move.w	d1,sl_text
+	ifnd	SL_LOAD			; (MAIN.PRG: the dialog goes into its whole-screen shadow)
 	lea	sl_win,a0
 	move.w	#SL_WX,d0
 	move.w	#SL_WY,d1
 	move.w	#SL_WW,d2
 	move.w	#SL_WH,d3
 	bsr	chk_open
+	endc
 	bsr	kbd_cursor_hide
 	move.w	sl_text,GS_TCOLOR(a6)
 	move.w	#75,d0			; button(75,40,244,140,alt)

@@ -1,0 +1,61 @@
+vtime
+args /playseed 3
+# m3: the right-hand panels from the cube's keys: engineering (damage control, shields, weapons,
+# configure, bots), science (system view, logs), astrogation (system info, ship info), medical
+# (options), security (shields up, weapons armed, the panic button), then quit
+wait 3000
+key #27
+wait 2000
+key a
+wait 1500
+key w
+wait 3000
+shot P1
+key s
+wait 3000
+shot P2
+key x
+wait 3000
+shot P3
+key e
+wait 3000
+shot P4
+key r
+wait 3000
+shot P5
+key z
+wait 1500
+key x
+wait 4000
+shot P6
+key v
+wait 3000
+shot P7
+key g
+wait 1500
+key v
+wait 3000
+shot P8
+key r
+wait 3000
+shot P9
+key b
+wait 1500
+key w
+wait 3000
+shot P10
+key t
+wait 1500
+key s
+wait 3000
+key x
+wait 3000
+shot P11
+key p
+wait 3000
+shot P12
+key #291
+wait 1500
+key y
+wait 3000
+quit

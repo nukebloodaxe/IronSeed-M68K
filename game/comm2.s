@@ -10,7 +10,6 @@
 MAXLOGENTRIES	equ	256
 TITLE_SIZE	equ	52		; titlebody: id.w, string[49] (+ pad)
 LOGPAGE		equ	25*50		; computerlogtype: 25 x string[49]
-MAXIDLE		equ	750
 
 	section	text
 computerlogs:

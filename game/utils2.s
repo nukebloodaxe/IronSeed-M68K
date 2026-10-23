@@ -829,6 +829,7 @@ readystar:
 	moveq	#120,d1
 	moveq	#60,d2
 	bsr	createstar
+	bsr	orc_dump		; loadscreen(current): an oracle dump point
 	bsr	u2_unapproach		; (loadscreen(current): the same screen)
 	bsr	showtime
 	bsr	u2_grabplanet
@@ -1233,3 +1234,870 @@ u2_first:	ds.l	1
 u2_rowtab:	ds.l	128		; per column index: its row of u2_tab
 u2_colofs:	ds.w	128		; per column index: the texture column's offset this frame
 u2_tab:		ds.b	32*256		; [alt 0-31][land value] -> colour
+
+	section	text
+; ---------------------------------------------------------------- what a planet's bots find
+; utils2.pas getstuffamounts(state d0): u2_ele[0..16], u2_mat[0..20], u2_cmp[0..22] (words)
+getstuffamounts:
+	movem.l	d3-d7/a3-a4,-(sp)
+	move.w	d0,d7
+	tst.l	u2_scan			; scan.dta: 17 elements x 12 states (bytes), read once
+	bne.s	.h
+	move.l	#17*12,d0
+	bsr	mem_alloc
+	bcs	fatal
+	move.l	a0,u2_scan
+	move.l	a0,a1
+	lea	u2_fn_scan,a0
+	move.l	#17*12,d0
+	bsr	load_exact
+.h:	move.l	u2_scan,a0		; ele[i] := temp^[i, state]
+	lea	u2_ele,a1
+	moveq	#0,d1
+.e:	moveq	#0,d0
+	move.b	0(a0,d7.w),d0
+	move.w	d0,(a1)+
+	lea	12(a0),a0
+	addq.w	#1,d1
+	cmp.w	#17,d1
+	bne.s	.e
+	moveq	#1,d3			; materials 1..19
+.m:	lea	u2_mat,a4
+	move.w	d3,d0
+	add.w	d0,d0
+	clr.w	0(a4,d0.w)
+	move.w	d3,d4
+	add.w	#ID_UNKNOWN_MATERIAL,d4	; n
+	lea	GS_CARGO+CARGO_INDEX(a6),a3
+	moveq	#1,d5			; j
+.mj:	cmp.w	(a3),d4
+	beq.s	.mf
+	lea	CARGO_SIZEOF(a3),a3
+	addq.w	#1,d5
+	cmp.w	#MAXCARGO,d5
+	ble.s	.mj
+	bra.s	.mn
+.mf:	move.w	d5,d0			; tt := 99; tly := 0: over the 3 parts (elements)
+	subq.w	#1,d0
+	mulu	#6,d0
+	lea	GS_PRTCARGO(a6),a0
+	add.w	d0,a0
+	moveq	#99,d1			; tt
+	moveq	#0,d2			; tly
+	moveq	#3-1,d6
+.mk:	move.w	(a0)+,d0
+	sub.w	#ID_FIRST_ELEMENT,d0
+	ext.l	d0
+	divs	#10,d0
+	add.w	d0,d0
+	lea	u2_ele,a1
+	move.w	0(a1,d0.w),d0
+	add.w	d0,d2
+	cmp.w	d1,d0
+	bge.s	.mk2
+	move.w	d0,d1
+.mk2:	dbf	d6,.mk
+	tst.w	d1
+	ble.s	.mn
+	move.w	d3,d0
+	add.w	d0,d0
+	move.w	d2,0(a4,d0.w)
+.mn:	addq.w	#1,d3
+	cmp.w	#20,d3
+	bne.s	.m
+	clr.w	u2_mat
+	clr.w	u2_mat+40
+	moveq	#1,d3			; components 1..20
+.c:	move.w	d3,d0
+	add.w	#ID_UNKNOWN_COMPONENT,d0
+	bsr	u2_getsub
+	move.w	d3,d1
+	add.w	d1,d1
+	lea	u2_cmp,a0
+	move.w	d0,0(a0,d1.w)
+	addq.w	#1,d3
+	cmp.w	#21,d3
+	bne.s	.c
+	clr.w	u2_cmp
+	clr.w	u2_cmp+42
+	clr.w	u2_cmp+44
+	movem.l	(sp)+,d3-d7/a3-a4
+	rts
+; getsubamount(item d0): min over its parts of the amounts (0 if not a cargo item)
+u2_getsub:
+	movem.l	d3-d5/a3,-(sp)
+	lea	GS_CARGO+CARGO_INDEX(a6),a3
+	moveq	#1,d1
+.f:	cmp.w	(a3),d0
+	beq.s	.ff
+	lea	CARGO_SIZEOF(a3),a3
+	addq.w	#1,d1
+	cmp.w	#MAXCARGO,d1
+	ble.s	.f
+	moveq	#0,d0
+	bra.s	.x
+.ff:	subq.w	#1,d1
+	mulu	#6,d1
+	lea	GS_PRTCARGO(a6),a3
+	add.w	d1,a3
+	moveq	#99,d4			; tt
+	moveq	#3-1,d5
+.p:	move.w	(a3)+,d0		; n
+	cmp.w	#ID_FIRST_ELEMENT,d0
+	blt.s	.pm
+	cmp.w	#ID_LAST_ELEMENT,d0
+	bgt.s	.pc
+	sub.w	#ID_FIRST_ELEMENT,d0
+	ext.l	d0
+	divs	#10,d0
+	add.w	d0,d0
+	lea	u2_ele,a0
+	move.w	0(a0,d0.w),d0
+	bra.s	.pc
+.pm:	cmp.w	#ID_UNKNOWN_MATERIAL,d0
+	blt.s	.pk
+	sub.w	#ID_UNKNOWN_MATERIAL,d0
+	add.w	d0,d0
+	lea	u2_mat,a0
+	move.w	0(a0,d0.w),d0
+	bra.s	.pc
+.pk:	cmp.w	#ID_UNKNOWN_COMPONENT,d0
+	blt.s	.pc
+	bsr	u2_getsub
+.pc:	cmp.w	d4,d0
+	bge.s	.pn
+	move.w	d0,d4
+.pn:	dbf	d5,.p
+	move.w	d4,d0
+.x:	movem.l	(sp)+,d3-d5/a3
+	rts
+
+; utils2.pas addstuff(n d0, limit d1): the bots of planet n fill its cache
+addstuff:
+	movem.l	d3-d7/a3-a4,-(sp)
+	move.w	d1,d7			; lim
+	bsr	u2_plan
+	move.l	a0,a3
+	moveq	#7,d6
+	and.b	PLANET_BOTS(a3),d6
+	beq	.x
+	moveq	#0,d0
+	move.b	PLANET_STATE(a3),d0
+	bsr	getstuffamounts
+	moveq	#0,d5			; total
+	cmp.w	#1,d6
+	bne	.mat
+	lea	u2_ele,a0		; elements
+	moveq	#17-1,d0
+.te:	add.w	(a0)+,d5
+	dbf	d0,.te
+	lea	PLANET_CACHE(a3),a4
+	moveq	#7-1,d4
+.ce:	tst.w	(a4)
+	bne.s	.cen
+	move.w	d5,d0			; r := random(total)
+	bsr	mt_random
+	moveq	#0,d1			; j
+	lea	u2_ele,a0
+.w:	cmp.w	#16,d1
+	bge.s	.wd
+	cmp.w	(a0),d0
+	blt.s	.wd
+	sub.w	(a0)+,d0
+	addq.w	#1,d1
+	bra.s	.w
+.wd:	mulu	#10,d1
+	add.w	#ID_FIRST_ELEMENT,d1
+	move.w	d1,(a4)
+	subq.w	#1,d7
+	ble	.x
+.cen:	addq.l	#2,a4
+	dbf	d4,.ce
+	bra	.x
+.mat:	cmp.w	#2,d6
+	beq.s	.m
+	cmp.w	#5,d6
+	bne.s	.cmp
+.m:	lea	u2_mat,a0		; materials: doubled; unknown + junk get one more
+	moveq	#21-1,d0
+.tm:	move.w	(a0),d1
+	add.w	d1,d1
+	move.w	d1,(a0)+
+	add.w	d1,d5
+	dbf	d0,.tm
+	addq.w	#1,u2_mat
+	addq.w	#1,u2_mat+40
+	addq.w	#2,d5
+	lea	u2_mat,a1
+	moveq	#20,d3			; the last j
+	move.w	#ID_UNKNOWN_MATERIAL,d2
+	bra.s	.fill
+.cmp:	cmp.w	#3,d6
+	blt	.x
+	cmp.w	#4,d6
+	bgt	.x
+	lea	u2_cmp,a0		; components
+	moveq	#23-1,d0
+.tc:	move.w	(a0),d1
+	add.w	d1,d1
+	move.w	d1,(a0)+
+	add.w	d1,d5
+	dbf	d0,.tc
+	addq.w	#1,u2_cmp
+	addq.w	#1,u2_cmp+44
+	addq.w	#2,d5
+	lea	u2_cmp,a1
+	moveq	#22,d3
+	move.w	#ID_UNKNOWN_COMPONENT,d2
+.fill:	lea	PLANET_CACHE(a3),a4	; for i := 1 to 7: an empty slot, or junk half the time
+	moveq	#7-1,d4
+.cf:	tst.w	(a4)
+	beq.s	.cg
+	cmp.w	#ID_WORTHLESS_JUNK,(a4)
+	bne.s	.cfn
+	movem.l	d2/a1,-(sp)
+	moveq	#2,d0
+	bsr	mt_random
+	movem.l	(sp)+,d2/a1
+	tst.w	d0
+	bne.s	.cfn
+.cg:	movem.l	d2/a1,-(sp)
+	move.w	d5,d0
+	bsr	mt_random
+	movem.l	(sp)+,d2/a1
+	moveq	#0,d1			; j
+	move.l	a1,a0
+.cw:	cmp.w	d3,d1
+	bge.s	.cwd
+	cmp.w	(a0),d0
+	blt.s	.cwd
+	sub.w	(a0)+,d0
+	addq.w	#1,d1
+	bra.s	.cw
+.cwd:	cmp.w	#22,d1			; components: j = 22 is worthless junk
+	bne.s	.cid
+	cmp.w	#ID_UNKNOWN_COMPONENT,d2
+	bne.s	.cid
+	move.w	#ID_WORTHLESS_JUNK,(a4)
+	bra.s	.cl
+.cid:	add.w	d2,d1
+	move.w	d1,(a4)
+.cl:	subq.w	#1,d7
+	ble.s	.x
+.cfn:	addq.l	#2,a4
+	dbf	d4,.cf
+.x:	movem.l	(sp)+,d3-d7/a3-a4
+	rts
+u2_plan:				; a0 := @tempplan^[d0]
+	mulu	#PLANET_SIZEOF,d0
+	move.l	GS_TEMPPLAN(a6),a0
+	lea	-PLANET_SIZEOF(a0),a0
+	add.l	d0,a0
+	rts
+
+	section	data
+u2_fn_scan:	dc.b	"DATA",92,"SCAN.DTA",0
+	even
+	section	bss
+u2_scan:	ds.l	1
+u2_ele:		ds.w	17
+u2_mat:		ds.w	21
+u2_cmp:		ds.w	23
+
+	section	text
+; ---------------------------------------------------------------- travel (utils2.pas)
+; redoscreen(x d0, y d1, z d2): the journey to (x, y, z): position (maybe off course), the
+; systems now near, the countdown screen, time passing, arrival at a star or in deep space,
+; the autosave, travel damage, the events of the system
+redoscreen:
+	movem.l	d3-d7/a3,-(sp)
+	movem.w	d0-d2,u2_xyz
+	sub.w	GS_SHIP+SHIP_POSX(a6),d0	; dist (SSE)
+	sub.w	GS_SHIP+SHIP_POSY(a6),d1
+	sub.w	GS_SHIP+SHIP_POSZ(a6),d2
+	bsr	dp_dist
+	lea	u2_dist,a0
+	bsr	fp_std
+	moveq	#85,d0			; off course: (random(85)+15) < damages[ENGINES]
+	bsr	mt_random
+	add.w	#15,d0
+	moveq	#0,d1
+	move.b	GS_SHIP+SHIP_DAMAGES+DMG_ENGINES-1(a6),d1
+	cmp.w	d1,d0
+	bge.s	.on
+	TCOL	94
+	PRTLN
+	PRT	"NAVIGATION: Ship off course!"
+	lea	u2_xyz,a3
+	lea	GS_SHIP+SHIP_POSX(a6),a0
+	moveq	#3-1,d3
+.oc:	move.l	a0,-(sp)
+	moveq	#7,d0
+	bsr	mt_random
+	move.l	(sp)+,a0
+	add.w	(a3)+,d0
+	subq.w	#3,d0
+	move.w	d0,(a0)+
+	dbf	d3,.oc
+	bra.s	.pos
+.on:	movem.w	u2_xyz,d0-d2
+	movem.w	d0-d2,GS_SHIP+SHIP_POSX(a6)
+.pos:	sf	GS_TARGETREADY(a6)
+	move.w	#32000,GS_SHIP+SHIP_BATTERY(a6)
+	bsr	checkstats
+	sf	GS_SHOWPLANET(a6)
+	lea	GS_NEARBY(a6),a0	; the systems within 400
+	moveq	#NEARBYMAX-1,d0
+.cl:	clr.w	NEARBY_INDEX(a0)
+	lea	NEARBY_SIZEOF(a0),a0
+	dbf	d0,.cl
+	moveq	#0,d6			; i
+	lea	GS_SYSTEMS(a6),a3
+	moveq	#1,d7			; j
+.s:	move.w	SYSTEM_X(a3),d3
+	sub.w	GS_SHIP+SHIP_POSX(a6),d3
+	move.w	SYSTEM_Y(a3),d4
+	sub.w	GS_SHIP+SHIP_POSY(a6),d4
+	move.w	SYSTEM_Z(a3),d5
+	sub.w	GS_SHIP+SHIP_POSZ(a6),d5
+	move.w	d3,GS_X(a6)
+	move.w	d4,GS_Y(a6)
+	move.w	d5,GS_Z(a6)
+	move.w	d3,d0
+	bsr	.abs
+	cmp.w	#400,d0
+	bge.s	.n
+	move.w	d4,d0
+	bsr	.abs
+	cmp.w	#400,d0
+	bge.s	.n
+	move.w	d5,d0
+	bsr	.abs
+	cmp.w	#400,d0
+	bge.s	.n
+	addq.w	#1,d6
+	cmp.w	#NEARBYMAX,d6
+	bgt	fatal			; NEARBY STRUCTURE OVERFLOW #1
+	move.w	d6,d0
+	bsr	dp_near
+	move.w	d7,NEARBY_INDEX(a0)
+	move.l	a0,-(sp)
+	move.w	d3,d0			; x/10, y/10, z/10 (SSE)
+	lea	NEARBY_X(a0),a0
+	bsr	u2_div10
+	move.l	(sp),a0
+	move.w	d4,d0
+	lea	NEARBY_Y(a0),a0
+	bsr	u2_div10
+	move.l	(sp)+,a0
+	move.w	d5,d0
+	lea	NEARBY_Z(a0),a0
+	bsr	u2_div10
+	bset	#0,SYSTEM_NOTES(a3)
+.n:	lea	SYSTEM_SIZEOF(a3),a3
+	addq.w	#1,d7
+	cmp.w	#250,d7
+	ble	.s
+	lea	GS_NEARBY(a6),a0	; nearbybackup := nearby
+	lea	GS_NEARBYBACKUP(a6),a1
+	move.w	#NEARBYARRAY_SIZEOF/2-1,d0
+.bk:	move.w	(a0)+,(a1)+
+	dbf	d0,.bk
+	bsr	mousehide
+	moveq	#0,d0			; compressfile(current); a black screen
+	bsr	ms_snap
+	BAR	0,0,319,199,0
+	TCOL	47
+	BKCOL	0
+	lea	u2_dist,a0		; time := round(dist*2)+1
+	bsr	fp_ldd
+	FLDI	2
+	bsr	fp_mul
+	bsr	fp_rnd
+	move.w	d0,d4			; the last j
+	move.w	d0,d3
+	addq.w	#1,d3			; time
+	PXY	42,187,"Acceleration to near light speed..."
+	bsr	mouseshow
+	moveq	#0,d7			; for j := 0 to round(dist*2)
+.t:	cmp.w	d4,d7
+	bgt.s	.te
+	move.w	#4000,d0
+	bsr	mt_random
+	add.w	#4000,d0
+	move.w	d0,d2
+	sf	d0
+	sf	d1
+	bsr	addlotstime
+	subq.w	#1,d3
+	move.w	d3,d0			; str(time) padded with chr(20) to 4 characters
+	ext.l	d0
+	moveq	#0,d1
+	lea	u2_num,a0
+	bsr	int_str
+	lea	u2_num,a0
+	moveq	#0,d0
+	move.b	(a0),d0
+.pad:	cmp.w	#4,d0
+	bge.s	.pd
+	addq.w	#1,d0
+	move.b	#20,0(a0,d0.w)
+	bra.s	.pad
+.pd:	move.b	#4,(a0)
+	BKCOL	0
+	PXYS	222,187,u2_num
+	addq.w	#1,d7
+	bra.s	.t
+.te:	BKCOL	3
+	TCOL	31
+	moveq	#-8,d0			; fadestopmod(-FADEFULL_STEP, FADEFULL_DELAY)
+	moveq	#20,d1
+	bsr	fadestopmod
+	bsr	mousehide
+	bsr	orc_dump		; loadscreen(current): an oracle dump point
+	moveq	#0,d0			; loadscreen(current)
+	bsr	ms_unsnap
+	bsr	showtime
+	bsr	jy_findhere		; index: the system at the ship's position
+	move.w	d0,u2_idx
+	beq.s	.deep
+	lea	u2_dist,a0		; stardate[3] += round(dist)
+	bsr	fp_ldd
+	bsr	fp_rnd
+	add.w	d0,GS_SHIP+SHIP_STARDATE+4(a6)
+	move.w	u2_idx,d0
+	bsr	dp_near
+	move.w	NEARBY_INDEX(a0),d0
+	bsr	findfirstplanet
+	move.w	d0,u2_j
+	clr.w	GS_SHIP+SHIP_ORBITING(a6)
+	move.w	d0,GS_CURPLAN(a6)
+	bsr	showtime
+	bsr	adjustsystem
+	lea	u2_dist,a0
+	bsr	fp_ldd
+	bsr	fp_rnd
+	bsr	adjustplanets
+	bsr	readystar
+	bra.s	.ms
+.deep:	clr.w	GS_CURPLAN(a6)
+	clr.w	GS_SHIP+SHIP_ORBITING(a6)
+	bsr	reloadbackground
+	bsr	fadein
+.ms:	bsr	mouseshow
+	cmp.b	#1,GS_SHIP+SHIP_OPTIONS+OPT_AUTOSAVE-1(a6)
+	bne.s	.na
+	moveq	#0,d0
+	moveq	#31,d1
+	bsr	savegamedata
+.na:	clr.w	GS_TARGET(a6)
+	moveq	#4,d0			; for j := 1 to random(4)+1: travel damage
+	bsr	mt_random
+	move.w	d0,d3
+.dm:	moveq	#7,d0
+	bsr	mt_random
+	lea	GS_SHIP+SHIP_DAMAGES(a6),a0
+	cmp.b	#90,0(a0,d0.w)
+	bhs.s	.dn
+	addq.b	#1,0(a0,d0.w)
+.dn:	dbf	d3,.dm
+	move.w	u2_idx,d0		; the system's events
+	beq.s	.x
+	bsr	dp_near
+	move.w	NEARBY_INDEX(a0),d3
+	lea	jy_eventsystems,a3
+.ev:	move.w	(a3)+,d0
+	bmi.s	.x
+	move.w	(a3)+,d1
+	cmp.w	d0,d3
+	bne.s	.ev
+	move.w	d1,d0
+	bsr	event
+	bra.s	.ev
+.x:	movem.l	(sp)+,d3-d7/a3
+	rts
+.abs:	tst.w	d0
+	bpl.s	.a
+	neg.w	d0
+.a:	rts
+; (a0) := d0.w / 10 (SSE)
+u2_div10:
+	move.l	a0,-(sp)
+	FSSE
+	bsr	fp_ldw
+	FLDI	10
+	bsr	fp_div
+	move.l	(sp)+,a0
+	bra	fp_std
+
+; utils2.pas adjustsystem (j = the star: u2_j)
+adjustsystem:
+	movem.l	d3/a3,-(sp)
+	move.w	GS_CURPLAN(a6),d0
+	bsr	u2_plan
+	moveq	#0,d3
+	move.b	PLANET_SYSTEM(a0),d3
+	move.w	d3,d0
+	bsr	dp_sys
+	move.l	a0,a3
+	tst.w	SYSTEM_VISITS(a3)
+	bne.s	.v
+	move.w	d3,d0
+	bsr	getname
+.v:	addq.w	#1,SYSTEM_VISITS(a3)
+	move.w	GS_SHIP+SHIP_STARDATE+4(a6),SYSTEM_DATEY(a3)
+	move.b	GS_SHIP+SHIP_STARDATE+1(a6),SYSTEM_DATEM(a3)
+	move.w	u2_j,d0
+	bsr	u2_plan
+	cmp.w	#255,SYSTEM_VISITS(a3)
+	bhs.s	.n
+	addq.w	#1,PLANET_VISITS(a0)
+.n:	move.w	GS_SHIP+SHIP_STARDATE+4(a6),PLANET_DATEY(a0)
+	move.b	GS_SHIP+SHIP_STARDATE+1(a6),PLANET_DATEM(a0)
+	movem.l	(sp)+,d3/a3
+	rts
+
+; utils2.pas getname(n d0): systems[n].name := sysname.dta record n-1 (string[12])
+getname:
+	movem.l	d3,-(sp)
+	move.w	d0,d3
+	tst.l	u2_names
+	bne.s	.h
+	move.l	#250*13,d0
+	bsr	mem_alloc
+	bcs	fatal
+	move.l	a0,u2_names
+	move.l	a0,a1
+	lea	u2_fn_sysname,a0
+	move.l	#250*13,d0
+	bsr	load_exact
+.h:	move.l	u2_names,a1
+	move.w	d3,d0
+	subq.w	#1,d0
+	mulu	#13,d0
+	add.l	d0,a1
+	move.w	d3,d0
+	bsr	dp_sys
+	moveq	#13-1,d0
+.c:	move.b	(a1)+,(a0)+
+	dbf	d0,.c
+	movem.l	(sp)+,d3
+	rts
+
+; utils2.pas adjustplanets(t d0): randomize; the bots' cache; the planets age and evolve
+adjustplanets:
+	movem.l	d3-d7/a3,-(sp)
+	move.w	d0,d7
+	ext.l	d7
+	bsr	mt_randomize
+	moveq	#1,d3			; j
+	move.l	GS_TEMPPLAN(a6),a3
+.j:	tst.b	PLANET_BOTS(a3)
+	beq.s	.age
+	and.b	#7,PLANET_BOTS(a3)	; clear the depletion; bots: addstuff(j, 7)
+	beq.s	.age
+	move.w	d3,d0
+	moveq	#7,d1
+	bsr	addstuff
+.age:	add.l	d7,PLANET_AGE(a3)
+	moveq	#0,d4
+	move.b	PLANET_STATE(a3),d4	; olds
+	move.b	PLANET_MODE(a3),d5
+	move.l	PLANET_AGE(a3),d6
+	lea	u2_evol,a0		; (state, mode, age limit, new mode, new state) rows
+.e:	move.w	(a0)+,d0
+	bmi.s	.rnd
+	move.w	(a0)+,d1
+	move.l	(a0)+,d2
+	cmp.b	d0,d4
+	bne.s	.en
+	cmp.b	d1,d5
+	bne.s	.en
+	cmp.l	d2,d6
+	blt.s	.en
+	clr.l	PLANET_AGE(a3)
+	move.b	1(a0),PLANET_MODE(a3)
+	move.b	3(a0),PLANET_STATE(a3)
+	bra.s	.rnd
+.en:	addq.l	#4,a0
+	bra.s	.e
+.rnd:	bsr	u2_evolrnd		; the chances (random(40) = 0), in the original's order
+	cmp.b	PLANET_STATE(a3),d4
+	beq.s	.n
+	lea	PLANET_CACHE(a3),a0	; a new state: cache, bots, notes cleared
+	moveq	#7-1,d0
+.cc:	clr.w	(a0)+
+	dbf	d0,.cc
+	clr.b	PLANET_BOTS(a3)
+	clr.b	PLANET_NOTES(a3)
+.n:	lea	PLANET_SIZEOF(a3),a3
+	addq.w	#1,d3
+	cmp.w	#1000,d3
+	ble	.j
+	movem.l	(sp)+,d3-d7/a3
+	rts
+; the random turns of adjustplanets for planet a3 (state/mode as before the age step: d4, d5;
+; the age step may already have changed them - the original tests its own case only)
+u2_evolrnd:
+	cmp.b	#2,d4			; state 2 mode 3: 1 in 40 -> state 5 mode 2
+	bne.s	.s3
+	cmp.b	#3,d5
+	bne	.x
+	bra.s	.dying
+.s3:	cmp.b	#3,d4			; state 3 mode 1: the same
+	bne.s	.s4
+	cmp.b	#1,d5
+	bne.s	.x
+.dying:	moveq	#40,d0
+	bsr	mt_random
+	tst.w	d0
+	bne.s	.x
+	clr.l	PLANET_AGE(a3)
+	move.b	#5,PLANET_STATE(a3)
+	move.b	#2,PLANET_MODE(a3)
+	rts
+.s4:	cmp.b	#4,d4			; state 4 modes 2, 3: 1 in 40 -> dead (mode 1 or 2)
+	bne.s	.s5
+	cmp.b	#2,d5
+	blo.s	.x
+	moveq	#40,d0
+	bsr	mt_random
+	tst.w	d0
+	bne.s	.x
+	moveq	#2,d0
+	bsr	mt_random
+	moveq	#1,d1
+	tst.w	d0
+	beq.s	.m
+	moveq	#2,d1
+.m:	move.b	d1,PLANET_MODE(a3)
+	move.b	#6,PLANET_STATE(a3)
+	clr.l	PLANET_AGE(a3)
+	rts
+.s5:	cmp.b	#5,d4			; state 5 mode 2: 1 in 40 -> state 2 mode 3
+	bne.s	.x
+	cmp.b	#2,d5
+	bne.s	.x
+	moveq	#40,d0
+	bsr	mt_random
+	tst.w	d0
+	bne.s	.x
+	clr.l	PLANET_AGE(a3)
+	move.b	#2,PLANET_STATE(a3)
+	move.b	#3,PLANET_MODE(a3)
+.x:	rts
+
+; utils2.pas getplanetorbit(planet d0): its rank among the system's orbits
+getplanetorbit:
+	movem.l	d3-d4,-(sp)
+	move.w	d0,d3
+	bsr	u2_orbits
+	moveq	#0,d1			; j
+	lea	u2_orb,a0
+	moveq	#8-1,d2
+.l:	move.w	(a0)+,d0
+	cmp.w	d3,d0
+	beq.s	.x
+	tst.w	d0
+	ble.s	.n
+	addq.w	#1,d1
+.n:	dbf	d2,.l
+.x:	move.w	d1,d0
+	movem.l	(sp)+,d3-d4
+	rts
+; orbits[0..7] (u2_orb) of the system of planet d0 (or of system d1 when d0 < 0)
+u2_orbits:
+	lea	u2_orb,a0
+	moveq	#8-1,d1
+.c:	clr.w	(a0)+
+	dbf	d1,.c
+	bsr	u2_plan
+	moveq	#0,d0
+	move.b	PLANET_SYSTEM(a0),d0
+u2_orbits_sys:
+	movem.l	d3-d4,-(sp)
+	move.w	d0,d4			; sys
+	bsr	findfirstplanet
+	move.w	d0,d3			; i
+.l:	cmp.w	#1000,d3
+	bgt.s	.x
+	move.w	d3,d0
+	bsr	u2_plan
+	cmp.b	PLANET_SYSTEM(a0),d4
+	bne.s	.x
+	moveq	#0,d0
+	move.b	PLANET_ORBIT(a0),d0
+	add.w	d0,d0
+	lea	u2_orb,a0
+	move.w	d3,0(a0,d0.w)
+	addq.w	#1,d3
+	bra.s	.l
+.x:	movem.l	(sp)+,d3-d4
+	rts
+; utils2.pas getplanetbyorbit(sys d0, orbit d1): out d0.w = the planet in that rank (0: none)
+getplanetbyorbit:
+	movem.l	d3,-(sp)
+	move.w	d1,d3
+	bmi.s	.z
+	lea	u2_orb,a0
+	moveq	#8-1,d1
+.c:	clr.w	(a0)+
+	dbf	d1,.c
+	bsr	u2_orbits_sys
+	lea	u2_orb,a0
+	moveq	#8-1,d2
+.l:	move.w	(a0)+,d0
+	ble.s	.n
+	tst.w	d3
+	ble.s	.x
+	subq.w	#1,d3
+.n:	dbf	d2,.l
+.z:	moveq	#0,d0
+.x:	movem.l	(sp)+,d3
+	rts
+
+; utils2.pas planettravel(-1, index d0): to the planet tempplan index
+planettravel:
+	movem.l	d3-d5,-(sp)
+	move.w	d0,d3			; index
+	bsr	u2_plan
+	move.b	PLANET_SYSTEM(a0),d4	; sy
+	move.w	d3,d5			; j := index; while (j > 0) and (system = sy) do dec(j); inc(j)
+.l:	tst.w	d5
+	ble.s	.f
+	move.w	d5,d0
+	bsr	u2_plan
+	cmp.b	PLANET_SYSTEM(a0),d4
+	bne.s	.f
+	subq.w	#1,d5
+	bra.s	.l
+.f:	addq.w	#1,d5
+	sub.w	d5,d3			; index := index - j (the orbit's rank); j := j + index
+	add.w	d3,d5
+	tst.w	GS_VIEWMODE2(a6)
+	ble.s	.nm
+	bsr	removestarmap
+.nm:	st	d0
+	bsr	cleanright
+	move.w	d5,GS_CURPLAN(a6)
+	move.w	d5,d0
+	bsr	u2_plan
+	cmp.w	#255,PLANET_VISITS(a0)
+	bhs.s	.v
+	addq.w	#1,PLANET_VISITS(a0)
+.v:	move.w	GS_SHIP+SHIP_STARDATE+4(a6),PLANET_DATEY(a0)
+	move.b	GS_SHIP+SHIP_STARDATE+1(a6),PLANET_DATEM(a0)
+	move.w	d3,GS_SHIP+SHIP_ORBITING(a6)
+	bsr	mousehide
+	moveq	#0,d0
+	bsr	ms_snap
+	BAR	0,0,319,199,0
+	bsr	mouseshow
+	moveq	#40,d0			; for j := 1 to random(40)+60 do addlotstime(false, true, 100+random(100))
+	bsr	mt_random
+	add.w	#60,d0
+	move.w	d0,d4
+.t:	moveq	#100,d0
+	bsr	mt_random
+	add.w	#100,d0
+	move.w	d0,d2
+	sf	d0
+	st	d1
+	bsr	addlotstime
+	subq.w	#1,d4
+	bne.s	.t
+	moveq	#-8,d0
+	moveq	#20,d1
+	bsr	fadestopmod
+	bsr	mousehide
+	bsr	orc_dump		; loadscreen(current): an oracle dump point
+	moveq	#0,d0
+	bsr	ms_unsnap
+	bsr	mouseshow
+	tst.w	d3
+	beq.s	.st
+	bsr	readyplanet
+	bra.s	.cw
+.st:	bsr	readystar
+.cw:	bsr	checkwandering
+	movem.l	(sp)+,d3-d5
+	rts
+
+; utils2.pas gotoorbit(sys d0, n d1)
+gotoorbit:
+	bsr	getplanetbyorbit
+	tst.w	d0
+	bne	planettravel
+	PRTLN
+	TCOL	94
+	PRT	"NAVIGATION: There's no orbit to go to."
+	rts
+
+	section	data
+u2_fn_sysname:	dc.b	"DATA",92,"SYSNAME.DTA",0
+	even
+; adjustplanets' age steps: state, mode, age limit, new mode, new state (in the original's case
+; order; at most one applies)
+u2_evol:	dc.w	0,1
+		dc.l	1000000000
+		dc.w	2,0
+		dc.w	0,2
+		dc.l	1000000000
+		dc.w	3,0
+		dc.w	0,3
+		dc.l	500000000
+		dc.w	1,1
+		dc.w	1,1
+		dc.l	500000000
+		dc.w	2,1
+		dc.w	1,2
+		dc.l	400000000
+		dc.w	3,1
+		dc.w	1,3
+		dc.l	300000000
+		dc.w	1,2
+		dc.w	2,1
+		dc.l	200000000
+		dc.w	2,2
+		dc.w	2,2
+		dc.l	150000000
+		dc.w	3,2
+		dc.w	2,3
+		dc.l	150000000
+		dc.w	1,3
+		dc.w	3,1
+		dc.l	15000000
+		dc.w	2,3
+		dc.w	3,2
+		dc.l	10000
+		dc.w	3,3
+		dc.w	3,3
+		dc.l	8000
+		dc.w	1,4
+		dc.w	4,1
+		dc.l	4000
+		dc.w	2,4
+		dc.w	4,2
+		dc.l	2000
+		dc.w	3,4
+		dc.w	4,3
+		dc.l	4000
+		dc.w	1,5
+		dc.w	5,1
+		dc.l	3000
+		dc.w	2,5
+		dc.w	5,2
+		dc.l	8000
+		dc.w	3,5
+		dc.w	6,1
+		dc.l	100000
+		dc.w	2,6
+		dc.w	-1
+
+	section	bss
+u2_xyz:		ds.w	3
+u2_idx:		ds.w	1
+u2_j:		ds.w	1
+u2_dist:	ds.l	2
+u2_names:	ds.l	1
+u2_orb:		ds.w	8

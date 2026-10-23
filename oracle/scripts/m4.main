@@ -1,0 +1,51 @@
+vtime
+args /playseed 3
+# m4: the left-hand maps and travel: the star map and a star targeted by mouse, the history map,
+# the short and long range scans, orbits by Alt-2 / Alt-N, the targeting panel, a time burst, quit
+wait 3000
+key #27
+wait 2000
+key g
+wait 1500
+key w
+wait 4000
+shot S1
+click 90 60
+wait 2500
+shot S2
+key x
+wait 4000
+shot S3
+key z
+wait 1500
+key w
+wait 4000
+shot S4
+key s
+wait 5000
+shot S5
+key #27
+wait 2500
+key @2
+wait 8000
+shot S6
+key @n
+wait 8000
+shot S7
+key g
+wait 1500
+key d
+wait 3000
+shot S8
+key b
+wait 1500
+key s
+wait 1500
+key y
+wait 8000
+shot S9
+key #291
+wait 1500
+key y
+wait 3000
+quit

@@ -88,7 +88,7 @@ event:
 	cmp.w	#12,d0
 	beq	.e12
 	cmp.w	#11,d0
-	beq.s	.log
+	beq	.log
 	cmp.w	#13,d0
 	beq.s	.log
 	cmp.w	#15,d0
@@ -117,12 +117,17 @@ event:
 	blt.s	.other
 	cmp.w	#1999,d0
 	ble.s	.log
-.other:	cmp.w	#50,d0			; events with no case: nothing more
-	blt.s	.np
-	cmp.w	#10000,d0
-	blt.s	.x
-	cmp.w	#10002,d0
-	bgt.s	.x
+.other:	lea	wd_events,a0		; the cases with more to them
+.oe:	move.w	(a0)+,d1
+	bmi.s	.none
+	move.l	(a0)+,a1
+	cmp.w	d1,d0
+	bne.s	.oe
+	jsr	(a1)
+	bra.s	.x
+.none:	cmp.w	#29,d0			; ("Log #29 ain't suppose to happen!")
+	beq.s	.np
+	bra.s	.x
 .np:	bsr	notported
 	bra.s	.x
 .e21:	moveq	#36,d0
@@ -151,6 +156,208 @@ event:
 .plain:	dc.w	10,23,30,31,32,33,34,35,37,38,41,44,-1
 .notes:	dc.w	145,211,115,18,199,103,216,105,93,0
 
+; ---------------------------------------------------------------- the events' own actions (d3 = n)
+wd_ac:					; addcargo(d0, true)
+	st	d1
+	bra	addcargo
+wd_e14:	moveq	#14,d0			; trojan gate
+	bsr	addlog
+	move.w	#2389,d0
+	move.w	#1695,d1
+	move.w	#1314,d2
+	bra	redoscreen
+wd_e17:	move.w	#ID_ART_THERMAL_PLATING,d0	; derelict
+	bsr	wd_ac
+	moveq	#4-1,d3
+.c:	move.w	#ID_UNKNOWN_COMPONENT,d0
+	bsr	wd_ac
+	dbf	d3,.c
+	move.w	#ID_UNKNOWN_MATERIAL,d0
+	bsr	wd_ac
+	moveq	#17,d0
+	bra	addlog
+wd_e19:	moveq	#63,d0			; nova
+	moveq	#63,d1
+	moveq	#63,d2
+	bsr	wd_blast
+	moveq	#19,d0
+	bra	addlog
+wd_e20:	move.w	#ID_ART_SHUNT_DRIVE,d0	; shunt ship
+	bsr	wd_ac
+	moveq	#20,d0
+	bra	addlog
+wd_e24:	move.w	#ID_ART_DETONATOR,d0	; in the temple
+	bsr	incargo
+	tst.w	d0
+	ble.s	.x
+	moveq	#42,d0
+	bsr	chevent
+	beq.s	.x
+	move.w	#ID_ART_DETONATOR,d0
+	bsr	removecargo
+	move.w	#ID_ART_CHANNELER,d0
+	bsr	wd_ac
+	move.w	#ID_ART_IRON_SEED,d0
+	bsr	wd_ac
+	move.w	#ID_ART_HOMING_DEVICE,d0
+	bsr	wd_ac
+	moveq	#24,d0
+	bra	addlog
+.x:	rts
+wd_e25:	move.w	#ID_ART_HOMING_DEVICE,d0	; the pirate base
+	bsr	incargo
+	tst.w	d0
+	ble.s	.x
+	moveq	#24,d0
+	bsr	chevent
+	beq.s	.x
+	move.w	#ID_STASIS_GENERATOR,d0
+	bsr	removecargo
+	move.w	#ID_ART_HOMING_DEVICE,d0
+	bsr	removecargo
+	move.w	#ID_ART_SHUNT_DRIVE,d0
+	bsr	wd_ac
+	moveq	#3,d0			; for j := 1 to random(3): an artifact of either kind
+	bsr	mt_random
+	move.w	d0,d3
+	bra.s	.n
+.l:	moveq	#2,d0
+	bsr	mt_random
+	tst.w	d0
+	bne.s	.a2
+	move.w	#400,d0
+	bsr	mt_random
+	add.w	#1+ID_ARTIFACT_OFFSET,d0
+	bra.s	.ad
+.a2:	moveq	#100,d0
+	bsr	mt_random
+	add.w	#1+ID_ARTIFACT2_OFFSET,d0
+.ad:	bsr	wd_ac
+.n:	dbf	d3,.l
+	moveq	#3-1,d3
+.c:	move.w	#ID_UNKNOWN_COMPONENT,d0
+	bsr	wd_ac
+	dbf	d3,.c
+	moveq	#25,d0
+	bra	addlog
+.x:	rts
+wd_e26:	moveq	#24,d0			; piracy
+	bsr	chevent
+	beq.s	.x
+	move.w	#ID_ART_SHUNT_DRIVE,d0
+	bsr	removecargo
+	moveq	#26,d0
+	bra	addlog
+.x:	rts
+wd_e28:	moveq	#30,d0			; the Ermigen data tapes
+	bsr	chevent
+	beq.s	.x
+	move.w	#ID_ART_ERMIGEN_DATA_TAPES,d0
+	bsr	wd_ac
+	moveq	#28,d0
+	bsr	addlog
+	move.l	GS_TEMPPLAN(a6),a0	; erase the notes on system 45's star
+	move.w	#1000-1,d0
+.p:	cmp.b	#45,PLANET_SYSTEM(a0)
+	bne.s	.pn
+	tst.b	PLANET_ORBIT(a0)
+	bne.s	.pn
+	clr.b	PLANET_NOTES(a0)
+.pn:	lea	PLANET_SIZEOF(a0),a0
+	dbf	d0,.p
+.x:	rts
+wd_e36:	move.w	#ID_ART_SHUNT_DRIVE,d0
+	bra.s	wd_cl
+wd_e39:	move.w	#ID_ART_DETONATOR,d0
+	bra.s	wd_cl
+wd_e40:	move.w	#ID_ART_GLYPTIC_SCYTHE,d0
+	bra.s	wd_cl
+wd_e45:	move.w	#ID_DOOM_GATE,d0
+	bra.s	wd_cl
+wd_e46:	move.w	#ID_THAUMATURGE,d0
+	bra.s	wd_cl
+wd_e48:	move.w	#ID_ART_MULTI_IMAGER,d0
+	bra.s	wd_cl
+wd_e49:	move.w	#ID_ART_YLINTH_MUTAGENICS,d0
+wd_cl:	bsr	wd_ac			; addcargo(item, true); addlog(n)
+	move.w	d3,d0
+	bra	addlog
+wd_e43:	move.w	#ID_ART_YLINTH_MUTAGENICS,d0
+	bra.s	wd_rl
+wd_e47:	move.w	#ID_ART_SHUNT_DRIVE,d0
+wd_rl:	bsr	removecargo		; removecargo(item); addlog(n)
+	move.w	d3,d0
+	bra	addlog
+wd_e10000:
+	bsr	println			; Phaedor Moch
+	TCOL	94
+	PRT	"SECURITY: Scanners detect alien ship."
+	moveq	#10,d0			; startphaedormoch
+	move.w	#1010,d1
+	bsr	getspecial
+	bsr	addtofile
+	moveq	#WNDORDER_RETREAT,d0
+	bsr	createwandering
+	TCOL	94
+	PRTLN
+	PRT	"SCIENCE: Perhaps we should initiate contact, Laird."
+	rts
+wd_e10001:
+	move.w	#ID_ART_MULTI_IMAGER,d0
+	bra	removecargo
+wd_e10002:
+	bra	notported		; the scavenger armada (combat)
+
+; weird.pas blast(c1 d0, c2 d1, c3 d2): 63 steps of colors towards (c1,c2,c3) (colors itself
+; moves: each step from the last), then the palette comes back
+wd_blast:
+	movem.l	d3-d7/a3,-(sp)
+	movem.w	d0-d2,wd_c
+	lea	GS_COLORS(a6),a0	; temppal := colors
+	lea	wd_temppal,a1
+	move.w	#768/4-1,d0
+.s:	move.l	(a0)+,(a1)+
+	dbf	d0,.s
+	moveq	#1,d3			; a
+.a:	lea	GS_COLORS(a6),a3
+	move.w	#256-1,d4
+.j:	lea	wd_c,a0
+	moveq	#3-1,d5
+.g:	moveq	#0,d6			; colors[j,g] += round(a*(c-colors[j,g])/63): no ties
+	move.b	(a3),d6
+	move.w	(a0)+,d7
+	sub.w	d6,d7
+	muls	d3,d7			; a*d
+	add.l	d7,d7			; floor((2*a*d + 63) / 126)
+	add.l	#63,d7
+	divs	#126,d7
+	bpl.s	.p
+	swap	d7			; (floor for negatives: the remainder's sign)
+	tst.w	d7
+	swap	d7
+	beq.s	.p
+	subq.w	#1,d7
+.p:	add.b	d7,(a3)+
+	dbf	d5,.g
+	dbf	d4,.j
+	lea	GS_COLORS(a6),a0
+	bsr	set256colors
+	move.w	GS_TSLICE(a6),d0
+	lsl.w	#2,d0
+	bsr	delay
+	addq.w	#1,d3
+	cmp.w	#64,d3
+	bne.s	.a
+	lea	GS_COLORS(a6),a0
+	bsr	set256colors
+	lea	wd_temppal,a0
+	lea	GS_COLORS(a6),a1
+	move.w	#768/4-1,d0
+.r:	move.l	(a0)+,(a1)+
+	dbf	d0,.r
+	movem.l	(sp)+,d3-d7/a3
+	rts
+
 ; a part of the game that is not ported yet: tell the player, back to the title
 notported:
 	pea	msg_notported
@@ -159,5 +366,50 @@ notported:
 	bra	sys_exit
 
 	section	data
+wd_events:	dc.w	14
+		dc.l	wd_e14
+		dc.w	17
+		dc.l	wd_e17
+		dc.w	19
+		dc.l	wd_e19
+		dc.w	20
+		dc.l	wd_e20
+		dc.w	24
+		dc.l	wd_e24
+		dc.w	25
+		dc.l	wd_e25
+		dc.w	26
+		dc.l	wd_e26
+		dc.w	28
+		dc.l	wd_e28
+		dc.w	36
+		dc.l	wd_e36
+		dc.w	39
+		dc.l	wd_e39
+		dc.w	40
+		dc.l	wd_e40
+		dc.w	43
+		dc.l	wd_e43
+		dc.w	45
+		dc.l	wd_e45
+		dc.w	46
+		dc.l	wd_e46
+		dc.w	47
+		dc.l	wd_e47
+		dc.w	48
+		dc.l	wd_e48
+		dc.w	49
+		dc.l	wd_e49
+		dc.w	10000
+		dc.l	wd_e10000
+		dc.w	10001
+		dc.l	wd_e10001
+		dc.w	10002
+		dc.l	wd_e10002
+		dc.w	-1
 msg_notported:	dc.b	"This part of the game is not ported yet.",13,10,0
 	even
+
+	section	bss
+wd_c:		ds.w	3
+wd_temppal:	ds.b	768

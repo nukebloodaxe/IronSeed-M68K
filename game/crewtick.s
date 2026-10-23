@@ -8,8 +8,6 @@
 ; addxp      in: d0.w crew 1-6, d1.l amount, d2.w drawmode (1: print the message)
 ; resetcrew  crewtick.pas ResetCrew
 
-JOBTYPE_REPAIR	equ	0
-DMG_POWER	equ	1
 
 	section	text
 resetcrew:
@@ -212,8 +210,23 @@ ct_skilltest:
 ; ShipTick: secondary power
 ct_shiptick:
 	lea	GS_SHIP(a6),a1
-	cmp.w	#ID_REFLECTIVEHULL,SHIP_SHIELD(a1)
-	bgt	notported		; a powered shield draws from the battery
+	move.w	SHIP_SHIELD(a1),d0	; a powered shield: battery -= round(energy/100*shieldlevel)
+	cmp.w	#ID_REFLECTIVEHULL,d0
+	ble.s	.ns
+	sub.w	#ID_SHIELDS_OFFSET,d0
+	bsr	dp_weapon
+	FSSE
+	move.w	WEAPON_ENERGY(a0),d0
+	bsr	fp_ldw
+	FLDI	100
+	bsr	fp_div
+	move.w	GS_SHIP+SHIP_SHIELDLEVEL(a6),d0
+	bsr	fp_ldw
+	bsr	fp_mul
+	bsr	fp_rnd
+	sub.w	d0,GS_SHIP+SHIP_BATTERY(a6)
+	lea	GS_SHIP(a6),a1
+.ns:
 	cmp.w	#31980,SHIP_BATTERY(a1)
 	bge.s	.full
 	moveq	#100,d0			; += round((100-damages[POWER])/4) (banker's on .5)
@@ -250,8 +263,12 @@ ct_engtick:
 	lsl.w	#3,d0
 	lea	GS_SHIP+SHIP_ENGRTEAM(a6),a3
 	add.w	d0,a3
-	tst.w	TEAM_JOBTYPE(a3)
-	bne	notported		; install, remove, build, disassemble, research
+	move.w	TEAM_JOBTYPE(a3),d0
+	beq.s	.rep
+	cmp.w	#JOBTYPE_REMOVE,d0
+	bls	.inst
+	bra	notported		; build, disassemble, research (cargtool: not ported yet)
+.rep:
 	move.w	TEAM_JOB(a3),d6
 	cmp.w	#8,d6
 	beq	.hull
@@ -361,6 +378,76 @@ ct_engtick:
 	ble	.team
 	movem.l	(sp)+,d3-d7/a3
 	rts
+.inst:	move.w	TEAM_JOB(a3),d6		; install / remove: a weapon or a shield
+	cmp.w	#ID_NOSHIELD,d6
+	bge	.shd
+	subq.w	#5,TEAM_TIMELEFT(a3)	; weapon: progress in extra's high bits
+	moveq	#2,d0
+	bsr	mt_random
+	tst.w	d0
+	bne.s	.w1
+	moveq	#2,d0
+	moveq	#40,d1
+	moveq	#10,d2
+	bsr	ct_skilltest
+	tst.w	d0
+	beq.s	.w1
+	add.w	#16,TEAM_EXTRA(a3)
+.w1:	cmp.w	#110*16,TEAM_EXTRA(a3)
+	blt	.next
+	clr.w	TEAM_TIMELEFT(a3)
+	cmp.w	#JOBTYPE_INSTALL,TEAM_JOBTYPE(a3)
+	bne.s	.w2
+	moveq	#15,d0			; gunnodes[extra and 15] := job-ID_DIRK+1
+	and.w	TEAM_EXTRA(a3),d0
+	move.w	d6,d1
+	sub.w	#ID_DIRK-1,d1
+	lea	GS_SHIP+SHIP_GUNNODES-1(a6),a0
+	move.b	d1,0(a0,d0.w)
+	lea	ct_s_winst,a0
+	bra.s	.w3
+.w2:	lea	ct_s_wrem,a0
+.w3:	moveq	#31,d0
+	moveq	#2,d1
+	bsr	ct_message
+	clr.w	TEAM_JOB(a3)
+	clr.w	TEAM_JOBTYPE(a3)
+	bra	.next
+.shd:	subq.w	#5,TEAM_TIMELEFT(a3)	; shield: done one time in 220
+	move.w	#220,d0
+	bsr	mt_random
+	tst.w	d0
+	bne	.next
+	clr.w	TEAM_TIMELEFT(a3)
+	cmp.w	#JOBTYPE_INSTALL,TEAM_JOBTYPE(a3)
+	bne.s	.s1
+	move.w	d6,GS_SHIP+SHIP_SHIELD(a6)
+.s1:	cmp.w	#JOBTYPE_REMOVE,TEAM_JOBTYPE(a3)
+	bne.s	.s2
+	lea	ct_s_srem,a0
+	moveq	#31,d0
+	moveq	#2,d1
+	bsr	ct_message
+	bra.s	.s4
+.s2:	lea	ct_s_sinst,a0
+	moveq	#31,d0
+	moveq	#2,d1
+	bsr	ct_message
+	lea	GS_SHIP+SHIP_SHIELDOPT(a6),a0
+	cmp.w	#ID_REFLECTIVEHULL,d6
+	ble.s	.s3
+	move.b	#10,(a0)+		; lowered 10, alert 40, combat 100
+	move.b	#40,(a0)+
+	move.b	#100,(a0)
+	bra.s	.s4
+.s3:	moveq	#100,d0
+	sub.b	GS_SHIP+SHIP_DAMAGES+DMG_SHIELD-1(a6),d0
+	move.b	d0,(a0)+
+	move.b	d0,(a0)+
+	move.b	d0,(a0)
+.s4:	clr.w	TEAM_JOB(a3)
+	clr.w	TEAM_JOBTYPE(a3)
+	bra	.next
 
 ; two engineering skill tests (both must pass; the second only after the first): Z clear if both
 ct_eng2:
@@ -620,29 +707,129 @@ ct_sanitytick:
 	beq.s	.z3
 	subq.b	#1,CREW_SKILL(a0)
 .z3:	tst.b	CREW_PERF(a0)
-	beq	notported		; SanityFailure
+	beq.s	.sf
 	tst.b	CREW_SKILL(a0)
-	beq	notported
+	bne.s	.n
+.sf:	move.w	d3,d0
+	bsr	ct_sanityfailure
 .n:	addq.w	#1,d3
 	cmp.w	#6,d3
 	ble.s	.l
 	move.l	(sp)+,d3
 	rts
 
-; DayTick: the bots on the planets of this system (not ported: stops if there are any)
+; DayTick: the bots on the planets of this system fill their caches (and wear: bots shr 3)
 ct_daytick:
+	movem.l	d3-d6/a3,-(sp)
 	move.w	GS_CURPLAN(a6),d0
 	subq.w	#1,d0
 	mulu	#PLANET_SIZEOF,d0
 	move.l	GS_TEMPPLAN(a6),a0
-	move.b	PLANET_SYSTEM(a0,d0.l),d1
-	move.w	#1000-1,d0
-.l:	cmp.b	PLANET_SYSTEM(a0),d1
-	bne.s	.n
-	tst.b	PLANET_BOTS(a0)
-	bne	notported
-.n:	lea	PLANET_SIZEOF(a0),a0
-	dbf	d0,.l
+	move.b	PLANET_SYSTEM(a0,d0.l),d5	; s
+	move.l	a0,a3
+	moveq	#1,d3			; i
+.l:	cmp.b	PLANET_SYSTEM(a3),d5
+	bne	.n
+	tst.b	PLANET_BOTS(a3)
+	beq	.n
+	moveq	#0,d4			; c: cache slots in use
+	lea	PLANET_CACHE(a3),a0
+	moveq	#7-1,d0
+.c:	tst.w	(a0)+
+	beq.s	.cn
+	addq.w	#1,d4
+.cn:	dbf	d0,.c
+	moveq	#0,d6			; d := bots shr 3
+	move.b	PLANET_BOTS(a3),d6
+	lsr.w	#3,d6
+	cmp.w	#7,d4
+	bge.s	.wear
+	moveq	#7,d0
+	and.b	PLANET_BOTS(a3),d0
+	beq.s	.wear
+	move.w	#200,d0
+	bsr	mt_random
+	moveq	#40,d1
+	sub.w	d6,d1
+	cmp.w	d1,d0
+	bge.s	.wear
+	move.w	d3,d0			; AddStuff(i, 1)
+	moveq	#1,d1
+	bsr	addstuff
+	moveq	#7,d0
+	and.b	PLANET_BOTS(a3),d0
+	cmp.b	#1,d0
+	beq.s	.i1
+	cmp.b	#5,d0
+	beq.s	.i1
+	cmp.b	#2,d0
+	bne.s	.i4
+	addq.w	#2,d6
+	bra.s	.cap
+.i4:	cmp.b	#4,d0
+	bne.s	.cap
+	addq.w	#4,d6
+	bra.s	.cap
+.i1:	addq.w	#1,d6
+.cap:	cmp.w	#31,d6
+	ble.s	.set
+	moveq	#31,d6
+	bra.s	.set
+.wear:	tst.w	d6
+	ble.s	.set
+	moveq	#100,d0
+	bsr	mt_random
+	cmp.w	#5,d0
+	bge.s	.set
+	subq.w	#1,d6
+.set:	lsl.w	#3,d6			; bots := (bots and 7) or (d shl 3)
+	moveq	#7,d0
+	and.b	PLANET_BOTS(a3),d0
+	or.b	d6,d0
+	move.b	d0,PLANET_BOTS(a3)
+.n:	lea	PLANET_SIZEOF(a3),a3
+	addq.w	#1,d3
+	cmp.w	#1000,d3
+	ble	.l
+	movem.l	(sp)+,d3-d6/a3
+	rts
+
+; SanityFailure(crew d0): tempinsanity when a stat is below 10; a random stat drops by one
+ct_sanityfailure:
+	movem.l	d3/a3,-(sp)
+	move.w	d0,d3
+	bsr	ct_crew
+	move.l	a0,a3
+	cmp.b	#10,CREW_MEN(a3)
+	blo.s	.ti
+	cmp.b	#10,CREW_EMO(a3)
+	blo.s	.ti
+	cmp.b	#10,CREW_PHY(a3)
+	bhs.s	.r
+.ti:	lea	GS_COLORS(a6),a0	; tempinsanity: set256colors(colors); 1 in 5: a message
+	bsr	set256colors
+	moveq	#5,d0
+	bsr	mt_random
+	tst.w	d0
+	beq	notported		; showchar (the crew member's portrait box)
+.r:	moveq	#8,d0
+	bsr	mt_random
+	btst	#0,d0
+	beq.s	.b1
+	tst.b	CREW_MEN(a3)
+	beq.s	.b1
+	subq.b	#1,CREW_MEN(a3)
+.b1:	btst	#1,d0
+	beq.s	.b2
+	tst.b	CREW_PHY(a3)
+	beq.s	.b2
+	subq.b	#1,CREW_PHY(a3)
+.b2:	btst	#2,d0
+	beq.s	.x
+	tst.b	CREW_EMO(a3)
+	beq.s	.x
+	subq.b	#1,CREW_EMO(a3)
+.x:	movem.l	(sp)+,d3/a3
 	rts
 
 ; ---------------------------------------------------------------
@@ -757,6 +944,11 @@ ct_s_power:	dc.b	50,"Secondary power failure...Shields powering down..."
 ct_s_alien:	dc.b	33,"Alien vessel sighted on scanners!"
 ct_s_hull:	dc.b	26,"Hull damage repaired, sir!"
 ct_s_repaired:	dc.b	15," repaired, sir!"
+ct_s_winst:	dc.b	22,"weapon installed, sir!"
+ct_s_wrem:	dc.b	20,"Weapon removed, sir!"
+ct_s_sinst:	dc.b	22,"Shield installed, sir!"
+ct_s_srem:	dc.b	20,"Shield removed, sir!"
+	even
 	even
 ct_repairname:	dc.b	12,"Power Supply",0,0,0
 		dc.b	14,"Shield Control",0

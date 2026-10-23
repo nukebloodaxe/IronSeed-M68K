@@ -345,7 +345,7 @@ cleanright:
 	ble	removerightside
 	cmp.w	#11,d1
 	bge	removerightside
-	bra	notported		; removesystem
+	bra	removesystem
 .x:	rts
 
 ; utils.pas removerightside(erasepanel d0.b)
@@ -508,7 +508,7 @@ us_cubeglow:
 
 ; the commands (usecode.pas processcube's second case); those not ported stop the program
 us_command:
-	move.l	d3,-(sp)
+	movem.l	d3-d4,-(sp)
 	move.w	d0,d3
 	lea	us_research,a0		; research toggles
 .r:	move.w	(a0)+,d1
@@ -517,39 +517,296 @@ us_command:
 	cmp.w	d1,d3
 	bne.s	.r
 	bsr	toggleresearch
-	bra.s	.x
-.nr:	cmp.w	#13,d3			; the ship logs
-	bne.s	.n13
-	move.w	#255,d0
+	bra	.x
+.nr:	cmp.w	#53,d3
+	bhi	.x
+	move.w	d3,d0
+	add.w	d0,d0
+	move.w	.tab(pc,d0.w),d0
+	jmp	.tab(pc,d0.w)
+.tab:	dc.w	.np-.tab,.c12-.tab,.c12-.tab,.np-.tab,.c45-.tab,.c45-.tab,.np-.tab,.x-.tab	; 0-7
+	dc.w	.np-.tab,.c9-.tab,.c10-.tab,.c11-.tab,.c12s-.tab,.c13-.tab,.np-.tab,.c15-.tab ; 8-15
+	dc.w	.x-.tab,.np-.tab,.c18-.tab,.cex-.tab,.cex-.tab,.c21-.tab,.cex-.tab,.cex-.tab ; 16-23
+	dc.w	.c24-.tab,.x-.tab,.c26-.tab,.c27-.tab,.c27-.tab,.c29-.tab,.c30-.tab,.c31-.tab ; 24-31
+	dc.w	.c32-.tab,.c33-.tab,.x-.tab,.c32-.tab,.c36-.tab,.c37-.tab,.c38-.tab,.c39-.tab ; 32-39
+	dc.w	.c40-.tab,.c40-.tab,.c42-.tab,.x-.tab,.c44-.tab,.c45o-.tab,.c46-.tab,.c47-.tab ; 40-47
+	dc.w	.c48-.tab,.np-.tab,.c47-.tab,.c51-.tab,.x-.tab,.c53-.tab			; 48-53
+.np:	bra	notported		; psyche, crewstats, converse, creation, inventory, load
+.c12:	cmp.b	#39,GS_SHIP+SHIP_DAMAGES+DMG_COMM-1(a6)	; 1,2 / 4,5: continuecontact
+	bls	notported
+	bsr	contactfailure
+	bra	.x
+.c45:	bra.s	.c12
+.c9:	cmp.w	#5,GS_VIEWMODE(a6)
+	beq	.x
+	sf	d0
+	bsr	cleanright
+	bsr	readydamagecontrol
+	bra	.x
+.c10:	cmp.w	#10,GS_VIEWMODE(a6)
+	beq	.x
+	bsr	.rsm
+	sf	d0
+	bsr	cleanright
+	bsr	readyconfigure
+	bra	.x
+.c11:	cmp.w	#11,GS_VIEWMODE(a6)
+	beq	.x
+	bsr	readybots
+	bra	.x
+.c12s:	cmp.w	#4,GS_VIEWMODE(a6)
+	beq	.x
+	sf	d0
+	bsr	cleanright
+	bsr	readyshieldopts
+	bra	.x
+.c13:	move.w	#255,d0
 	bsr	computerlogs
-	bra.s	.x
-.n13:	cmp.w	#37,d3			; quick stats
-	bne.s	.n37
-	cmp.w	#1,GS_VIEWMODE(a6)
-	beq.s	.x
-	st	d0
+	bra	.x
+.c15:	cmp.w	#2,GS_VIEWMODE(a6)
+	beq	.x
+	sf	d0
 	bsr	cleanright
-	bsr	readystatus
-	bra.s	.x
-.n37:	cmp.w	#51,d3			; clear screen
-	bne.s	.n51
-	tst.w	GS_VIEWMODE2(a6)
-	bne	notported		; removestarmap
-	st	d0
+	bsr	readyweaponinfo
+	bra	.x
+.c18:	cmp.w	#3,GS_VIEWMODE2(a6)
+	beq	.x
+	bsr	.rsys
+	bsr	.rsm
+	moveq	#3,d0
+	bsr	readystarmap
+	bsr	displayshortscan
+	bra	.x
+.cex:	TCOL	94			; 19,20,22,23: exploreplanet
+	tst.b	GS_SHOWPLANET(a6)
+	beq.s	.cex3
+	move.w	GS_CURPLAN(a6),d0
+	bsr	dp_plan
+	cmp.b	#7,PLANET_STATE(a0)
+	beq.s	.cex2
+	move.w	#ID_PROBOT,d0
+	bsr	incargo
+	tst.w	d0
+	bgt	notported		; exploreplanet
+	PRTLN
+	PRT	"SCIENCE: We have no probots."
+	bra	.x
+.cex2:	move.w	#ID_STARDIVER,d0
+	bsr	incargo
+	tst.w	d0
+	bgt	notported
+	PRTLN
+	PRT	"SCIENCE: We have no probots that can withstand a star."
+	bra	.x
+.cex3:	PRTLN
+	PRT	"SCIENCE: We are not near a planet."
+	bra	.x
+.c21:	cmp.w	#4,GS_VIEWMODE2(a6)
+	beq	.x
+	bsr	.rsys
+	bsr	.rsm
+	moveq	#4,d0
+	bsr	readystarmap
+	bsr	readylongscan
+	bra	.x
+.c24:	cmp.w	#8,GS_VIEWMODE(a6)
+	beq	.x
+	bsr	readysystem
+	bra	.x
+.c26:	cmp.w	#7,GS_VIEWMODE(a6)
+	beq	.x
+	sf	d0
 	bsr	cleanright
-	bra.s	.x
-.n51:	cmp.w	#53,d3			; quit to DOS
-	bne.s	.n53
-	lea	jy_s_quit,a0
+	bsr	readylogs
+	bra	.x
+.c27:	moveq	#WNDACT_RETREAT,d4	; 27,28: evade
+	bsr	.near
+	beq.s	.c27n
+	PRT	"SECURITY: Attempting to evade aliens."
+	bra	.x
+.c27n:	bsr	.noaliens
+	bra	.x
+.c31:	moveq	#WNDACT_MASKING,d4
+	bsr	.near
+	beq.s	.c31n
+	PRT	"SECURITY: Attempting to mask ship."
+	bra	.x
+.c31n:	bsr	.noaliens
+	bra	.x
+.c32:	moveq	#WNDACT_ATTACK,d4
+	bsr	.near
+	beq.s	.c32n
+	PRT	"SECURITY: Attempting to close and attack aliens."
+	bra	.x
+.c32n:	bsr	.noaliens
+	bra	.x
+.c29:	lea	GS_SHIP+SHIP_GUNNODES(a6),a0	; launch drones
+	moveq	#10-1,d1
+	moveq	#0,d0
+.c29l:	tst.b	(a0)+
+	beq.s	.c29n
+	addq.w	#1,d0
+.c29n:	dbf	d1,.c29l
+	tst.w	d0
+	bne.s	.c29a
+	TCOL	31
+	move.w	#WNDACT_RETREAT,GS_ACTION(a6)
+	PRTLN
+	PRT	"SECURITY: We have no weapons installed!"
+	bra	.x
+.c29a:	cmp.w	#16000,GS_SHIP+SHIP_WANDERING+ONEALIEN_ALIENID(a6)
+	bge.s	.c29b
+	TCOL	31
+	move.w	#WNDACT_RETREAT,GS_ACTION(a6)
+	PRTLN
+	PRT	"SECURITY: There is an alien vessel nearby. This is not the time for war exercises."
+	bra	.x
+.c29b:	PLEA	"Launch Combat Drones?"
 	moveq	#0,d0
 	moveq	#31,d1
 	bsr	yesnorequest
 	tst.w	d0
-	beq.s	.x
+	beq	.x
+	moveq	#13,d0
+	move.w	#1013,d1
+	bsr	getspecial
+	moveq	#WNDORDER_ATTACK,d0
+	bsr	createwandering
+	lea	GS_SHIP+SHIP_WANDERING(a6),a0
+	move.w	#400,ONEALIEN_RELX(a0)
+	move.w	#400,ONEALIEN_RELY(a0)
+	move.w	#400,ONEALIEN_RELZ(a0)
+	bra	.x
+.c30:	moveq	#0,d0			; raise/lower shields
+	move.b	GS_SHIP+SHIP_SHIELDOPT+SHLD_COMBAT_WANT-1(a6),d0
+	cmp.w	GS_SHIP+SHIP_SHIELDLEVEL(a6),d0
+	bne.s	.c30r
+	cmp.w	#ALRT_COMBAT,GS_ALERT(a6)
+	bne.s	.c30r
+	bsr	lowershields
+	bra	.x
+.c30r:	bsr	raiseshields
+	bra	.x
+.c33:	tst.b	GS_SHIP+SHIP_ARMED(a6)
+	beq.s	.c33a
+	bsr	powerdownweapons
+	bra	.x
+.c33a:	bsr	armweapons
+	bra	.x
+.c36:	cmp.w	#1,GS_VIEWMODE2(a6)
+	beq	.x
+	bsr	.rsys
+	bsr	.rsm
+	moveq	#1,d0
+	bsr	readystarmap
+	bsr	displaystarmap
+	bra	.x
+.c37:	cmp.w	#1,GS_VIEWMODE(a6)
+	beq	.x
+	st	d0
+	bsr	cleanright
+	bsr	readystatus
+	bra	.x
+.c38:	cmp.w	#9,GS_VIEWMODE(a6)
+	beq	.x
+	bsr	.rsm
+	st	d0
+	bsr	cleanright
+	bsr	readyshipinfo
+	bra	.x
+.c39:	moveq	#11,d0
+	bsr	chevent
+	tst.w	d0
+	bne	notported		; sectorinfo
+	PRTLN
+	TCOL	94
+	PRT	"NAVIGATION: Sir, we know nothing about this part of the galaxy."
+	bra	.x
+.c40:	bsr	readytarget
+	bra	.x
+.c42:	cmp.w	#2,GS_VIEWMODE2(a6)
+	beq	.x
+	bsr	.rsys
+	bsr	.rsm
+	bsr	readyhistory
+	bra	.x
+.c44:	cmp.w	#3,GS_VIEWMODE(a6)
+	beq	.x
+	sf	d0
+	bsr	cleanright
+	bsr	readysysteminfo
+	bra	.x
+.c45o:	cmp.w	#6,GS_VIEWMODE(a6)
+	beq	.x
+	sf	d0
+	bsr	cleanright
+	bsr	readyoptions
+	bra	.x
+.c46:	moveq	#0,d0
+	moveq	#31,d1
+	bsr	savegamedata
+	bra	.x
+.c47:	cmp.b	#39,GS_SHIP+SHIP_DAMAGES+DMG_LIFESUPPORT-1(a6)
+	bra	notported		; lifesupportfailure / encodecrew / decodecrew
+.c48:	PLEA	"Initiate Time Burst?"
+	moveq	#0,d0
+	moveq	#31,d1
+	bsr	yesnorequest
+	tst.w	d0
+	beq	.x
+	bsr	restcrew
+	bra	.x
+.c51:	bsr	.rsm
+	st	d0
+	bsr	cleanright
+	bra	.x
+.c53:	lea	jy_s_quit,a0
+	moveq	#0,d0
+	moveq	#31,d1
+	bsr	yesnorequest
+	tst.w	d0
+	beq	.x
 	st	GS_QUIT(a6)
-	bra.s	.x
-.n53:	bra	notported
-.x:	move.l	(sp)+,d3
+.x:	movem.l	(sp)+,d3-d4
+	rts
+.rsm:	tst.w	GS_VIEWMODE2(a6)	; if viewmode2 > 0 then removestarmap
+	ble.s	.rx
+	bra	removestarmap
+.rsys:	move.w	GS_VIEWMODE(a6),d0	; if (viewmode > 7) and (viewmode <> 11) then removesystem(true)
+	cmp.w	#7,d0
+	ble.s	.rx
+	cmp.w	#11,d0
+	beq.s	.rx
+	st	d0
+	bra	removesystem
+.rx:	rts
+; the alien ship within 8000 on any axis and action <> d4 ? (Z clear = yes: action := d4)
+.near:	cmp.w	#16000,GS_SHIP+SHIP_WANDERING+ONEALIEN_ALIENID(a6)
+	bge.s	.nn
+	cmp.w	GS_ACTION(a6),d4
+	beq.s	.nn
+	lea	GS_SHIP+SHIP_WANDERING+ONEALIEN_RELX(a6),a0
+	moveq	#3-1,d1
+.nl:	move.w	(a0)+,d0
+	bpl.s	.np2
+	neg.w	d0
+.np2:	cmp.w	#8000,d0
+	blt.s	.ny
+	dbf	d1,.nl
+.nn:	moveq	#0,d0
+	rts
+.ny:	TCOL	31
+	move.w	d4,GS_ACTION(a6)
+	PRTLN
+	moveq	#1,d0
+	rts
+.noaliens:				; else if action <> d4: 'No aliens on our scopes.'
+	cmp.w	GS_ACTION(a6),d4
+	beq.s	.rx
+	TCOL	94
+	clr.w	GS_ACTION(a6)
+	PRTLN
+	PRT	"SECURITY: No aliens on our scopes."
 	rts
 
 ; usecode.pas ToggleResearch(face d0)

@@ -12,3 +12,7 @@ python3 -I "$R/tools/convdata.py" "$R/build/layout.json" "$R/tools/datafiles.jso
 echo "converted $(ls "$R/build/data" | wc -l) data files (log: build/convdata.log)"
 python3 -I "$R/tools/gen_font.py" "$S/data.pas" "$R/build/font.i" "$S/intro.pas"
 python3 -I "$R/tools/gen_sndtab.py" "$R/build/snd_tables.i"
+python3 -I "$R/tools/mkfpconst.py" "$R/build/fpconst.i"
+python3 -I "$R/tools/mkgconst.py" "$R/build/gconst.i"
+python3 -I "$R/tools/mkdptab.py" "$R/build/dptab.i"
+python3 -I "$R/tools/mkids.py" "$S/data.pas" "$R/build/ids.i"

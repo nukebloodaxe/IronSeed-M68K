@@ -1,0 +1,53 @@
+vtime
+args /playseed 3
+# m7: the panels by mouse: damage control (team 1's job list, a repair picked), the shield
+# sliders, configure (a gun node), the logs list, the options (the font changed with +), quit
+wait 3000
+key #27
+wait 2000
+key a
+wait 1500
+key w
+wait 3000
+click 247 16
+wait 2000
+shot K1
+click 200 60
+wait 2000
+shot K2
+key s
+wait 3000
+click 230 72
+wait 1500
+click 200 90
+wait 1500
+shot K3
+key e
+wait 3000
+click 40 70
+wait 2000
+shot K4
+key z
+wait 1500
+key v
+wait 3000
+click 200 50
+wait 2000
+shot K5
+key b
+wait 1500
+key w
+wait 3000
+click 200 85
+wait 1500
+click 264 16
+wait 2000
+shot K6
+click 247 16
+wait 2000
+shot K7
+key #291
+wait 1500
+key y
+wait 3000
+quit

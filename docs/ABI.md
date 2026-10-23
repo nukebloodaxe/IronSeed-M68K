@@ -39,6 +39,11 @@ Every routine in `kernel/` and in the screen modules follows these rules. A rout
 - Angles: 0–1023 for a full circle; sine/cosine tables of words ×16384 (2.14), multiply with `muls` then `asr` 14 (or `add.l` + `swap` for ×65536 tables) [expertise §11].
 - Positions/velocities: 16.16 in longs unless a module says otherwise.
 
+## Reals (Phase 4b: kernel/fp.s, MAIN only)
+- Pascal `real` is an IEEE double in big-endian order in the GS layout. Compute with the software FPU's stack (`fp_ldd/fp_ldi/fp_ldw/fp_ldx` push, `fp_add/sub/mul/div/sqrt/sin/cos/atan`, `fp_std` pop to a double, `fp_rnd/fp_trunc/fp_cmp/fp_str` pop to integers/flags/strings). All fp_ routines trash d0-d2/a0-a2 only; the stack lives in fp.s, so balance pushes and pops within a routine.
+- Set the rounding unit before each expression: `FSSE` (FPC's SSE: plain double expressions, sqrt) or `FX87` (FPC's x87: a literal that is not double-exact, sin/cos/arctan). Leave `FSSE` set on return. Literals come from build/gconst.i (`gx_0_049` …, tools/mkgconst.py) as 10-byte extendeds (`FLDX`); add new ones to its LITS list.
+- Integer sub-expressions are evaluated by FPC in native width (64-bit): sum words in longs before `fp_ldi`.
+
 ## Names
 - Kernel routines: `vid_`, `snd_`, `kbd_`, `tim_`, `fil_`, `mem_`, `gfx_`, `txt_`, `pic_` prefixes. Screen modules: prefix from the original unit (`cargo_`, `comm_`, `explore_`, …) plus the original Pascal procedure name, so oracle mismatches map back to the Pascal source.
 - Local labels `.name`; equates UPPER_CASE; generated layout equates `REC_FIELD` (e.g. `SHIP_FUEL`) and `GS_name` for global offsets.

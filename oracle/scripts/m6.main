@@ -1,0 +1,54 @@
+vtime
+args /playseed 3
+# m6: security orders with no aliens about (evade, drones, shields), the sector report, a save
+# into slot 4 from the medical face, the panic button by mouse, clear, quit
+wait 3000
+key #27
+wait 2000
+key t
+wait 1500
+key e
+wait 1500
+key r
+wait 1500
+key s
+wait 3000
+shot X1
+key g
+wait 1500
+key s
+wait 1500
+shot X2
+key b
+wait 1500
+key e
+wait 3000
+shot X3
+# (X3: the version strings differ by design)
+# mask X3:84,130,190,138
+key 4
+wait 600
+key #13
+wait 800
+key M
+wait 200
+key a
+wait 200
+key i
+wait 200
+key n
+wait 600
+key #13
+wait 3000
+shot X4
+click 4 190
+wait 3000
+shot X5
+key x
+wait 3000
+shot X6
+key #291
+wait 1500
+key y
+wait 3000
+quit
