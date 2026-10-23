@@ -1,6 +1,7 @@
 #!/bin/bash
 # run_stream.sh : the music stream test (tests/ktstream.s + check_stream.py): loop, ring wrap,
 # an effect on top, play-once; prints PASS/FAIL lines. MEASURE=1 also prints the CPU cost.
+# STREAM_RATE=12517 runs it all with a 12517 Hz file (the kernel switches the DMA rate at st_open).
 R=$(cd "$(dirname "$0")/.." && pwd); cd "$R"
 S=${IRONSEED_SRC:-/root/ironseed_fpc}; fail=0
 python3 tests/check_stream.py make "$S/sound" hatari/c
@@ -10,7 +11,7 @@ for v in PLAIN SFX ONCE; do
   rm -f hatari/c/SND.*
   tools/run_hatari.sh 3400 /tmp/kst.png --auto 'C:\KTSTREAM.PRG' > /dev/null
   a=""; [ $v = SFX ] && a="--sfx hatari/c/SFX.SAM"; [ $v = ONCE ] && a="--once"
-  if r=$(python3 tests/check_stream.py check hatari/c $a); then echo "PASS stream $v ($r)"; else echo "FAIL stream $v ($r)"; fail=1; fi
+  if r=$(python3 tests/check_stream.py check hatari/c $a); then echo "PASS stream $v ${STREAM_RATE:-6258} Hz ($r)"; else echo "FAIL stream $v ($r)"; fail=1; fi
 done
 if [ -n "$MEASURE" ]; then
   for v in NOPLAY NOMUSIC PLAIN NOSTREAM; do

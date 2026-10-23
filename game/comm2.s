@@ -73,26 +73,11 @@ c2_readydata:
 	divu	#TITLE_SIZE,d0
 	move.w	d0,c2_ntitles
 	beq	fatal
-	moveq	#0,d0			; the 7 cursor frames, from the picture (rows 120-135)
-	move.w	#120,d1
-	bsr	ms_addr
-	lea	c2_tmpm,a1
-	moveq	#0,d1			; frame j
-.fr:	move.l	a0,a2
-	moveq	#16-1,d2
-.ro:	moveq	#16-1,d0
-	lea	9(a2),a3
-	move.w	d1,-(sp)
-	mulu	#17,d1
-	add.w	d1,a3
-	move.w	(sp)+,d1
-.px:	move.b	(a3)+,(a1)+
-	dbf	d0,.px
-	lea	MS_W(a2),a2
-	dbf	d2,.ro
-	addq.w	#1,d1
-	cmp.w	#7,d1
-	bne.s	.fr
+	lea	c2_fn_cur,a0		; the 7 cursor frames: the original copies them from the picture
+	lea	c2_tmpm,a1		; (rows 120-135, x 9+17j), but LOG.CHK has the text area cleared
+	move.l	#7*256,d0		; (mkmain.py), so they come from DATA\LOGCUR.DAT (the same pixels)
+	bsr	fil_load
+	bcs	fatal
 	lea	c2_tmpm,a0		; mousesetcursor(tmpm^[0])
 	bsr	kbd_cursor_set
 	bsr	c2_cleartext15		; for i:=15 to 170 do scr_fillchar(screen[i,8],246,0)
@@ -627,6 +612,7 @@ printxy2:
 c2_mode:	dc.b	"LOG",0
 c2_fn_mod:	dc.b	"SOUND",92,"CREWEVAL.MOD",0
 c2_fn_titles:	dc.b	"DATA",92,"TITLES.DTA",0
+c2_fn_cur:	dc.b	"DATA",92,"LOGCUR.DAT",0
 c2_fn_log:	dc.b	"DATA",92,"LOG.DTA",0
 	even
 

@@ -5,7 +5,7 @@ Every routine in `kernel/` and in the screen modules follows these rules. A rout
 ## Machine state
 - The program enters **supervisor mode once** at start-up (`Super(0)`) on its own 8 KB stack, and stays there until exit. Hardware registers can be touched anywhere. GEMDOS/BIOS/XBIOS traps are still allowed from main code (TOS accepts them in supervisor mode), **never from interrupt handlers**.
 - Main code runs at **IPL 3** (`sr = $2300`). Code that must not be interrupted uses `move.w sr,-(sp) / move.w #$2700,sr … move.w (sp)+,sr`, for as few cycles as possible (it delays the raster splits).
-- On exit the kernel restores: screen base, resolution, palette, all vectors it changed ($70, $114, $118, $120, IKBD vectors), MFP IERA/IMRA/TBCR/TBDR, DMA sound off, user mode.
+- On exit the kernel restores: screen base, resolution, palette, all vectors it changed ($70, $114, $118, $120, IKBD vectors), MFP IERA/IMRA/TBCR/TBDR, DMA sound off, user mode. The mouse position is handed over: the kernel's cursor starts where GEM's pointer is and GEM's pointer is moved to the kernel's at exit (kbd_init / kbd_tos_sync, Phase 6c) - never reset kbd_mx/kbd_my to a fixed place outside test runs.
 
 ## Registers
 | Register | Use |

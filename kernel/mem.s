@@ -16,6 +16,15 @@ mem_init:
 	move.l	mem_pool,d0
 	add.l	mem_pool_size,d0
 	move.l	d0,mem_end
+	ifd	POOLFILL		; test builds: garbage in the pool, as RAM after a cold boot on
+	move.l	mem_top,a0		; other emulators / real machines (Hatari starts with zeros)
+	move.l	#$9e3779b9,d1
+.pf:	move.l	d1,(a0)+
+	rol.l	#5,d1
+	add.l	#$7f4a7c15,d1
+	cmp.l	mem_end,a0
+	blo.s	.pf
+	endc
 	rts
 
 mem_alloc:

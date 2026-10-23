@@ -44,5 +44,5 @@ if [ -z "$NOMUSIC" ]; then
   fi
   mkdir -p "$OUT/MUSIC"; cp "$M"/*.RAW "$OUT/MUSIC/"
 else rm -rf "$OUT/MUSIC"; fi
-cp "$R/assets/README.TXT" "$OUT/"
+sed "s/\r*$/\r/" "$R/assets/README.TXT" > "$OUT/README.TXT"   # CR LF: the desktop's Show reads TOS text
 echo "game folder: $OUT ($(du -sh "$OUT" | cut -f1))"

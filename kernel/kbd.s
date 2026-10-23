@@ -15,12 +15,36 @@
 ; The cursor is drawn by the VBL on the displayed screen with save-under; drawing code
 ; must hide it while drawing under it (as the original did with mousehide/mouseshow).
 
+LA_GCURX	equ	-602		; Line-A: GEM's mouse position
+LA_GCURY	equ	-600
 KBD_VAR		equ	16*2+16*4*2	; one cursor variant: 16 mask words + 16 x 4 plane words
 
 	section	text
 kbd_init:
-	move.w	#160,kbd_mx
-	move.w	#100,kbd_my
+	dc.w	$a000			; start where GEM's mouse is (Line-A GCURX/GCURY, in the
+	move.l	a0,kbd_linea		; desktop's resolution): programs then hand the position on
+	move.w	LA_GCURX(a0),d0		; (desktop -> intro -> crewgen -> main -> desktop) and the
+	move.w	LA_GCURY(a0),d1		; pointer never jumps - in Hatari's windowed mode a jump leaves
+	move.w	sys_oldrez,d2		; the host pointer offset, so parts of the screen cannot be reached
+	beq.s	.lo
+	asr.w	#1,d0			; medium/high: 640 wide
+	cmp.w	#2,d2
+	bne.s	.lo
+	asr.w	#1,d1			; high: 400 lines
+.lo:	tst.w	d0
+	bpl.s	.x0
+	moveq	#0,d0
+.x0:	cmp.w	#SCR_W-1,d0
+	ble.s	.x1
+	move.w	#SCR_W-1,d0
+.x1:	tst.w	d1
+	bpl.s	.y0
+	moveq	#0,d1
+.y0:	cmp.w	#SCR_H-1,d1
+	ble.s	.y1
+	move.w	#SCR_H-1,d1
+.y1:	move.w	d0,kbd_mx
+	move.w	d1,kbd_my
 	move.l	sys_kbdv,a0
 	move.l	16(a0),kbd_oldmouse
 	move.l	#kbd_mouse_handler,16(a0)
@@ -32,6 +56,66 @@ kbd_exit:
 	bsr	kbd_cursor_hide
 	move.l	sys_kbdv,a0
 	move.l	kbd_oldmouse,16(a0)
+	rts
+
+; kbd_tos_sync (supervisor, after the old resolution is back; sys_restore_screen via Supexec):
+; hand our mouse position and "no buttons pressed" back to GEM by feeding TOS's own mouse
+; handler relative packets, so the VDI, its clamping and the AES all follow as for a real move.
+; Without it GEM's pointer comes back where the program was started, and GEM may still think a
+; button is down (the release of the double-click that started us went to our handler).
+kbd_tos_sync:
+	movem.l	d0-d7/a0-a6,-(sp)
+	move.l	kbd_linea,d0
+	beq	.x
+	tst.l	kbd_oldmouse
+	beq	.x
+	move.w	kbd_mx,d6		; target in the desktop's resolution
+	move.w	kbd_my,d7
+	move.w	sys_oldrez,d0
+	beq.s	.lo
+	add.w	d6,d6
+	cmp.w	#2,d0
+	bne.s	.lo
+	add.w	d7,d7
+.lo:	moveq	#16-1,d5		; at most 16 packets (127 pixels each)
+	move.w	sr,-(sp)
+	move.w	#$2600,sr		; as from the IKBD interrupt: no real packets in between
+.lp:	move.l	kbd_linea,a0
+	move.w	d6,d0
+	sub.w	LA_GCURX(a0),d0
+	move.w	d7,d1
+	sub.w	LA_GCURY(a0),d1
+	moveq	#127,d2
+	cmp.w	d2,d0
+	ble.s	.a
+	move.w	d2,d0
+.a:	cmp.w	d2,d1
+	ble.s	.b
+	move.w	d2,d1
+.b:	neg.w	d2
+	cmp.w	d2,d0
+	bge.s	.c
+	move.w	d2,d0
+.c:	cmp.w	d2,d1
+	bge.s	.d
+	move.w	d2,d1
+.d:	cmp.w	#15,d5			; the first packet always goes (it releases the buttons)
+	beq.s	.go
+	tst.w	d0
+	bne.s	.go
+	tst.w	d1
+	beq.s	.done
+.go:	lea	kbd_pkt,a0
+	move.b	#$f8,(a0)		; relative mouse, no buttons
+	move.b	d0,1(a0)
+	move.b	d1,2(a0)
+	move.l	kbd_oldmouse,a1
+	movem.l	d5-d7,-(sp)
+	jsr	(a1)
+	movem.l	(sp)+,d5-d7
+	dbf	d5,.lp
+.done:	move.w	(sp)+,sr
+.x:	movem.l	(sp)+,d0-d7/a0-a6
 	rts
 
 ; called by TOS's IKBD code, a0 = relative mouse packet ($F8-$FB, dx, dy)
@@ -367,3 +451,5 @@ kbd_mbuttons:	ds.b	1
 kbd_mclick:	ds.b	1
 kbd_pending:	ds.b	1
 	even
+kbd_linea:	ds.l	1		; Line-A variables (GEM's mouse position)
+kbd_pkt:	ds.b	4

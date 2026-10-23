@@ -7,7 +7,8 @@ import os, struct, sys, shutil
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'tools'))
 import mkmusic, modref  # noqa
 
-RATE = 6258; LOOP = 3 * RATE + 1; END1 = 6 * RATE + 3; TOTAL = 8 * RATE + 5   # odd pair counts on purpose
+RATE = int(os.environ.get('STREAM_RATE', 6258))   # STREAM_RATE=12517: the same pair counts at the other rate
+LOOP = 3 * 6258 + 1; END1 = 6 * 6258 + 3; TOTAL = 8 * 6258 + 5   # odd pair counts on purpose
 
 
 def make(sound, cdir):

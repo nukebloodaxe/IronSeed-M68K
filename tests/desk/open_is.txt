@@ -1,0 +1,18 @@
+# open C: (8-item game folder, no saves), full the window, put the pointer on IS.PRG
+sleep 8
+alt up 9
+alt left 5
+dbl
+sleep 3
+alt right 22
+salt right 4
+alt down 3
+salt down 6
+click
+sleep 2
+alt left 6
+salt left 2
+alt down 3
+salt down 6
+alt left 18
+salt down 3

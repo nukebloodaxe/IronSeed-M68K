@@ -169,6 +169,8 @@ sys_restore_screen:
 	move.l	sys_oldphys,-(sp)
 	move.l	sys_oldlog,-(sp)
 	XBIOS	XB_SETSCREEN,12
+	pea	kbd_tos_sync		; GEM's mouse to where ours is, buttons up (kbd.s)
+	XBIOS	38,6			; Supexec
 	dc.w	$a000
 	dc.w	$a009
 	rts
