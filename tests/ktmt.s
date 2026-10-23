@@ -1,5 +1,6 @@
 ; ktmt.s - mt.s against Free Pascal's random: seed 1994, then random(64000) x 5, random(7) x 700,
-; random(1000) x 3, and 2000 x mt_u32 (crosses several state updates). Writes C:\KTMT.BIN
+; random(1000) x 3, 2000 x mt_u32 (crosses several state updates), and the int64 overload
+; random64(l) for l = 1..400 and 65535. Writes C:\KTMT.BIN
 ; (big-endian longs) for tests/check_mt.py.
 	include	"hw.i"
 	include	"kmac.i"
@@ -30,6 +31,16 @@ start:	move.l	4(sp),a0
 .d:	bsr	mt_u32
 	move.l	d0,(a3)+
 	dbf	d3,.d
+	moveq	#1,d3
+.e:	move.w	d3,d0
+	bsr	mt_random64
+	move.l	d0,(a3)+
+	addq.w	#1,d3
+	cmp.w	#401,d3
+	bne.s	.e
+	move.w	#65535,d0
+	bsr	mt_random64
+	move.l	d0,(a3)+
 	lea	fn,a0
 	lea	out,a1
 	move.l	a3,d0

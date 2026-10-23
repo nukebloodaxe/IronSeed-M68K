@@ -13,6 +13,19 @@
 ;   move X Y       put the mouse at X, Y          click X Y   move there and press the left button
 ;   shot NAME      write C:\NAME.SCR: 32000 screen bytes + the 4-band table (2+4*34 bytes)
 ;   quit           end the program now (exit code 99)
+;   dump NAME      a state dump now (orc_dump; the Linux oracle's 'dump' does the same)
+;   args TEXT      (leading lines only) the command tail a test run uses when it was started
+;                  without one (Hatari --auto passes none): scr_args, Pascal-style length byte
+;   vtime          virtual time from here on (leading lines of a script): tim_delay no longer waits,
+;                  it advances a virtual clock that 'wait' counts in, and runs the script; polls
+;                  (kbd_keypressed, kbd_mouse_status) run it without advancing time, except that
+;                  50 polls without a delay in between (a busy-wait loop) jump to the end of the
+;                  current wait. Same rules as the Linux oracle's IRONSEED_VTIME (c_utils.c), so
+;                  real-time loops run the same number of times in both (deterministic sessions).
+; scr_poll   scr_tick for key/mouse polls (counts polls in virtual time)
+; scr_dbg    (debugging) append d0.l to a 256-long ring; every 'shot' also writes it to C:\DBG.BIN
+;            (first long: the count so far)               trashes: nothing
+; scr_vdelay in: d0.l = ms: tim_delay in virtual time
 ; A command waits until the program has consumed the previous key or click.
 
 SCR_MAX		equ	4096
@@ -22,20 +35,49 @@ scr_open:
 	lea	scr_buf,a1
 	move.l	#SCR_MAX-1,d0
 	bsr	fil_load
-	bcs.s	.x
+	bcs	.x
 	lea	scr_buf,a0
 	clr.b	0(a0,d0.l)		; terminate
 	move.l	a0,scr_ptr
 	move.w	#1,scr_on
 	move.w	#1,scr_test
 	clr.l	scr_resume
+.lead:	move.l	scr_ptr,a0		; leading "vtime" / "args ..." lines (bytes: lines
+	lea	scr_kw_vtime,a1		; may start at odd addresses)
+	bsr	scr_kw
+	bne.s	.args
+	move.w	#1,scr_vtime		; virtual time from the start
+	bsr	scr_eol
+	bra.s	.lead
+.args:	lea	scr_kw_args,a1
+	bsr	scr_kw
+	bne.s	.x
+	addq.l	#5,a0
+	lea	scr_args+1,a1
+	moveq	#0,d0
+.ac:	move.b	(a0),d1
+	cmp.b	#13,d1
+	beq.s	.ae
+	cmp.b	#10,d1
+	beq.s	.ae
+	tst.b	d1
+	beq.s	.ae
+	move.b	d1,(a1)+
+	addq.l	#1,a0
+	addq.w	#1,d0
+	cmp.w	#120,d0
+	bne.s	.ac
+.ae:	move.b	d0,scr_args
+	clr.b	(a1)
+	bsr	scr_eol
+	bra.s	.lead
 .x:	rts
 
 scr_tick:
 	tst.w	scr_on
 	beq	.x
 	movem.l	d0-d3/a0-a2,-(sp)
-	bsr	tim_ms
+	bsr	scr_now
 	cmp.l	scr_resume,d0
 	blo	.out
 	tst.b	scr_key			; previous input not consumed yet
@@ -55,7 +97,7 @@ scr_tick:
 	move.b	(a0),d1			; first letter of the command
 	bsr	scr_word		; skip the command word, a0 -> argument
 	cmp.b	#'w',d1
-	beq.s	.wait
+	beq	.wait
 	cmp.b	#'k',d1
 	beq	.key
 	cmp.b	#'m',d1
@@ -66,6 +108,10 @@ scr_tick:
 	beq	.shot
 	cmp.b	#'q',d1
 	beq	.quit
+	cmp.b	#'v',d1
+	beq	.vtime
+	cmp.b	#'d',d1
+	beq	.dump
 .nextl:	move.b	(a0)+,d0		; unknown or comment: skip to the end of line
 	beq.s	.end0
 	cmp.b	#10,d0
@@ -76,10 +122,18 @@ scr_tick:
 .end:	move.l	a0,scr_ptr
 	clr.w	scr_on
 	bra	.out
+.dump:	bsr	scr_eol
+	bsr	orc_dump
+	bra	.line
+.vtime:	move.w	#1,scr_vtime
+	clr.l	scr_vclock
+	clr.l	scr_resume
+	bsr	scr_eol
+	bra	.line
 .wait:	bsr	scr_num
 	move.l	d0,d2
 	bsr	scr_eol
-	bsr	tim_ms
+	bsr	scr_now
 	add.l	d2,d0
 	move.l	d0,scr_resume
 	bra	.out
@@ -138,6 +192,49 @@ scr_tick:
 	bra	sys_exit
 .out:	movem.l	(sp)+,d0-d3/a0-a2
 .x:	rts
+
+scr_kw:					; does a0 start with the 4 bytes at a1? (Z set)
+	moveq	#4-1,d1
+.c:	move.b	(a0,d1.w),d0
+	cmp.b	(a1,d1.w),d0
+	dbne	d1,.c
+	rts
+
+scr_dbg:
+	movem.l	d1/a0,-(sp)
+	move.l	scr_dbgn,d1
+	addq.l	#1,scr_dbgn
+	and.w	#255,d1
+	lsl.w	#2,d1
+	lea	scr_dbgbuf,a0
+	move.l	d0,0(a0,d1.w)
+	movem.l	(sp)+,d1/a0
+	rts
+
+scr_now:				; out: d0.l = script time (ms)  trashes: d1
+	tst.w	scr_vtime
+	beq	tim_ms
+	move.l	scr_vclock,d0
+	rts
+
+scr_poll:
+	tst.w	scr_vtime
+	beq	scr_tick
+	addq.w	#1,scr_vpolls
+	cmp.w	#50,scr_vpolls
+	blo	scr_tick
+	move.l	d0,-(sp)
+	move.l	scr_resume,d0
+	cmp.l	scr_vclock,d0
+	bls.s	.n
+	move.l	d0,scr_vclock
+.n:	move.l	(sp)+,d0
+	bra	scr_tick
+
+scr_vdelay:
+	add.l	d0,scr_vclock
+	clr.w	scr_vpolls
+	bra	scr_tick
 
 ; skip the current word and the blanks after it (a0)
 scr_word:
@@ -206,6 +303,19 @@ scr_shot:
 	GEMDOS	GD_FWRITE,12
 	move.w	d3,-(sp)
 	GEMDOS	GD_FCLOSE,4
+	tst.l	scr_dbgn		; the debug ring, if anything was logged
+	beq.s	.x
+	clr.w	-(sp)
+	pea	scr_fn_dbg
+	GEMDOS	GD_FCREATE,8
+	move.w	d0,d3
+	bmi.s	.x
+	pea	scr_dbgn
+	move.l	#4+256*4,-(sp)
+	move.w	d3,-(sp)
+	GEMDOS	GD_FWRITE,12
+	move.w	d3,-(sp)
+	GEMDOS	GD_FCLOSE,4
 .x:	tst.w	(sp)+
 	beq.s	.h
 	bsr	kbd_cursor_show
@@ -214,6 +324,9 @@ scr_shot:
 
 	section	data
 scr_name:	dc.b	"C:",92,0,0,0,0,0,0,0,0,0,0,0,0,0
+scr_fn_dbg:	dc.b	"C:",92,"DBG.BIN",0
+scr_kw_vtime:	dc.b	"vtim"
+scr_kw_args:	dc.b	"args"
 	even
 
 	section	bss
@@ -221,8 +334,14 @@ scr_ptr:	ds.l	1
 scr_resume:	ds.l	1
 scr_on:		ds.w	1
 scr_test:	ds.w	1		; a script was given: test run (fixed random seed, state dumps)
+scr_vtime:	ds.w	1		; virtual time (script command vtime)
+scr_vpolls:	ds.w	1
+scr_vclock:	ds.l	1
 scr_key:	ds.b	1
 scr_ext:	ds.b	1
 	even
+scr_dbgn:	ds.l	1		; (scr_dbgbuf must follow: written together)
+scr_dbgbuf:	ds.l	256
+scr_args:	ds.b	128		; command tail from the script (length byte, text, 0)
 scr_buf:	ds.b	SCR_MAX
 	even

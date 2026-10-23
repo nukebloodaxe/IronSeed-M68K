@@ -44,7 +44,11 @@ Every routine in `kernel/` and in the screen modules follows these rules. A rout
 - Local labels `.name`; equates UPPER_CASE; generated layout equates `REC_FIELD` (e.g. `SHIP_FUEL`) and `GS_name` for global offsets.
 - One routine per Pascal procedure where practical; keep the Pascal source line references in comments (`; journey.pas:559 makesphere1`).
 
+## MAIN.PRG's screen (Phase 4)
+- The game draws into the chunky shadow (`ms_*` in game/mscr.s, original palette indices, the original's coordinates) and marks what it changed; `mouseshow`, `delay` and `ms_flush` convert the dirty spans to the planar screen. `mousehide`, `mouseshow` and `delay` are ordinary calls: they trash d0-d2/a0-a2.
+- Routines that take d3/d4 as arguments (x2/y2/colour, like the kernel's gfx_bar) keep the caller's d3/d4 only if they are the callee; a helper that loads d3/d4 to call them must save them (ABI: d3-d7 preserved).
+
 ## Determinism and tests (Phase 3)
-- Random numbers that affect game state come from `mt_random` (FPC's generator, kernel `mt.s`), called in the same order as the Pascal code, so state dumps match the Linux oracle. `rnd` (LCG) is only for visual noise that the original made with its own random calls where exact sequences do not matter (the intro).
+- Random numbers that affect game state come from `mt_random` (FPC's generator, kernel `mt.s`), called in the same order as the Pascal code, so state dumps match the Linux oracle. Where the Pascal argument is an arithmetic expression (random(a+b), random(n-1)), the x86-64 oracle calls FPC's random(int64): use `mt_random64` there. `rnd` (LCG) is only for visual noise that the original made with its own random calls where exact sequences do not matter (the intro).
 - `scr_test` = 1 when a script file was found: fixed seed 1994, `orc_dump` writes `C:\Dnnnn.BIN` at every point where the original calls loadscreen. Programs may skip their command-line check in test runs.
 - A screen module that switches band designs must redraw everything visible afterwards (the planar pixels hold slots, not colours).

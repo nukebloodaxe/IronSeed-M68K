@@ -1,4 +1,4 @@
-From fc77729ddbb76c85bcf54e7a70e1b01addd1cf3c Mon Sep 17 00:00:00 2001
+From d2f98f0be13a94676337f5ea1dd61f7efa47604b Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Tue, 13 Oct 2026 23:37:49 +1300
 Subject: [PATCH] Oracle hooks for the Atari STE port
@@ -6,20 +6,23 @@ Subject: [PATCH] Oracle hooks for the Atari STE port
 IRONSEED_ORACLE=<dir>: dump shared game state (ship, systems, cargo, events,
 logs, alien, planets, palette, screen) on every loadscreen(), and make
 randomize deterministic. IRONSEED_INPUT=<prefix>: per-program input scripts
-(<prefix>.<program>) with wait/key/move/click/shot/quit commands.
+(<prefix>.<program>) with wait/key/move/click/shot/dump/quit commands.
+IRONSEED_VTIME=1: virtual time - delay() advances a virtual clock instead of
+waiting and runs the script, so real-time loops run the same number of times
+as in the Atari port's scripted runs (deterministic sessions).
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01M2a7JRqsNHyv6L5u751Eow
+Claude-Session: https://claude.ai/code/session_01Wq7y6AAQj4Whswyhq2cm2i
 ---
- c_utils.c | 57 +++++++++++++++++++++++++++++++++++++++++++++++++++++++
- data.pas  | 55 ++++++++++++++++++++++++++++++++++++++++++++++++++++-
- 2 files changed, 111 insertions(+), 1 deletion(-)
+ c_utils.c | 93 ++++++++++++++++++++++++++++++++++++++++++++++++++++++-
+ data.pas  | 55 +++++++++++++++++++++++++++++++-
+ 2 files changed, 146 insertions(+), 2 deletions(-)
 
 diff --git a/c_utils.c b/c_utils.c
-index 4519899..ba35114 100644
+index 4519899..1d128ba 100644
 --- a/c_utils.c
 +++ b/c_utils.c
-@@ -270,6 +270,60 @@ static void DrawPixel(SDL_Surface * screen, int x, int y, Uint8 R, Uint8 G, Uint
+@@ -270,9 +270,89 @@ static void DrawPixel(SDL_Surface * screen, int x, int y, Uint8 R, Uint8 G, Uint
  
  }
  
@@ -31,6 +34,23 @@ index 4519899..ba35114 100644
 +static uint32_t script_resume = 0;
 +static int script_mouse = 0;
 +static uint16_t script_mx, script_my;
++/* IRONSEED_VTIME=1: virtual time for deterministic sessions. delay() only advances a virtual
++ * clock (no real waiting) and runs the script; key/mouse polls run it too, without advancing
++ * time, except that 50 polls in a row without a delay (a busy-wait loop) jump the clock to the
++ * end of the current script wait. The ST twin is the script command "vtime" (kernel/scr.s). */
++static int vtime = -1;
++static uint32_t vclock = 0;
++static int vpolls = 0;
++static int vtime_on(void) { if (vtime < 0) { const char *v = getenv("IRONSEED_VTIME"); vtime = (v && *v) ? 1 : 0; } return vtime; }
++static uint32_t script_now(void) { return vtime_on() ? vclock : SDL_GetTicks(); }
++static void script_tick(void);
++extern void DATA_$$_ORACLEDUMP$SHORTSTRING(const unsigned char *tag) __attribute__((weak));	/* data.pas oracledump (not in every program) */
++static void script_poll(void)
++{
++	if (!vtime_on()) return;
++	if (++vpolls >= 50 && script_resume > vclock) vclock = script_resume;
++	script_tick();
++}
 +
 +static void script_tick(void)
 +{
@@ -46,14 +66,14 @@ index 4519899..ba35114 100644
 +			script = fopen(path, "r");
 +		}
 +	}
-+	if (!script || SDL_GetTicks() < script_resume) return;
++	if (!script || script_now() < script_resume) return;
 +	if (keypressed_ || mouse_buttons) return;	/* let the game consume the last input first */
 +	while (fgets(line, sizeof line, script)) {
 +		char cmd[16] = "", arg[32] = "";
 +		int a = 0, b = 0;
 +		if (line[0] == '#' || line[0] == '\n') continue;
 +		sscanf(line, "%15s %31s", cmd, arg);
-+		if (!strcmp(cmd, "wait")) { script_resume = SDL_GetTicks() + (uint32_t) atoi(arg); return; }
++		if (!strcmp(cmd, "wait")) { script_resume = script_now() + (uint32_t) atoi(arg); return; }
 +		if (!strcmp(cmd, "waitkey") || !strcmp(cmd, "waitclick")) return;	/* checked at top */
 +		if (!strcmp(cmd, "key")) {
 +			key_ = (uint16_t) ((arg[0] == '#' && arg[1]) ? atoi(arg + 1) : (unsigned char) arg[0]);
@@ -72,6 +92,14 @@ index 4519899..ba35114 100644
 +			if ((o = fopen(fn, "wb"))) { fwrite(v_buf, 1, 64000, o); fwrite(palette, 1, sizeof palette, o); fclose(o); }
 +			continue;
 +		}
++		if (!strcmp(cmd, "dump")) {	/* a state dump now (data.pas oracledump), tagged with the name */
++			unsigned char tag[64];
++			size_t n = strlen(arg);
++			if (n > 60) n = 60;
++			tag[0] = (unsigned char) n; memcpy(tag + 1, arg, n);
++			if (DATA_$$_ORACLEDUMP$SHORTSTRING) DATA_$$_ORACLEDUMP$SHORTSTRING(tag);
++			continue;
++		}
 +		if (!strcmp(cmd, "quit")) { fclose(script); script = NULL; exit(0); }
 +	}
 +	fclose(script); script = NULL;
@@ -80,7 +108,11 @@ index 4519899..ba35114 100644
  fpc_char_t mouse_get_status(void)
  {
  	uint8_t t;
-@@ -283,6 +337,7 @@ fpc_dword_t mouse_get_x(void)
++	script_poll();
+ 	t = mouse_buttons;
+ 	mouse_buttons = 0;
+ 	//if (t) printf ("mouse buttons=%d, coords=%d,%d\r\n", t, mouse_get_x(), mouse_get_y());
+@@ -283,6 +363,7 @@ fpc_dword_t mouse_get_x(void)
  {
  	uint32_t x;
  	double rx, rx0;
@@ -88,7 +120,7 @@ index 4519899..ba35114 100644
  	if (resize_x == 0)
  		return 0;
  	rx = (double) (mouse_x) / (double) (resize_x);
-@@ -298,6 +353,7 @@ fpc_dword_t mouse_get_y(void)
+@@ -298,6 +379,7 @@ fpc_dword_t mouse_get_y(void)
  {
  	uint32_t y;
  	double ry, ry0;
@@ -96,14 +128,40 @@ index 4519899..ba35114 100644
  	if (resize_y == 0)
  		return 0;
  	ry = (double) (mouse_y) / (double) (resize_y);
-@@ -622,6 +678,7 @@ static int event_thread(void *notused)
+@@ -622,6 +704,7 @@ static int event_thread(void *notused)
  			break;			/* some error, probably video/audio failed to initialize or something, abort */
  		if (!handle_events_once())	/* keyboard, mouse, windows resize/close, and more */
  			break;			/* some error like SDL_QUIT, abort */
-+		script_tick();			/* oracle: scripted input, if $IRONSEED_INPUT is set */
++		if (!vtime_on()) script_tick();	/* oracle: scripted input, if $IRONSEED_INPUT is set */
  
  		SDL_Delay(10);			/* give up some time to other threads */
  	}
+@@ -749,6 +832,13 @@ void delay(const fpc_word_t ms)
+ {
+ 	static uint64_t err;
+ 	int64_t us = 1;
++	if (vtime_on()) {
++		vclock += ms;
++		vpolls = 0;
++		script_tick();
++		abort_if_abnormal_exit();
++		return;
++	}
+ 	delta_usec();
+ 	us = (int64_t) (ms * 1000 * TIMESCALE) - (int64_t) err;	// we're always small enough so convert to int64 is not a problem
+ 	if (turbo_mode)
+@@ -827,9 +917,10 @@ void circle(const fpc_word_t x, const fpc_word_t y, const fpc_word_t r)
+ fpc_byte_t key_pressed(void)
+ {
+ 	uint8_t k;
++	script_poll();
+ 	k = keypressed_;
+ //      keypressed=0;
+-	_nanosleep(500000);
++	if (!vtime_on()) _nanosleep(500000);
+ 	return k;
+ }
+ 
 diff --git a/data.pas b/data.pas
 index 9714cf3..374e402 100644
 --- a/data.pas

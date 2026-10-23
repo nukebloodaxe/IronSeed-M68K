@@ -36,6 +36,8 @@ kbd_exit:
 
 ; called by TOS's IKBD code, a0 = relative mouse packet ($F8-$FB, dx, dy)
 kbd_mouse_handler:
+	tst.w	scr_vtime		; scripted runs in virtual time: only the script moves it
+	bne.s	.ign
 	movem.l	d0-d1,-(sp)
 	move.b	(a0),d0
 	moveq	#0,d1
@@ -69,16 +71,18 @@ kbd_mouse_handler:
 	move.w	#SCR_H-1,d0
 .y1:	move.w	d0,kbd_my
 	movem.l	(sp)+,d0-d1
-	rts
+.ign:	rts
 
 kbd_mouse_xy:
+	tst.w	scr_vtime		; (the Linux oracle reads the position without a script step)
+	bne.s	.v
 	bsr	scr_tick
-	move.w	kbd_mx,d0
+.v:	move.w	kbd_mx,d0
 	move.w	kbd_my,d1
 	rts
 
 kbd_mouse_status:
-	bsr	scr_tick
+	bsr	scr_poll
 	DI
 	move.b	kbd_mclick,d0
 	clr.b	kbd_mclick
@@ -91,7 +95,7 @@ kbd_mouse_move:
 	rts
 
 kbd_keypressed:
-	bsr	scr_tick
+	bsr	scr_poll
 	tst.b	scr_key
 	bne.s	.yes
 	tst.b	kbd_pending

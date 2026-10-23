@@ -1,1 +1,10 @@
+wait 3000
+shot M1
+key #27
+wait 3000
+shot M2
+wait 3000
+shot M3
+wait 10000
+shot M4
 quit

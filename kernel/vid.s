@@ -240,7 +240,15 @@ vid_set_luts:
 	move.w	#1024/4-1,d0
 .cp:	move.l	(a0)+,(a1)+
 	dbf	d0,.cp
-.same:	lea	vid_bands_src,a0
+.same:	lea	vid_luts,a0		; slot*4 copies for gfx_c4_span
+	lea	vid_luts4,a1
+	move.w	#1024-1,d0
+.x4:	move.b	(a0)+,d1
+	add.b	d1,d1
+	add.b	d1,d1
+	move.b	d1,(a1)+
+	dbf	d0,.x4
+	lea	vid_bands_src,a0
 	move.w	(a0)+,d2		; band count
 	lea	vid_line_lut,a1
 	lea	vid_luts,a2		; current band's LUT
@@ -498,6 +506,7 @@ vid_bands_a:	ds.b	2+4*BAND_SIZE
 vid_bands_b:	ds.b	2+4*BAND_SIZE
 vid_fadetab:	ds.b	17*16
 vid_luts:	ds.b	4*256
+vid_luts4:	ds.b	4*256		; the same x4 (slot*4: gfx_c4_span), right after vid_luts
 vid_line_lut:	ds.l	SCR_H
 vid_line_band:	ds.b	SCR_H
 vid_reps:	ds.b	64

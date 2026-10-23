@@ -8,6 +8,7 @@ got = list(struct.unpack('>%dI' % (len(d) // 4), d))
 r = FpcRandom(1994)
 ref = [r.random(64000) for _ in range(5)] + [r.random(7) for _ in range(700)] + [r.random(1000) for _ in range(3)]
 ref += [r.u32() for _ in range(2000)]
+ref += [r.random64(l) for l in range(1, 401)] + [r.random64(65535)]
 bad = sum(1 for a, b in zip(got, ref) if a != b) + abs(len(got) - len(ref))
 print('mt: %d of %d values differ' % (bad, len(ref)))
 sys.exit(1 if bad else 0)

@@ -1,7 +1,7 @@
 ; orc.s - state dumps for the oracle comparison (the ST twin of the Linux build's oracledump,
 ; called where the original calls loadscreen). Only in test runs (scr_test): writes
 ; C:\Dnnnn.BIN, nnnn = 1, 2, ... with the blocks ship, systems, cargo, rescargo, events, logs,
-; logpending, alien, colors in the 68000 layout (tools/oracle_cmp.py reads both). Part of kernel.s.
+; logpending, alien, colors (and tempplan when GS_TEMPPLAN is set) in the 68000 layout (tools/oracle_cmp.py reads both). Part of kernel.s.
 ;
 ; orc_dump   trashes: d0-d2/a0-a2
 
@@ -65,13 +65,34 @@ orc_dump:
 	move.w	d3,-(sp)
 	GEMDOS	GD_FWRITE,12
 	bra.s	.blk
-.cl:	move.w	d3,-(sp)
+.cl:	move.l	GS_TEMPPLAN(a6),d0	; tempplan^ (the planets), when the program has it
+	beq.s	.cl2
+	move.l	d0,a4
+	lea	orc_hdr,a0
+	moveq	#24/4-1,d1
+.z2:	clr.l	(a0)+
+	dbf	d1,.z2
+	lea	orc_hdr,a0
+	lea	orc_tp,a1
+.t:	move.b	(a1)+,(a0)+
+	bne.s	.t
+	move.l	#PLANARRAY_SIZEOF,orc_hdr+24
+	pea	orc_hdr
+	move.l	#28,-(sp)
+	move.w	d3,-(sp)
+	GEMDOS	GD_FWRITE,12
+	move.l	a4,-(sp)
+	move.l	#PLANARRAY_SIZEOF,-(sp)
+	move.w	d3,-(sp)
+	GEMDOS	GD_FWRITE,12
+.cl2:	move.w	d3,-(sp)
 	GEMDOS	GD_FCLOSE,4
 .out:	movem.l	(sp)+,d3-d4/a3-a4
 .x:	rts
 
 	section	data
 orc_name:	dc.b	"C:",92,"D0000.BIN",0
+orc_tp:		dc.b	8,"tempplan",0
 	even
 orc_blocks:
 	dc.w	GS_SHIP,SHIP_SIZEOF

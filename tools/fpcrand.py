@@ -54,6 +54,11 @@ class FpcRandom:
         y ^= y >> 18
         return y
 
+    def random64(self, l):
+        """FPC's random(int64): what the x86-64 build calls for an arithmetic argument"""
+        a = self.u32(); b = self.u32()
+        return ((a | (b << 32)) & 0x7fffffffffffffff) % l if l else 0
+
     def random(self, l):
         if l < 0: l += 1
         v = (self.u32() * l) >> 32

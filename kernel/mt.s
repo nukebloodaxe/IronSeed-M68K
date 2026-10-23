@@ -4,6 +4,11 @@
 ; mt_seed     in: d0.l = seed (FPC randseed)                       trashes: d0-d2/a0-a1
 ; mt_u32      out: d0.l = next 32-bit number (mtwist_u32rand)       trashes: d1-d2/a0
 ; mt_random   in: d0.w = l (1..65535)  out: d0.l = random(l) = (u32 * l) >> 32   trashes: d1-d2/a0
+; mt_random64 in: d0.w = l (1..65535)  out: d0.l = FPC's random(int64 l): two draws a, b,
+;             ((b << 32 | a) and $7FFF...) mod l. The x86-64 oracle build calls this overload
+;             whenever the argument is an arithmetic expression (random(a+b), random(n-1), ...;
+;             a plain variable or a constant takes random(longint)): port each call with the
+;             overload the original's argument selects.           trashes: d1-d2/a0
 ;mt_skip      in: d0.l = n: advances the generator as n calls would (fast)   trashes: d0-d2/a0-a1
 ; mt_randomize  seed from the clock (FPC randomize); scripted test runs (scr_test) use 1994,
 ;             like the oracle build.                                trashes: d0-d2/a0-a1
@@ -53,7 +58,8 @@ mt_seed:
 	movem.l	(sp)+,d3-d4
 	rts
 
-; regenerate the 624 words (mtwist_update_state)
+; regenerate the 624 words (mtwist_update_state): mt[k] = mt[k+M] ^ twist(mt[k], mt[k+1]),
+; twist(u, v) = (mixbits(u, v) >> 1) ^ (odd(v) ? $9908B0DF : 0)
 mt_update:
 	movem.l	d3-d5/a1,-(sp)
 	move.l	#$9908B0DF,d5
@@ -64,30 +70,37 @@ mt_update:
 	lea	mt_state,a1		; mt[k + M - N]
 	move.w	#MT_M-1-1,d4		; k = N-M .. N-2
 	bsr.s	.run
-	move.l	mt_state,d1		; mt[N-1] = mt[M-1] ^ twist(mt[N-1], mt[0])
+	move.l	(a0),d0			; mt[N-1] = mt[M-1] ^ twist(mt[N-1], mt[0])
+	move.l	mt_state,d1
 	bsr.s	.tw
-	move.l	(a1),d1			; (a1 = mt[M-1] now)
-	eor.l	d1,d0
-	move.l	d0,(a0)
+	move.l	(a1),d0
+	eor.l	d0,d2
+	move.l	d2,(a0)
 	movem.l	(sp)+,d3-d5/a1
 	rts
-.run:	move.l	4(a0),d1
-	bsr.s	.tw
-	move.l	(a1)+,d1
-	eor.l	d1,d0
-	move.l	d0,(a0)+
+.run:	move.l	(a0)+,d0		; u
+	move.l	(a0),d1			; v
+	move.l	d1,d2			; mixbits(u, v) >> 1: v's low 31 bits under u's top bit
+	add.l	d2,d2
+	add.l	d0,d0
+	roxr.l	#1,d2
+	lsr.l	#1,d2
+	lsr.b	#1,d1
+	bcc.s	.e
+	eor.l	d5,d2
+.e:	move.l	(a1)+,d0
+	eor.l	d0,d2
+	move.l	d2,-4(a0)
 	dbf	d4,.run
 	rts
-; d0 = twist(u = (a0), v = d1) = (mixbits(u, v) >> 1) ^ (odd(v) ? $9908B0DF : 0)   trashes d2
-.tw:	move.l	(a0),d0
-	and.l	#$80000000,d0
-	move.l	d1,d2
-	and.l	#$7fffffff,d2
-	or.l	d2,d0
-	lsr.l	#1,d0
-	btst	#0,d1
-	beq.s	.t0
-	eor.l	d5,d0
+.tw:	move.l	d1,d2			; d2 = twist(d0, d1)
+	add.l	d2,d2
+	add.l	d0,d0
+	roxr.l	#1,d2
+	lsr.l	#1,d2
+	lsr.b	#1,d1
+	bcc.s	.t0
+	eor.l	d5,d2
 .t0:	rts
 
 mt_u32:
@@ -115,10 +128,10 @@ mt_u32:
 	lsl.l	d2,d1
 	and.l	#$EFC60000,d1
 	eor.l	d1,d0
-	move.l	d0,d1			; y ^= y >> 18
-	moveq	#18,d2
-	lsr.l	d2,d1
-	eor.l	d1,d0
+	move.l	d0,d1			; y ^= y >> 18 (low word only)
+	swap	d1
+	lsr.w	#2,d1
+	eor.w	d1,d0
 	rts
 
 mt_skip:
@@ -156,6 +169,33 @@ mt_random:
 	add.l	d1,d0
 	clr.w	d0
 	swap	d0			; >> 16
+	rts
+
+mt_random64:
+	movem.l	d3-d4,-(sp)
+	move.w	d0,d4			; l
+	bsr	mt_u32
+	move.l	d0,d3			; a: the low half
+	bsr	mt_u32			; b: the high half, bit 63 masked off
+	bclr	#31,d0
+	moveq	#0,d1			; r := (r*65536 + word) mod l over bh, bl, ah, al
+	swap	d0
+	bsr.s	.step
+	swap	d0
+	bsr.s	.step
+	move.l	d3,d0
+	swap	d0
+	bsr.s	.step
+	swap	d0
+	bsr.s	.step
+	move.l	d1,d0
+	movem.l	(sp)+,d3-d4
+	rts
+.step:	swap	d1			; r < l: the quotient fits 16 bits
+	move.w	d0,d1
+	divu	d4,d1
+	swap	d1
+	and.l	#$ffff,d1
 	rts
 
 	section	bss

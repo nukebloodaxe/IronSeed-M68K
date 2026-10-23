@@ -11,6 +11,9 @@ for _ in range(50):
     errs = re.findall(r'error 2029 in line (\d+) of "([^"]+)"', p.stdout + p.stderr)
     if not errs: break
     for ln, fn in errs:
+        if not os.path.isabs(fn):        # included files are reported by name: find them
+            fn = next((os.path.join(d, fn) for d in (os.path.dirname(src), R + '/game', R + '/kernel', R + '/spikes')
+                       if os.path.exists(os.path.join(d, fn))), fn)
         L = open(fn).read().split('\n'); i = int(ln) - 1
         new = re.sub(r'\b(b[a-z]{2,3}|bra|bsr)\.s\b', r'\1', L[i], count=1)
         if new != L[i]:

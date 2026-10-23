@@ -68,4 +68,6 @@ if [ -s hatari/c/FULL.SCR ] && [ ! -e hatari/c/CRASH.TXT ] && cmp -s <(tail -c +
 else echo "FAIL intro scenes"; fail=1; fi
 # crew generation against the Linux oracle (state dumps, screens, saved files)
 tests/check_crewgen.sh || fail=1
+# the main game against the Linux oracle (virtual-time sessions from crewgen's save)
+tests/check_main.sh || fail=1
 exit $fail

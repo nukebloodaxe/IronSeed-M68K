@@ -1,0 +1,39 @@
+vtime
+args /playseed 3
+# m2: the bridge after crewgen's s4 save (slot 3): cube menus, research, the logs from the cube,
+# a cube rotation by mouse, the text box, a minute of game time (repairs), the quit request
+wait 3000
+key #27
+wait 2000
+shot B1
+move 240 150
+wait 500
+shot B2
+key c
+wait 1500
+shot B3
+key #283
+wait 800
+move 240 167
+wait 300
+click 240 167
+wait 3000
+shot B4
+key #27
+wait 3000
+shot B5
+click 190 152
+wait 2500
+shot B6
+move 300 160
+click 166 152
+wait 1500
+shot B7
+wait 40000
+shot B8
+key #291
+wait 1500
+shot B9
+key y
+wait 3000
+quit

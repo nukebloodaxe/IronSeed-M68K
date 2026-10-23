@@ -1,0 +1,13 @@
+vtime
+args /playseed 3
+# m1: the first MAIN session after crewgen's s4 save (slot 3): the log screen, then the bridge
+wait 3000
+shot L1
+key #27
+wait 3000
+shot M2
+wait 3000
+shot M3
+wait 10000
+shot M4
+quit

@@ -15,11 +15,13 @@ INTF = {'u8': 'B', 's8': 'b', 's16': 'h', 'u16': 'H', 's32': 'i', 'u32': 'I', 'u
 
 
 def read_blocks(fn):
-    d = open(fn, 'rb').read(); i = 0; out = {}
+    """blocks of a dump; read_blocks.st = True when the sizes are big-endian (written by the ST)"""
+    d = open(fn, 'rb').read(); i = 0; out = {}; read_blocks.st = False
     while i < len(d):
         n = d[i + 1:i + 1 + d[i]].decode()
         sz = struct.unpack('<i', d[i + 24:i + 28])[0]
-        if sz < 0 or sz > len(d): sz = struct.unpack('>i', d[i + 24:i + 28])[0]  # ST-written (big-endian)
+        if sz < 0 or sz > len(d):
+            sz = struct.unpack('>i', d[i + 24:i + 28])[0]; read_blocks.st = True  # ST-written (big-endian)
         out[n] = d[i + 28:i + 28 + sz]; i += 28 + sz
     return out
 
@@ -60,14 +62,14 @@ def diff(a, b, path, out, lo=0):
 
 def load(layout, fn):
     G = {g['name'].lower(): g for g in layout['globals']}
-    blocks = read_blocks(fn); res = {}
+    blocks = read_blocks(fn); res = {}; st_file = read_blocks.st
     for n, data in blocks.items():
         desc = G.get(n.lower())
         if desc is not None and desc['kind'] == 'pointer' and data:
             desc = layout['types'].get(desc['to'])
         if desc is None or len(data) == 0:
             res[n] = data; continue
-        st = len(data) == desc['size_st'] and desc['size_st'] != desc['size_dos']
+        st = st_file if desc['size_st'] == desc['size_dos'] else len(data) == desc['size_st']
         res[n] = decode(desc, data, 0, st)
     return res
 

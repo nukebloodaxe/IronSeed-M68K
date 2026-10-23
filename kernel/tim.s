@@ -27,6 +27,8 @@ tim_ms:
 
 tim_delay:
 	and.l	#$ffff,d0
+	tst.w	scr_vtime
+	bne	scr_vdelay		; scripted test in virtual time: no real wait
 	addq.l	#4,d0
 	divu	#5,d0			; ms -> ticks, rounded up
 	and.l	#$ffff,d0

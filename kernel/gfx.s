@@ -14,6 +14,8 @@
 ;                 trashes: d0-d2/a0-a2
 ; gfx_slot4_span  same, but a0 = slot*4 bytes (fast path for renderers)
 ; gfx_chunky_span  same, but a0 = game colour indices, mapped through the line's LUT
+; gfx_c4_span    as gfx_chunky_span, ~2x faster (one pass, LUT straight to slot*4): the chunky
+;                 shadow flush of MAIN.PRG                      trashes: d0-d2/a0-a2
 ; gfx_copy_rect  in: a0 = source screen (same layout; only the rectangle is read), d0.w x1,
 ;                 d1.w y1, d2.w x2, d3.w y2 (inclusive): copies those pixels to gfx_target
 ;                 trashes: d0-d2/a0-a2
@@ -383,6 +385,108 @@ gfx_slot4_span:
 	tst.w	d6
 	bne	.cell
 	movem.l	(sp)+,d3-d7/a3-a4
+	rts
+
+; ---------------------------------------------------------------
+gfx_c4_span:
+	movem.l	d3-d7/a3-a5,-(sp)
+	move.l	d1,-(sp)
+	bsr	vid_lut_y
+	lea	1024(a1),a5		; this line's slot*4 table (vid_luts4)
+	move.l	(sp)+,d1
+	move.l	gfx_target,a1
+	mulu	#SCR_BPL,d1
+	add.l	d1,a1			; line
+	lea	gfx_ptab+2*64,a3
+	lea	gfx_ptab+6*64,a4
+	move.w	d0,d3
+	lsr.w	#3,d3			; first cell
+	move.w	d2,d6			; pixels left
+	and.w	#7,d0			; skip in the first cell
+	moveq	#0,d2
+.cell:	move.w	d3,d1
+	lsr.w	#1,d1
+	lsl.w	#3,d1
+	btst	#0,d3
+	beq.s	.ev
+	addq.w	#1,d1
+.ev:	lea	0(a1,d1.w),a2
+	tst.w	d0
+	bne.s	.part
+	cmp.w	#8,d6
+	blo.s	.part
+	move.w	d6,d7			; run of full cells: 2 per group (even, odd)
+	lsr.w	#3,d7
+	subq.w	#1,d7
+.full:	moveq	#0,d5
+	move.b	(a0)+,d2
+	move.b	0(a5,d2.w),d2
+	or.l	-128(a3,d2.w),d5
+	move.b	(a0)+,d2
+	move.b	0(a5,d2.w),d2
+	or.l	-64(a3,d2.w),d5
+	move.b	(a0)+,d2
+	move.b	0(a5,d2.w),d2
+	or.l	0(a3,d2.w),d5
+	move.b	(a0)+,d2
+	move.b	0(a5,d2.w),d2
+	or.l	64(a3,d2.w),d5
+	move.b	(a0)+,d2
+	move.b	0(a5,d2.w),d2
+	or.l	-128(a4,d2.w),d5
+	move.b	(a0)+,d2
+	move.b	0(a5,d2.w),d2
+	or.l	-64(a4,d2.w),d5
+	move.b	(a0)+,d2
+	move.b	0(a5,d2.w),d2
+	or.l	0(a4,d2.w),d5
+	move.b	(a0)+,d2
+	move.b	0(a5,d2.w),d2
+	or.l	64(a4,d2.w),d5
+	movep.l	d5,0(a2)
+	subq.w	#8,d6
+	addq.w	#1,d3
+	btst	#0,d3			; next cell: +1 (odd) or +7 (next group)
+	bne.s	.odd
+	addq.l	#6,a2
+.odd:	addq.l	#1,a2
+	dbf	d7,.full
+	tst.w	d6
+	bne	.cell
+	bra.s	.done
+.part:	moveq	#0,d5
+	moveq	#0,d7
+	moveq	#8-1,d1
+.px:	add.l	d5,d5
+	add.b	d7,d7
+	tst.w	d0
+	beq.s	.in
+	subq.w	#1,d0
+	bra.s	.nx
+.in:	tst.w	d6
+	beq.s	.nx
+	subq.w	#1,d6
+	addq.b	#1,d7
+	move.b	(a0)+,d2
+	move.b	0(a5,d2.w),d2
+	or.l	64(a4,d2.w),d5
+.nx:	dbf	d1,.px
+	move.b	d7,d1
+	lsl.w	#8,d1
+	move.b	d7,d1
+	move.w	d1,d4
+	swap	d1
+	move.w	d4,d1
+	and.l	d1,d5
+	not.l	d1
+	movep.l	0(a2),d4
+	and.l	d1,d4
+	or.l	d5,d4
+	movep.l	d4,0(a2)
+	addq.w	#1,d3
+	tst.w	d6
+	bne	.cell
+.done:	movem.l	(sp)+,d3-d7/a3-a5
 	rts
 
 gfx_copy_rect:

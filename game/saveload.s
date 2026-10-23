@@ -8,6 +8,10 @@
 ; sl_savegame      in: d0.w slot 1-8: SAVEn\SHIP.DTA, SYSTEMS.DTA, EVENTS.DTA, LOGS.DTA,
 ;                  PENDING.DTA, PLANETS.DTA (from tempplan, when there is one), CONTACTS.DTA
 ;                  (copy of TEMP\CONTACTS.DTA); sets curfilenum.  trashes: d0-d2/a0-a2
+; sl_loadgame      in: d0.w slot 1-8: saveload.pas loadgame (SHIP, SYSTEMS, EVENTS or the
+;                  old format's convertevents, LOGS, PENDING; loadplanetinfo: PLANETS.DTA into
+;                  tempplan, CONTACTS.DTA filtered into TEMP\CONTACTS.DTA; tslice; cargo
+;                  reserves). MAIN.PRG only (needs mutils.s).  trashes: d0-d2/a0-a2
 ; sl_path          in: d0.w slot, a1 = file name (C string)  out: a0 = "SAVEn\name"
 ; Files are in the 68000 layout (build/layout.i); SAVEGAME.DIR = 8 x savedirtype (26 bytes:
 ; name string[20], pad, yearstamp.w, monthstamp.w).
@@ -609,6 +613,179 @@ sl_savegame:
 	bsr	mem_release
 	movem.l	(sp)+,d3/a3
 	rts
+
+	ifd	SL_LOAD			; MAIN.PRG only
+; ---------------------------------------------------------------
+sl_read:				; d0.w slot, a1 = name, a2 = buffer, d1.l = bytes; fatal if short
+	movem.l	d1/a2,-(sp)
+	bsr	sl_path
+	movem.l	(sp)+,d0/a1
+	move.l	d0,-(sp)
+	bsr	fil_load
+	bcs.s	.e
+	cmp.l	(sp)+,d0
+	bne	fatal
+	and.b	#$fe,ccr
+	rts
+.e:	addq.l	#4,sp
+	or.b	#1,ccr
+	rts
+
+sl_loadgame:
+	movem.l	d3-d5/a3,-(sp)
+	move.w	d0,d3
+	lea	sl_fn_ship,a1
+	lea	GS_SHIP(a6),a2
+	move.l	#SHIP_SIZEOF,d1
+	bsr	sl_read
+	bcs	fatal
+	move.w	d3,d0
+	lea	sl_fn_systems,a1
+	lea	GS_SYSTEMS(a6),a2
+	move.l	#SYSTEMARRAY_SIZEOF,d1
+	bsr	sl_read
+	bcs	fatal
+	move.w	d3,d0
+	lea	sl_fn_events,a1
+	lea	GS_EVENTS(a6),a2
+	move.l	#EVENTARRAY_SIZEOF,d1
+	bsr	sl_read
+	bcc.s	.new
+	bsr	sl_convertevents
+	bra.s	.pl
+.new:	move.w	d3,d0
+	lea	sl_fn_logs,a1
+	lea	GS_LOGS(a6),a2
+	move.l	#LOGARRAY_SIZEOF,d1
+	bsr	sl_read
+	bcs	fatal
+	move.w	d3,d0
+	lea	sl_fn_pending,a1
+	lea	GS_LOGPENDING(a6),a2
+	move.l	#LOGPENDINGARRAY_SIZEOF,d1
+	bsr	sl_read
+	bcs	fatal
+.pl:	move.w	d3,GS_CURFILENUM(a6)
+	; loadplanetinfo
+	move.w	d3,d0
+	lea	sl_fn_planets,a1
+	move.l	GS_TEMPPLAN(a6),a2
+	move.l	#PLANARRAY_SIZEOF,d1
+	bsr	sl_read
+	bcs	fatal
+	lea	sl_fn_tempdir,a0
+	bsr	fil_mkdir
+	bsr	mem_mark
+	move.l	d0,-(sp)
+	move.w	d3,d0
+	lea	sl_fn_contacts,a1
+	bsr	sl_path
+	bsr	fil_size
+	bcs	fatal
+	move.l	d0,d4
+	addq.l	#2,d0
+	bsr	mem_alloc
+	bcs	fatal
+	move.l	a0,a3
+	move.w	d3,d0
+	lea	sl_fn_contacts,a1
+	bsr	sl_path
+	move.l	a3,a1
+	move.l	d4,d0
+	bsr	fil_load
+	bcs	fatal
+	move.l	a3,a0			; keep id > 1000 or planets with notes bit 1
+	move.l	a3,a1
+	divu	#ALIEN_SIZEOF,d4
+	moveq	#0,d5			; bytes kept
+	bra.s	.cn
+.cl:	move.w	ALIEN_ID(a0),d0
+	cmp.w	#1000,d0
+	bgt.s	.keep
+	subq.w	#1,d0
+	mulu	#PLANET_SIZEOF,d0
+	move.l	GS_TEMPPLAN(a6),a2
+	btst	#1,PLANET_NOTES(a2,d0.l)
+	beq.s	.skip
+.keep:	moveq	#ALIEN_SIZEOF/2-1,d0
+.cp:	move.w	(a0)+,(a1)+
+	dbf	d0,.cp
+	add.w	#ALIEN_SIZEOF,d5
+	bra.s	.cn
+.skip:	lea	ALIEN_SIZEOF(a0),a0
+.cn:	dbf	d4,.cl
+	lea	sl_fn_tmpcon,a0
+	move.l	a3,a1
+	moveq	#0,d0
+	move.w	d5,d0
+	bsr	fil_save
+	move.l	(sp)+,d0
+	bsr	mem_release
+	moveq	#0,d0			; tslice := ship.options[OPT_TIMESLICE]
+	move.b	GS_SHIP+SHIP_OPTIONS+1(a6),d0
+	move.w	d0,GS_TSLICE(a6)
+	bsr	rebuildcargoreserve
+	movem.l	(sp)+,d3-d5/a3
+	rts				; (ResetCrew: crewtick's lastalienid, set when crewtick is ported)
+
+; saveload.pas convertevents: a save from before EVENTS.DTA existed
+sl_convertevents:
+	lea	GS_EVENTS(a6),a0
+	move.w	#1024/4-1,d0
+.e:	clr.l	(a0)+
+	dbf	d0,.e
+	lea	GS_LOGPENDING+LOGPENDING_LOG(a6),a0
+	moveq	#128-1,d0
+.p:	move.w	#-1,(a0)
+	addq.l	#4,a0
+	dbf	d0,.p
+	lea	GS_LOGS(a6),a0
+	move.w	#256-1,d0
+.l:	move.w	#-1,(a0)+
+	dbf	d0,.l
+	lea	GS_SHIP+SHIP_EVENTS(a6),a1
+	lea	GS_LOGS(a6),a2
+	moveq	#50-1,d1
+.o:	moveq	#0,d0
+	move.b	(a1)+,d0
+	cmp.w	#50,d0
+	bhi.s	.on
+	move.w	d0,(a2)+
+	move.w	d0,d2
+	lsr.w	#3,d2
+	and.w	#7,d0
+	lea	GS_EVENTS(a6),a0
+	bset	d0,0(a0,d2.w)
+.on:	dbf	d1,.o
+	move.w	#50,d1			; i = 50 .. 50+14*8
+.b:	move.w	d1,d0
+	sub.w	#50,d0
+	move.w	d0,d2
+	lsr.w	#3,d2
+	and.w	#7,d0
+	lea	GS_SHIP+SHIP_EVENTS+50(a6),a0
+	btst	d0,0(a0,d2.w)
+	beq.s	.bn
+	move.w	d1,d2
+	lsr.w	#3,d2
+	moveq	#7,d0
+	and.w	d1,d0
+	lea	GS_EVENTS(a6),a0
+	bset	d0,0(a0,d2.w)
+.bn:	addq.w	#1,d1
+	cmp.w	#50+14*8,d1
+	ble.s	.b
+	rts
+
+	section	data
+sl_fn_ship:	dc.b	"SHIP.DTA",0
+sl_fn_systems:	dc.b	"SYSTEMS.DTA",0
+sl_fn_events:	dc.b	"EVENTS.DTA",0
+sl_fn_logs:	dc.b	"LOGS.DTA",0
+sl_fn_pending:	dc.b	"PENDING.DTA",0
+sl_fn_tempdir:	dc.b	"TEMP",0
+	even
+	endif
 
 	section	data
 sl_s_save:	dc.b	9,"Save Game"
