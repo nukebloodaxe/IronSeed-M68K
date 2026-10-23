@@ -1131,44 +1131,126 @@ landsprinkle:
 	bra.s	ex_sprinkle
 summarysprinkle:
 	st	ex_sum
-ex_sprinkle:
-	movem.l	d3-d7/a3,-(sp)
-	move.w	d0,d6			; seed
-	bsr	mousehide
-	moveq	#-1,d7			; index
-	moveq	#0,d5			; j
-	lea	ex_lc,a3
-	tst.b	ex_sum
-	beq.s	.l
-	lea	ex_sumpic,a3
-.l:	addq.w	#1,d7
-	add.w	d6,d5
-	cmp.w	#28799,d5
-	ble.s	.w
-	sub.w	#28800,d5
-.w:	moveq	#0,d1
-	move.w	d5,d1
+ex_sprinkle:				; (x, y counted on, no divisions; per row and per column tables;
+	PMARK	5			; the pixels go to the shadow and the planar screen at once)
+	movem.l	d3-d7/a3-a4,-(sp)
+	moveq	#0,d1
+	move.w	d0,d1
 	divu	#240,d1
-	move.w	d1,d4			; y-13
-	swap	d1			; x-28
-	move.w	d4,d0
-	mulu	#LC_W,d0
-	add.w	d1,d0
-	move.b	0(a3,d0.l),d2
 	move.w	d1,d0
-	add.w	#28,d0
-	move.w	d4,d1
-	add.w	#13,d1
+	lsl.w	#4,d0
+	move.w	d0,ex_sq		; (seed div 240) * 16: rows of the table
+	move.w	d1,a3			; seed div 240
+	swap	d1
+	move.w	d1,d6			; seed mod 240
+	bsr	mousehide
+	lea	ex_lc,a0		; the picture: landcolors^ or summarypic^
+	tst.b	ex_sum
+	beq.s	.pic
+	lea	ex_sumpic,a0
+.pic:	move.l	a0,d0
+	lea	ex_spt,a1		; rows 13..132: planar row, shadow row + 28, the line's LUT,
+	moveq	#13,d1			; the picture's row
+.t:	move.w	d1,d2
+	mulu	#SCR_BPL,d2
+	add.l	vid_phys,d2
+	move.l	d2,(a1)+
+	move.w	d1,d2
+	mulu	#MS_W,d2
+	add.l	ms_buf,d2
+	add.l	#28,d2
+	move.l	d2,(a1)+
+	lea	vid_line_lut,a0
+	move.w	d1,d2
+	lsl.w	#2,d2
+	move.l	0(a0,d2.w),(a1)+
+	move.l	d0,(a1)+
+	add.l	#LC_W,d0
+	addq.w	#1,d1
+	cmp.w	#133,d1
+	bne.s	.t
+	lea	ex_sxt,a1		; columns 28..267: the group's byte offset, the pixel's bit
+	moveq	#28,d1
+.u:	move.w	d1,d0
+	lsr.w	#4,d0
+	lsl.w	#3,d0
+	move.w	d0,(a1)+
+	moveq	#15,d0
+	and.w	d1,d0
+	move.w	#$8000,d2
+	lsr.w	d0,d2
+	move.w	d2,(a1)+
+	addq.w	#1,d1
+	cmp.w	#268,d1
+	bne.s	.u
+	moveq	#0,d3			; j mod 240 = x - 28
+	moveq	#0,d4			; j div 240 = y - 13
+	moveq	#0,d5			; index mod 50
+	move.w	#28800-1,d7
+	lea	ex_spt,a4		; the row's entry (a4: kept across the calls)
+.l:	add.w	d6,d3			; j := j + seed; if j > 28799 then j := j - 28800
+	add.w	a3,d4
+	add.w	ex_sq,a4
+	cmp.w	#240,d3
+	blo.s	.w
+	sub.w	#240,d3
+	addq.w	#1,d4
+	lea	16(a4),a4
+.w:	cmp.w	#120,d4
+	blo.s	.w2
+	sub.w	#120,d4
+	lea	-120*16(a4),a4
+.w2:	move.l	12(a4),a0		; screen[y, x] := landcolors^[y, x] (or summarypic^)
+	moveq	#0,d2
+	move.b	0(a0,d3.w),d2
+	move.l	4(a4),a0
+	move.b	d2,0(a0,d3.w)		; the shadow
+	move.l	8(a4),a1
+	move.b	0(a1,d2.w),d2		; the slot of the line's band
+	move.w	d3,d0
+	add.w	d0,d0
+	add.w	d0,d0
+	lea	ex_sxt,a0
+	add.w	d0,a0
+	move.w	(a0)+,d0		; group offset
+	move.w	(a0),d1			; bit
+	move.l	(a4),a0
+	add.w	d0,a0
+	move.w	d1,d0
+	not.w	d0
+	lsr.b	#1,d2		; plane 0
+	bcc.s	.c0
+	or.w	d1,(a0)+
+	bra.s	.n0
+.c0:	and.w	d0,(a0)+
+.n0:
+	lsr.b	#1,d2		; plane 1
+	bcc.s	.c1
+	or.w	d1,(a0)+
+	bra.s	.n1
+.c1:	and.w	d0,(a0)+
+.n1:
+	lsr.b	#1,d2		; plane 2
+	bcc.s	.c2
+	or.w	d1,(a0)+
+	bra.s	.n2
+.c2:	and.w	d0,(a0)+
+.n2:
+	lsr.b	#1,d2		; plane 3
+	bcc.s	.c3
+	or.w	d1,(a0)+
+	bra.s	.n3
+.c3:	and.w	d0,(a0)+
+.n3:
 	tst.b	ex_sum		; (summarysprinkle's x, y are data.pas's)
 	beq.s	.ps
+	move.w	d3,d0
+	add.w	#28,d0
 	move.w	d0,GS_X(a6)
-	move.w	d1,GS_Y(a6)
-.ps:	bsr	ms_pset
-	move.w	d7,d0			; if index mod 50 = 0
-	ext.l	d0
-	divu	#50,d0
-	swap	d0
-	tst.w	d0
+	move.w	d4,d0
+	add.w	#13,d0
+	move.w	d0,GS_Y(a6)
+.ps:	tst.w	d5			; if index mod 50 = 0
 	bne.s	.n
 	tst.b	ex_sum
 	bne.s	.d
@@ -1178,10 +1260,14 @@ ex_sprinkle:
 	ext.l	d0
 	divs	#9,d0
 	bsr	delay
-.n:	cmp.w	#28799,d7
-	bne.s	.l
+.n:	addq.w	#1,d5
+	cmp.w	#50,d5
+	bne.s	.c
+	moveq	#0,d5
+.c:	dbf	d7,.l
 	bsr	mouseshow
-	movem.l	(sp)+,d3-d7/a3
+	movem.l	(sp)+,d3-d7/a3-a4
+	PMARK	6
 	rts
 
 displaylandform:
@@ -4538,6 +4624,10 @@ ex_donescan:	ds.b	1
 ex_showscan:	ds.b	1
 ex_doneano:	ds.b	1
 ex_dirty:	ds.b	1
+	even
+ex_sq:		ds.w	1
+ex_spt:		ds.l	4*120	; ex_sprinkle's rows: planar, shadow + 28, LUT, picture
+ex_sxt:		ds.w	2*240	; and columns: group offset, bit
 ex_sum:		ds.b	1
 	even
 	section	text

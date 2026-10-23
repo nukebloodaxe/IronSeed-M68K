@@ -60,6 +60,25 @@ for _ in range(N):
     add(19, a, rnd.choice([a, b, -a]))
     add(20, ext_from_double(t), ext=True); add(21, ext_from_double(t), ext=True)
     add(22, ext_from_double(rnd.uniform(-50, 50)), ext=True)
+# division edge cases: mantissas whose top words make the digit estimate too big (base-65536 divide)
+pats = [0x8000000000000000, 0xFFFFFFFFFFFFFFFF, 0x8000FFFFFFFFFFFF, 0xFFFF000000000000, 0x80007FFF80007FFF,
+        0xFFFF8000FFFF8000, 0xC000000000000001, 0x8001000000000000, 0xFFFEFFFFFFFFFFFF, 0xAAAAAAAAAAAAAAAB]
+for ma in pats:
+    for mb in pats + [rnd.getrandbits(63) | 1 << 63 for _ in range(4)]:
+        add(8, (16383 + rnd.randint(-3, 3), ma), (16383 + rnd.randint(-3, 3), mb), ext=True)
+        add(8, (16383, mb), (16383 + 1, ma), ext=True)
+for _ in range(N):                # doubles with long runs of ones/zeros
+    a = struct.unpack('<d', struct.pack('<Q', (0x3ff0000000000000 | rnd.choice([0xFFFFFFFFFFFFF, 0, 0x8000000000000, 0xFFFF0000FFFF]) ^ rnd.getrandbits(rnd.choice([1, 4, 20, 52])))))[0]
+    b = struct.unpack('<d', struct.pack('<Q', (0x3ff0000000000000 | rnd.choice([0xFFFFFFFFFFFFF, 0, 0x8000000000000, 0xFFFF0000FFFF]) ^ rnd.getrandbits(rnd.choice([1, 4, 20, 52])))))[0]
+    add(3, a, b); add(3, b * 3, a)
+# square root edge cases: perfect squares, powers of two, both exponent parities, extreme mantissas
+for k in list(range(1, 40)) + [rnd.randint(1, 1 << 26) for _ in range(40)]:
+    add(4, float(k * k)); add(4, float(k * k) * 4.0); add(4, float(k * k) / 2.0)
+for e in range(-6, 7):
+    add(4, 2.0 ** e); add(4, (2.0 ** e) * (1 + 2 ** -52)); add(4, (2.0 ** e) * (2 - 2 ** -52))
+for ma in pats:
+    for ex in range(16380, 16388):
+        add(9, (ex, ma), ext=True)
 for v in [0.125, 0.375, 1.005, 99.995, 2.5, 3.5, 12345.678, 0.0049999, -3.25, 123.45]:
     add(17, v, w=6, d=2); add(17, v, w=3, d=0); add(17, v, w=5, d=1)
 le = b''.join(struct.pack('<4H', op, w, d, 0) + al.ljust(12, b'\0') + bl.ljust(12, b'\0') for op, w, d, al, ab, bl, bb in cases)

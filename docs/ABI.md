@@ -51,6 +51,7 @@ Every routine in `kernel/` and in the screen modules follows these rules. A rout
 
 ## MAIN.PRG's screen (Phase 4)
 - The game draws into the chunky shadow (`ms_*` in game/mscr.s, original palette indices, the original's coordinates) and marks what it changed; `mouseshow`, `delay` and `ms_flush` convert the dirty spans to the planar screen. `mousehide`, `mouseshow` and `delay` are ordinary calls: they trash d0-d2/a0-a2.
+- Phase 4g: `ms_vscroll` moves rows on the planar screen exactly as the caller then moves them in the shadow (which it does not mark: a copy instead of a conversion; rows whose source is in another band get marked dirty instead), `ms_psetp` sets one pixel in both at once (cursor hidden). Both keep the shadow and the planar screen in step without the flush - use them only where the caller's shadow change is exactly what they mirror.
 - Routines that take d3/d4 as arguments (x2/y2/colour, like the kernel's gfx_bar) keep the caller's d3/d4 only if they are the callee; a helper that loads d3/d4 to call them must save them (ABI: d3-d7 preserved).
 
 ## Determinism and tests (Phase 3)

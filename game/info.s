@@ -338,10 +338,26 @@ if_displaysector:
 	move.b	GS_SHIP+SHIP_DAMAGES+DMG_CPU-1(a6),d1
 	cmp.w	d0,d1
 	bgt	.static
-	move.l	GS_STARMAPSCREEN(a6),a0	; fillchar(starmapscreen^, 12402, 0)
-	move.w	#TEMPLATETYPE2_SIZEOF/2-1,d0
+	move.l	GS_STARMAPSCREEN(a6),a0	; fillchar(starmapscreen^, 12402, 0): only displaysector writes
+	tst.b	if_smok			; it while the sector map is up, so after the first fill it holds
+	beq.s	.full			; zeros and last frame's dots - clearing those is the same fill
+	lea	if_dots,a1
+	move.w	if_ndots,d0
+	bra.s	.zf
+.zd:	move.l	(a1)+,d1
+	clr.b	0(a0,d1.l)
+.zf:	dbf	d0,.zd
+	bra.s	.zx
+.full:	move.w	#TEMPLATETYPE2_SIZEOF/2-1,d0
 .z:	clr.w	(a0)+
 	dbf	d0,.z
+	st	if_smok
+.zx:	clr.w	if_ndots
+	lea	if_nmin,a0		; this frame's dots per copied row: first and last column
+	moveq	#106-1,d0
+.zn:	move.w	#$7fff,(a0)+
+	move.w	#-1,212-2(a0)
+	dbf	d0,.zn
 	moveq	#1,d7			; j
 .st:	move.w	d7,d0
 	bsr	if_ns
@@ -378,34 +394,40 @@ if_displaysector:
 	ble.s	.col
 	moveq	#31,d1
 .col:	move.w	d1,if_i
-	move.w	d1,d2
-	move.w	GS_X(a6),d0
+	move.w	d1,d2			; starmapscreen^[y, x] := i (and the dot is noted)
 	move.w	GS_Y(a6),d1
-	bsr	dp_smpset
+	sub.w	#18,d1
+	move.w	GS_X(a6),d0
+	sub.w	#27,d0
+	cmp.w	#106,d1			; a copied row and column: the row's span
+	bhs.s	.nsp
+	cmp.w	#116,d0
+	bhs.s	.nsp
+	lea	if_nmin,a0
+	add.w	d1,a0
+	add.w	d1,a0
+	cmp.w	(a0),d0
+	bge.s	.n1
+	move.w	d0,(a0)
+.n1:	cmp.w	212(a0),d0
+	ble.s	.nsp
+	move.w	d0,212(a0)
+.nsp:	muls	#117,d1
+	ext.l	d0
+	add.l	d0,d1
+	move.l	GS_STARMAPSCREEN(a6),a0
+	move.b	d2,0(a0,d1.l)
+	lea	if_dots,a0
+	move.w	if_ndots,d0
+	addq.w	#1,if_ndots
+	lsl.w	#2,d0
+	move.l	d1,0(a0,d0.w)
 .sn:	addq.w	#1,d7
 	cmp.w	#37,d7
 	ble	.st
-	bsr	mousehide		; rows 18-123 to screen rows 43-148, x 27-142
-	move.l	GS_STARMAPSCREEN(a6),a1
-	moveq	#27,d0
-	moveq	#43,d1
-	bsr	ms_addr
-	moveq	#106-1,d1
-.r:	moveq	#116-1,d0
-	move.l	a0,a2
-	move.l	a1,-(sp)
-.c:	move.b	(a1)+,(a2)+
-	dbf	d0,.c
-	move.l	(sp)+,a1
-	lea	117(a1),a1
-	lea	MS_W(a0),a0
-	dbf	d1,.r
-	moveq	#27,d0
-	moveq	#43,d1
-	move.w	#142,d2
-	move.w	#148,d3
-	bsr	ms_dirty
-	move.w	#123,if_i
+	bsr	mousehide		; rows 18-123 to screen rows 43-148, x 27-142: the map is zeros
+	bsr	if_smcopy		; and this frame's dots, so only the columns that are not zero
+	move.w	#123,if_i		; on screen or in the map need copying (if_smcopy)
 	move.w	if_rotatemode,d0	; the target
 	beq.s	.tn
 	lea	if_tarxr,a0
@@ -460,6 +482,109 @@ if_displaysector:
 	move.w	d6,if_index
 	bsr	mouseshow
 .x:	movem.l	(sp)+,d3-d7/a3
+	rts
+
+;  starmapscreen rows 18-123 -> screen rows 43-148, x 27-142 (scrto_move of 116 bytes a row),
+; exactly, but per row only between the first and the last column that is not zero on the
+; screen (found by scanning: dots, the target circle, the cursor) or in the map (if_nmin/max);
+; only that span is marked dirty. Rows with nothing in either are left alone.
+if_smcopy:
+	movem.l	d3-d7/a3-a5,-(sp)
+	moveq	#27,d0
+	moveq	#43,d1
+	bsr	ms_addr
+	move.l	a0,a3			; the screen row (x 27: odd)
+	move.l	GS_STARMAPSCREEN(a6),a4	; the map row
+	lea	if_nmin,a5
+	moveq	#0,d7			; row
+.r:	move.w	(a5),d4			; span: the map's dots
+	move.w	212(a5),d5
+	move.l	a3,a0			; and what is not zero on the screen: column 0 (x 27), then
+	tst.b	(a0)+			; columns 1-112 by longs, then 113-115
+	beq.s	.b0
+	moveq	#0,d4
+	tst.w	d5
+	bpl.s	.b0
+	moveq	#0,d5
+.b0:	moveq	#28-1,d1
+.o:	move.l	(a0)+,d0
+	bne.s	.ol
+.on:	dbf	d1,.o
+	bra.s	.ot
+.ol:	move.w	#28-1+1,d2		; the long's first column: 1 + 4*(27-d1)
+	sub.w	d1,d2
+	lsl.w	#2,d2
+	subq.w	#3,d2
+	rol.l	#8,d0			; its bytes, first to last
+	tst.b	d0
+	bne.s	.ok
+	addq.w	#1,d2
+	rol.l	#8,d0
+	tst.b	d0
+	bne.s	.ok
+	addq.w	#1,d2
+	rol.l	#8,d0
+	tst.b	d0
+	bne.s	.ok
+	addq.w	#1,d2
+	rol.l	#8,d0
+.ok:	cmp.w	d4,d2			; (d2: the first nonzero byte of this long)
+	bge.s	.k1
+	move.w	d2,d4
+.k1:	move.l	-4(a0),d0		; and its last nonzero byte
+	move.w	#28-1+1,d2
+	sub.w	d1,d2
+	lsl.w	#2,d2			; the long's last column
+	tst.b	d0
+	bne.s	.lk
+	subq.w	#1,d2
+	lsr.l	#8,d0
+	tst.b	d0
+	bne.s	.lk
+	subq.w	#1,d2
+	lsr.l	#8,d0
+	tst.b	d0
+	bne.s	.lk
+	subq.w	#1,d2
+.lk:	cmp.w	d5,d2
+	ble.s	.on
+	move.w	d2,d5
+	bra.s	.on
+.ot:	moveq	#113,d2			; columns 113-115
+.t3:	tst.b	(a0)+
+	beq.s	.t4
+	cmp.w	d4,d2
+	bge.s	.t5
+	move.w	d2,d4
+.t5:	cmp.w	d5,d2
+	ble.s	.t4
+	move.w	d2,d5
+.t4:	addq.w	#1,d2
+	cmp.w	#116,d2
+	bne.s	.t3
+.sp:	tst.w	d5			; nothing in the row
+	bmi.s	.nx
+	move.w	d5,d6
+	sub.w	d4,d6			; bytes - 1
+	lea	0(a4,d4.w),a1
+	lea	0(a3,d4.w),a0
+.c:	move.b	(a1)+,(a0)+
+	dbf	d6,.c
+	move.w	d4,d0
+	add.w	#27,d0
+	move.w	d7,d1
+	add.w	#43,d1
+	move.w	d5,d2
+	add.w	#27,d2
+	move.w	d1,d3
+	bsr	ms_dirty
+.nx:	lea	MS_W(a3),a3
+	lea	117(a4),a4
+	addq.l	#2,a5
+	addq.w	#1,d7
+	cmp.w	#106,d7
+	bne	.r
+	movem.l	(sp)+,d3-d7/a3-a5
 	rts
 
 ; ---------------------------------------------------------------- the side views
@@ -1537,6 +1662,7 @@ if_readydata:
 	lea	if_mode,a0
 	bsr	ms_load
 	bcs	fatal
+	sf	if_smok			; (starmapscreen holds what other screens left: fill it once)
 	lea	if_nearsec,a0		; new(nearsec) (38: findhome looks at one more)
 	move.w	#38*NS_SIZE/2-1,d0
 .z:	clr.w	(a0)+
@@ -1587,6 +1713,12 @@ if_fn_sysset:	dc.b	"DATA",92,"SYSSET.DTA",0
 	even
 
 	section	bss
+if_dots:	ds.l	40		; this frame's dots in starmapscreen (offsets)
+if_nmin:	ds.w	106		; per copied row: first column with a dot
+if_nmax:	ds.w	106		; (212 bytes after if_nmin) last column
+if_ndots:	ds.w	1
+if_smok:	ds.b	1		; starmapscreen = zeros + if_dots
+	even
 if_tarxr:	ds.l	2		; (tarxr, taryr, tarzr together: rotateit treats them as a record)
 if_taryr:	ds.l	2
 if_tarzr:	ds.l	2

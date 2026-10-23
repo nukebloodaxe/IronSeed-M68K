@@ -6,6 +6,10 @@
 ; snd_cpu        out: d0.l = 200 Hz ticks spent mixing since start (for measurements)
 ; snd_mute       in: d0.b = bit mask of MOD channels to leave out of the mix (CPU budget:
 ;                each silent voice saves ~57 cycles per output sample). Replay still runs.
+; snd_budget     in: d0.w = most MOD voices to mix (0 = all, the default; SND_BUDGET at build
+;                time sets the start value): each chunk mixes the loudest ones (CH_VOL; on a tie
+;                the lower channel), the others only move on through their samples (snd_skipv),
+;                so they come back in step. A CPU budget for 6/8-channel MODs on busy screens.
 ; snd_vbl        called by the VBL handler (vid.s); saves everything it uses
 
 SND_RING	equ	4096		; bytes = 1024 stereo pairs (82 ms at 12517 Hz)
@@ -74,6 +78,11 @@ snd_cpu:
 
 snd_mute:
 	move.b	d0,snd_mutemask
+	rts
+
+snd_budget:
+	move.w	d0,snd_maxv
+	clr.b	snd_budmask		; (chosen again at the next tick)
 	rts
 
 ; snd_sfx_load  in: a0 = file name, a1 = sample entry (SMP_SIZE bytes, caller's)
@@ -201,6 +210,9 @@ snd_fill:
 	tst.w	mod_tickleft
 	bne.s	.mix
 	bsr	mod_tick
+	tst.w	snd_maxv		; the voice budget: chosen once a tick (volumes change on ticks)
+	beq.s	.loop
+	bsr	snd_pickvoices
 	bra.s	.loop
 .mix:	move.w	snd_need,d0
 	cmp.w	mod_tickleft,d0
@@ -262,7 +274,14 @@ snd_mix:
 	tst.b	CH_SIDE(a3)
 	beq.s	.l
 	moveq	#2,d6
-.l:	move.l	snd_vt,a5
+.l:	move.w	mod_ch,d0		; over the budget this chunk: only move on
+	subq.w	#1,d0
+	sub.w	snd_vcnt,d0
+	btst	d0,snd_budmask
+	beq.s	.mx
+	bsr	snd_skipv
+	bra.s	.nextv
+.mx:	move.l	snd_vt,a5
 	bsr	snd_voice
 .nextv:	lea	CH_SIZE(a3),a3
 	subq.w	#1,snd_vcnt
@@ -319,6 +338,87 @@ snd_mix:
 	rts
 
 snd_vtabs:	dc.l	snd_vt2,snd_vt3,snd_vt4,snd_vt5
+
+; snd_pickvoices: snd_budmask := the voices beyond the budget (snd_maxv): of the playing,
+; unmuted ones, the quietest go first (on a tie the higher channel). trashes d0-d6/a0-a1
+snd_pickvoices:
+	lea	snd_bkeys,a1		; key per voice: vol*16 + 15-channel ($7fff: not playing)
+	lea	mod_chans,a0
+	moveq	#0,d2			; channel
+	moveq	#0,d3			; voices that would play
+.c:	move.w	#$7fff,d0
+	tst.b	CH_ON(a0)
+	beq.s	.k
+	tst.w	CH_OUTPER(a0)
+	beq.s	.k
+	btst	d2,snd_mutemask
+	bne.s	.k
+	addq.w	#1,d3
+	move.w	CH_VOL(a0),d0
+	lsl.w	#4,d0
+	add.w	#15,d0
+	sub.w	d2,d0
+.k:	move.w	d0,(a1)+
+	lea	CH_SIZE(a0),a0
+	addq.w	#1,d2
+	cmp.w	mod_ch,d2
+	blo.s	.c
+	moveq	#0,d5			; voices left out
+	sub.w	snd_maxv,d3		; how many
+	ble.s	.done
+	subq.w	#1,d3
+.out:	lea	snd_bkeys,a1		; the smallest key left
+	move.w	#$7fff,d6
+	moveq	#0,d2
+.m:	move.w	(a1)+,d0
+	cmp.w	d6,d0
+	bhs.s	.mn
+	move.w	d0,d6
+	move.w	d2,d4
+.mn:	addq.w	#1,d2
+	cmp.w	mod_ch,d2
+	blo.s	.m
+	bset	d4,d5
+	add.w	d4,d4
+	lea	snd_bkeys,a1
+	move.w	#$7fff,0(a1,d4.w)
+	dbf	d3,.out
+.done:	move.b	d5,snd_budmask
+	rts
+
+; snd_skipv: move a voice on by snd_k samples without mixing it (the position snd_voice would
+; leave). in: a3 = channel, d4.l = step 16.16   trashes d0-d2/a4
+snd_skipv:
+	move.w	snd_k,d0
+	moveq	#0,d1
+	move.w	d4,d1
+	mulu	d0,d1			; k * frac step
+	moveq	#0,d2
+	move.w	CH_FRAC(a3),d2
+	add.l	d2,d1
+	move.w	d1,CH_FRAC(a3)
+	clr.w	d1
+	swap	d1			; the carries
+	move.l	d4,d2
+	swap	d2
+	mulu	d0,d2			; k * int step
+	add.l	d1,d2
+	add.l	CH_POS(a3),d2		; new position
+	move.l	CH_SMP(a3),a4
+	move.l	SMP_LL(a4),d0
+	beq.s	.noloop
+	move.l	SMP_LS(a4),d1
+	add.l	d0,d1			; loop end
+.wr:	cmp.l	d1,d2
+	blo.s	.st
+	sub.l	d0,d2
+	bra.s	.wr
+.noloop:
+	cmp.l	SMP_LEN(a4),d2
+	blo.s	.st
+	clr.b	CH_ON(a3)
+.st:	move.l	d2,CH_POS(a3)
+	rts
 
 ; snd_voice: mix snd_k samples of one voice into one side.
 ; in: a3 = channel (CH_*), a5 = volume table, d4.l = step 16.16, d6 = side bit (1 L, 2 R)
@@ -505,6 +605,10 @@ snd_out:
 .x:	rts
 
 	section	data
+	ifnd	SND_BUDGET
+SND_BUDGET	equ	0		; ASMDEFS=-DSND_BUDGET=4: mix at most 4 MOD voices (snd_budget)
+	endc
+snd_maxv:	dc.w	SND_BUDGET
 	include	"snd_tables.i"
 	even
 
@@ -529,6 +633,9 @@ snd_sfxlog:	ds.l	1		; snd_pairs when the first effect started (tests)
 snd_sfxstep:	ds.l	SFX_SLOTS
 snd_sfxch:	ds.b	SFX_SLOTS*CH_SIZE
 snd_mutemask:	ds.b	1
+snd_budmask:	ds.b	1		; this tick's voices beyond the budget
+	even
+snd_bkeys:	ds.w	8
 	even
 snd_accl:	ds.b	SND_CHUNK+4
 snd_accr:	ds.b	SND_CHUNK+4

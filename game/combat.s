@@ -158,8 +158,8 @@ cb_displaystats:
 	tst.b	cb_done
 	bne	.x
 	lea	cb_dskey,a0		; (speed: the same hull, battery, shields and stats as the last
-	move.w	GS_SHIP+SHIP_HULLMAX(a6),d0	; pass: nothing to redraw - part is assigned again
-	cmp.w	(a0)+,d0		; before any other use)
+	move.w	GS_SHIP+SHIP_HULLMAX(a6),d0	; pass: nothing to redraw, part as it left it)
+	cmp.w	(a0)+,d0
 	bne.s	.go
 	move.w	GS_SHIP+SHIP_HULLINTEGRITY(a6),d0
 	cmp.w	(a0)+,d0
@@ -172,7 +172,10 @@ cb_displaystats:
 	bne.s	.go
 	move.l	cb_stats,d0		; (stats[1..3] as left by that pass)
 	cmp.l	(a0),d0
-	beq	.x
+	bne.s	.go
+	move.l	cb_dspart,cb_part	; part := 102/100*shieldlevel as that pass left it (the unit's
+	move.l	cb_dspart+4,cb_part+4	; global: moveships reads it after impact's displaystats)
+	rts
 .go:	bsr	mousehide
 	FSSE				; part := 102/hullmax*hullintegrity
 	FLDI	102
@@ -206,6 +209,8 @@ cb_displaystats:
 	bsr	fp_mul
 	lea	cb_part,a0
 	bsr	fp_std
+	move.l	cb_part,cb_dspart
+	move.l	cb_part+4,cb_dspart+4
 	moveq	#3,d0
 	move.w	#301,d1
 	bsr	cb_statbar
@@ -765,13 +770,19 @@ cb_noderect:
 	move.l	d3,-(sp)
 	movem.w	d0-d1,-(sp)		; (speed: a frame already in this colour is left alone)
 	bsr	ms_addr			; rows y and y+20, x..x+19; columns x and x+20, y..y+19
-	moveq	#20-1,d2
-.ck:	cmp.b	(a0),d4
+	moveq	#0,d2			; the colour in all four bytes
+	move.b	d4,d2
+	move.w	d2,d0
+	lsl.w	#8,d0
+	or.w	d0,d2
+	move.w	d2,d0
+	swap	d2
+	move.w	d0,d2
+	bsr.s	.row20
 	bne.s	.draw
-	cmp.b	20*320(a0),d4
+	lea	20*320(a0),a0
+	bsr.s	.row20
 	bne.s	.draw
-	addq.l	#1,a0
-	dbf	d2,.ck
 	movem.w	(sp),d0-d1
 	bsr	ms_addr
 	moveq	#20-1,d2
@@ -791,6 +802,35 @@ cb_noderect:
 	add.w	#20,d3
 	bsr	ms_rect
 	move.l	(sp)+,d3
+	rts
+.row20:	move.l	a0,d0			; 20 bytes at a0 = d2 (four copies)? Z set if so
+	btst	#0,d0
+	beq.s	.r20e
+	cmp.b	(a0),d2
+	bne.s	.r20x
+	cmp.l	1(a0),d2
+	bne.s	.r20x
+	cmp.l	5(a0),d2
+	bne.s	.r20x
+	cmp.l	9(a0),d2
+	bne.s	.r20x
+	cmp.l	13(a0),d2
+	bne.s	.r20x
+	cmp.b	17(a0),d2
+	bne.s	.r20x
+	cmp.b	18(a0),d2
+	bne.s	.r20x
+	cmp.b	19(a0),d2
+.r20x:	rts
+.r20e:	cmp.l	(a0),d2
+	bne.s	.r20x
+	cmp.l	4(a0),d2
+	bne.s	.r20x
+	cmp.l	8(a0),d2
+	bne.s	.r20x
+	cmp.l	12(a0),d2
+	bne.s	.r20x
+	cmp.l	16(a0),d2
 	rts
 ; colour of the powering frame: round(p*0.31): < 16: 80+i, else 32+i
 ; d0.w poweredup -> the node's colour: i := round(p*0.31) (x87); i < 16: 80+i, else 32+i.
@@ -1686,12 +1726,19 @@ cb_classprint:
 .rc:	moveq	#4,d0
 	move.w	d4,d1
 	bsr	ms_addr
-	move.l	a3,a1
+	move.l	a3,a1			; (both rows even: by longs, then the last bytes)
 	move.w	d3,d0
+	lsr.w	#2,d0
 	subq.w	#1,d0
-.cc:	cmpm.b	(a0)+,(a1)+
+.cc:	cmpm.l	(a0)+,(a1)+
 	dbne	d0,.cc
 	bne.s	.pr
+	moveq	#3,d0
+	and.w	d3,d0
+	bra.s	.cbf
+.cb:	cmpm.b	(a0)+,(a1)+
+	bne.s	.pr
+.cbf:	dbf	d0,.cb
 	lea	110(a3),a3
 	addq.w	#1,d4
 	cmp.w	#132,d4
@@ -3750,6 +3797,8 @@ cb_base:	ds.l	3
 cb_r:		ds.l	2
 cb_rl:		ds.l	2
 cb_part:	ds.l	2
+cb_dspart:	ds.l	2		; part as displaystats left it (cb_dskey's pass)
+
 cb_powered:	ds.w	10
 cb_target:	ds.w	1
 cb_nships:	ds.w	1

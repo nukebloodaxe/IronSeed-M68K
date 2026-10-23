@@ -1,3 +1,6 @@
+	ifnd	SCR_DBGN
+SCR_DBGN	equ	256		; longs in the debug ring (ASMDEFS=-DSCR_DBGN=8192 for long traces)
+	endc
 ; scr.s - scripted input for automated tests (the ST twin of the Linux oracle's
 ; IRONSEED_INPUT). Part of kernel.s.
 ;
@@ -219,10 +222,10 @@ scr_dbg:
 	movem.l	d1/a0,-(sp)
 	move.l	scr_dbgn,d1
 	addq.l	#1,scr_dbgn
-	and.w	#255,d1
-	lsl.w	#2,d1
+	and.l	#SCR_DBGN-1,d1
+	lsl.l	#2,d1
 	lea	scr_dbgbuf,a0
-	move.l	d0,0(a0,d1.w)
+	move.l	d0,0(a0,d1.l)
 	movem.l	(sp)+,d1/a0
 	rts
 
@@ -326,7 +329,7 @@ scr_shot:
 	move.w	d0,d3
 	bmi.s	.x
 	pea	scr_dbgn
-	move.l	#4+256*4,-(sp)
+	move.l	#4+SCR_DBGN*4,-(sp)
 	move.w	d3,-(sp)
 	GEMDOS	GD_FWRITE,12
 	move.w	d3,-(sp)
@@ -357,7 +360,7 @@ scr_ext:	ds.b	1
 scr_mouse:	ds.b	1		; the script has placed the mouse (c_utils.c script_mouse)
 	even
 scr_dbgn:	ds.l	1		; (scr_dbgbuf must follow: written together)
-scr_dbgbuf:	ds.l	256
+scr_dbgbuf:	ds.l	SCR_DBGN
 scr_args:	ds.b	128		; command tail from the script (length byte, text, 0)
 scr_buf:	ds.b	SCR_MAX
 	even

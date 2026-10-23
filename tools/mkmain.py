@@ -149,6 +149,11 @@ def main_mode(src, out, font, prev=None):
         pb = (main[184:200, 0:8].astype(int) + tc - 80) & 255
         for y in range(184, 200):
             hist[y] += np.bincount(pb[y - 184], minlength=256) * 6
+    # minority colours that carry the screen (Phase 4g, by eye against Linux): the status lights'
+    # reds, the status panel's magenta text, the cube's label, the side buttons, the text box
+    for y0, y1, i0, i1, f in ((25, 101, 80, 96, 15), (20, 115, 176, 192, 4), (124, 136, 32, 64, 4),
+                              (140, 186, 128, 144, 3), (145, 195, 16, 48, 3)):
+        hist[y0:y1, i0:i1] *= f
     d = bf.fit(hist, pal)
     snap_to_reps(d, pal)
     # header-only ISP2 (the bridge is composed at run time) + main.cpr and cloud.cpr as chunky

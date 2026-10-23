@@ -136,7 +136,14 @@ vid_set_fade:
 .useb:	lea	vid_bands_b,a1
 .go:	move.l	a1,-(sp)
 	lea	vid_bands_src,a0
-	move.w	(a0)+,d1
+	cmp.w	#16,vid_fade		; full level: the colours as they are (the common case)
+	bne.s	.f
+	move.w	#(2+4*BAND_SIZE)/2-1,d1
+.cp:	move.w	(a0)+,(a1)+
+	dbf	d1,.cp
+	move.l	(sp)+,vid_cur
+	rts
+.f:	move.w	(a0)+,d1
 	move.w	d1,(a1)+
 	subq.w	#1,d1
 .band:	move.w	(a0)+,(a1)+		; first line

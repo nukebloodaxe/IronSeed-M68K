@@ -158,3 +158,17 @@ SHOWPANEL_GR macro
 	move.w	#\3,d2
 	bsr	genericrightside
 	endm
+
+; PMARK tag: with ASMDEFS=-DPROFILE=1, log (tag << 24) | tim_ms to the DBG.BIN ring (scr_dbg),
+; for timing a routine in Hatari's emulated time (tools/dbgtimes.py reads the pairs); keeps
+; every register
+PMARK	macro
+	ifd	PROFILE
+	movem.l	d0-d1,-(sp)
+	bsr	tim_ms
+	and.l	#$ffffff,d0
+	or.l	#(\1)<<24,d0
+	bsr	scr_dbg
+	movem.l	(sp)+,d0-d1
+	endif
+	endm

@@ -543,44 +543,96 @@ fpx_div:
 	subq.w	#1,d0
 .ge:	or.w	d6,d0
 	move.w	d0,-(sp)
-	moveq	#0,d3			; Q = d3:d6
-	moveq	#0,d6
-	moveq	#64,d0			; 64 quotient bits + the guard bit
-.l:	tst.l	d7
-	bne.s	.sub
-	cmp.l	d4,d1
-	bhi.s	.sub
-	blo.s	.no
-	cmp.l	d5,d2
-	blo.s	.no
-.sub:	sub.l	d5,d2
-	subx.l	d4,d1
-	moveq	#0,d7			; (R < 2D, so the top bit is gone)
-	tst.w	d0			; the guard bit (last pass): remember it
-	beq.s	.g1
-	add.l	d6,d6
-	addx.l	d3,d3
-	addq.l	#1,d6
-	bra.s	.sh
-.no:	tst.w	d0
-	beq.s	.g0
-	add.l	d6,d6
-	addx.l	d3,d3
-.sh:	add.l	d2,d2
-	addx.l	d1,d1
-	addx.l	d7,d7
-	subq.w	#1,d0
-	bra.s	.l
-.g1:	move.l	#$80000000,d0		; guard 1
-	bra.s	.st
-.g0:	moveq	#0,d0
-.st:	or.l	d1,d2			; sticky: remainder non-zero
-	beq.s	.ns
-	or.w	#1,d0
-.ns:	move.l	d3,d1
+	; R (d7:d1:d2) is in [B, 2B): the first quotient bit is 1 and R - B < B. The other 64 bits
+	; (q64 = floor((R-B)*2^64 / B)) come as four base-65536 digits (Knuth's algorithm D: divu
+	; by B's top word gives qhat >= q, at most 2 too big; the remainder says, and B is added
+	; back). Q = 2^63 + q64/2, guard = q64 bit 0, sticky = remainder <> 0 - the same bits as
+	; one quotient bit at a time, ~3x faster.
+	sub.l	d5,d2
+	subx.l	d4,d1			; r := R - B
+	clr.l	fp_q
+	clr.l	fp_q+4			; q64
+	move.w	#4-1,-(sp)
+.dig:	move.l	d4,d7
+	swap	d7			; v1 = B's top word
+	move.l	d1,d0
+	swap	d0
+	cmp.w	d7,d0
+	bhs.s	.cap			; (r's top word = v1: the quotient would not fit a word)
+	move.l	d1,d0
+	divu	d7,d0			; qhat
+	bra.s	.qh
+.cap:	move.w	#$ffff,d0
+.qh:	move.w	d0,a0
+	move.w	d5,d3			; P := qhat*B (80 bits: d6.w : d7 : d3)
+	mulu	d0,d3			; qhat*b4
+	move.l	d5,d6
+	swap	d6
+	mulu	d0,d6			; qhat*b3
+	move.l	d6,d7
+	swap	d7
+	clr.w	d7
+	clr.w	d6
+	swap	d6
+	add.l	d7,d3			; L
+	move.w	d4,d7
+	mulu	d0,d7			; qhat*b2
+	addx.l	d6,d7
+	move.l	d4,d6
+	swap	d6
+	mulu	d0,d6			; qhat*b1
+	move.l	d6,d0
+	swap	d0
+	clr.w	d0
+	add.l	d0,d7			; H
+	clr.w	d6
+	swap	d6
+	moveq	#0,d0
+	addx.w	d0,d6			; T
+	move.l	d1,d0			; r*65536 - P: d0.w : d1 : d2
+	swap	d0
+	swap	d1
+	swap	d2
+	move.w	d2,d1
+	clr.w	d2
+	sub.l	d3,d2
+	subx.l	d7,d1
+	subx.w	d6,d0
+	bpl.s	.ok
+	moveq	#0,d3
+.fix:	subq.w	#1,a0			; too big: add B back
+	add.l	d5,d2
+	addx.l	d4,d1
+	addx.w	d3,d0
+	bmi.s	.fix
+.ok:	move.l	fp_q,d3			; q64 := q64*65536 + qhat
+	move.l	fp_q+4,d6
+	swap	d3
+	swap	d6
+	move.w	d6,d3
+	move.w	a0,d6
+	move.l	d3,fp_q
+	move.l	d6,fp_q+4
+	subq.w	#1,(sp)
+	bpl	.dig
+	addq.l	#2,sp
+	move.l	d1,d0			; sticky: remainder <> 0
+	or.l	d2,d0
+	sne	d7
+	lsr.l	#1,d3			; Q = 2^63 + q64/2, C = guard
+	roxr.l	#1,d6
+	scs	d0
+	bset	#31,d3
+	move.l	d3,d1
 	move.l	d6,d2
-	move.l	d0,d6
-	move.w	(sp)+,d0
+	moveq	#0,d6
+	tst.b	d0
+	beq.s	.g0
+	move.l	#$80000000,d6
+.g0:	tst.b	d7
+	beq.s	.s0
+	or.w	#1,d6
+.s0:	move.w	(sp)+,d0
 	fpi_prec
 	bra	fpi_round
 
@@ -593,8 +645,10 @@ fp_sqrt:
 	movem.l	(sp)+,d3-d7
 	rts
 
-; sqrt(A) -> A (A >= 0).  digit by digit: 65 root bits, remainder for the sticky bit.
-; trashes d3-d7, a1-a2
+; sqrt(A) -> A (A >= 0).  digit by digit: 65 root bits, remainder for the sticky bit. All in
+; registers: r = d0:d1:d2 (the remainder), T = d3:d4:d5 = root << 2 (T|1 is the trial value of a
+; step: the low two bits of T are 0), the source bits in d6:d7 (the mantissa; even exponents
+; start with a 0 bit, so its last bit comes in after 32 steps).  trashes d3-d7, a1-a2
 fpx_sqrt:
 	tst.l	d1
 	beq.s	.zero
@@ -606,38 +660,46 @@ fpx_sqrt:
 	rts
 .go:	move.w	d0,d3			; u = e - bias
 	sub.w	#FP_BIAS,d3
-	lea	fp_sq,a1		; src s2:s1:s0, r2:r1:r0, q2:q1:q0 (memory, 9 longs)
-	clr.l	8(a1)
+	move.l	d1,d6			; source = m
+	move.l	d2,d7
+	sub.l	a2,a2			; (the bit for step 33)
 	btst	#0,d3
 	beq.s	.even
-	subq.w	#1,d3			; odd: N = m << 66: src = m
-	move.l	d1,(a1)
-	move.l	d2,4(a1)
+	subq.w	#1,d3			; odd: N = m << 66
 	bra.s	.src
-.even:	moveq	#0,d6			; even: N = m << 65: src = m >> 1 (96 bits)
-	lsr.l	#1,d1
-	roxr.l	#1,d2
-	roxr.l	#1,d6
-	move.l	d6,8(a1)
-	move.l	d1,(a1)
-	move.l	d2,4(a1)
+.even:	lsr.l	#1,d6			; even: N = m << 65: source = 0, m63..m1, then m0
+	roxr.l	#1,d7
+	bcc.s	.src
+	move.w	#1,a2
 .src:	asr.w	#1,d3
 	add.w	#FP_BIAS,d3
 	move.w	d3,-(sp)		; result exponent
-	moveq	#0,d0			; r = d0:d1:d2
+	moveq	#0,d0			; r
 	moveq	#0,d1
 	moveq	#0,d2
-	moveq	#0,d3			; q = d3:d4:d5
+	moveq	#0,d3			; T
 	moveq	#0,d4
 	moveq	#0,d5
-	moveq	#65-1,d7
-.l:	bsr	fpi_sq_step
-	dbf	d7,.l
-	; q (65 bits) in d3:d4:d5 -> mantissa q >> 1, guard q & 1; sticky: r <> 0
+	move.w	#32-1,-(sp)
+	bsr.s	.steps
+	moveq	#0,d6			; the source after its 64 bits: m0 (even) and zeros
+	moveq	#0,d7
+	move.w	a2,d6
+	ror.l	#1,d6
+	move.w	#33-1,(sp)
+	bsr.s	.steps
+	addq.l	#2,sp
+	; root (65 bits) = T >> 2 -> mantissa root >> 1, guard root & 1; sticky: r <> 0
 	moveq	#0,d6
+	lsr.l	#1,d3			; T >> 3: the mantissa
+	roxr.l	#1,d4
+	roxr.l	#1,d5
 	lsr.l	#1,d3
 	roxr.l	#1,d4
 	roxr.l	#1,d5
+	lsr.l	#1,d3
+	roxr.l	#1,d4
+	roxr.l	#1,d5			; C = the root's last bit: guard
 	bcc.s	.ng
 	move.l	#$80000000,d6
 .ng:	or.l	d1,d0
@@ -649,60 +711,44 @@ fpx_sqrt:
 	move.w	(sp)+,d0
 	fpi_prec
 	bra	fpi_round
-
-; one root digit: r = r << 2 | next 2 source bits; t = q << 2 | 1; if r >= t: r -= t, q = q<<1|1
-; else q <<= 1.  r = d0:d1:d2, q = d3:d4:d5, src at (a1) 3 longs.  trashes d6, a2
-fpi_sq_step:
-	movem.l	d7,-(sp)
-	moveq	#2-1,d7
-.sh:	move.l	8(a1),d6		; src <<= 1, the bit out goes into r
-	add.l	d6,d6
-	move.l	d6,8(a1)
-	move.l	4(a1),d6
+; (sp+4).w + 1 steps: r := r << 2 | two source bits; if r >= T|1: r -= T|1, T := 2T + 4,
+; else T := 2T
+.steps:
+.st:	add.l	d7,d7
 	addx.l	d6,d6
-	move.l	d6,4(a1)
-	move.l	(a1),d6
-	addx.l	d6,d6
-	move.l	d6,(a1)
 	addx.l	d2,d2
 	addx.l	d1,d1
 	addx.l	d0,d0
-	dbf	d7,.sh
-	movem.l	d3-d5,fp_t		; t = q << 2 | 1
-	moveq	#2-1,d7
-.t:	move.l	fp_t+8,d6
-	add.l	d6,d6
-	move.l	d6,fp_t+8
-	move.l	fp_t+4,d6
+	add.l	d7,d7
 	addx.l	d6,d6
-	move.l	d6,fp_t+4
-	move.l	fp_t,d6
-	addx.l	d6,d6
-	move.l	d6,fp_t
-	dbf	d7,.t
-	or.w	#1,fp_t+10
-	cmp.l	fp_t,d0			; r >= t ?
+	addx.l	d2,d2
+	addx.l	d1,d1
+	addx.l	d0,d0
+	cmp.l	d3,d0			; r >= T|1 ?
 	bhi.s	.ge
 	blo.s	.lt
-	cmp.l	fp_t+4,d1
+	cmp.l	d4,d1
 	bhi.s	.ge
 	blo.s	.lt
-	cmp.l	fp_t+8,d2
-	blo.s	.lt
-.ge:	sub.l	fp_t+8,d2
-	move.l	fp_t+4,d6
-	subx.l	d6,d1
-	move.l	fp_t,d6
-	subx.l	d6,d0
-	add.l	d5,d5			; q = q << 1 | 1
+	cmp.l	d5,d2			; (T's low bits are 0: r >= T|1 <=> r > T)
+	bls.s	.lt
+.ge:	bset	#0,d5
+	sub.l	d5,d2
+	subx.l	d4,d1
+	subx.l	d3,d0
+	bclr	#0,d5
+	add.l	d5,d5
 	addx.l	d4,d4
 	addx.l	d3,d3
-	addq.l	#1,d5
-	bra.s	.x
+	addq.l	#4,d5
+	subq.w	#1,4(sp)
+	bpl.s	.st
+	rts
 .lt:	add.l	d5,d5
 	addx.l	d4,d4
 	addx.l	d3,d3
-.x:	movem.l	(sp)+,d7
+	subq.w	#1,4(sp)
+	bpl.s	.st
 	rts
 
 ; ---------------------------------------------------------------- to integer, compare
@@ -1158,6 +1204,7 @@ fp_ops:		ds.l	4
 fp_prod:	ds.l	4
 fp_sq:		ds.l	3
 fp_t:		ds.l	6
+fp_q:		ds.l	2		; fpx_div's quotient digits
 fp_tx:		ds.l	3
 fp_thr:		ds.l	1
 fp_s:		ds.w	1

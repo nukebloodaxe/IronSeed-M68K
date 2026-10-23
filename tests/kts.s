@@ -17,7 +17,9 @@ NOSND	equ	0
 	ifnd	NOMOD
 NOMOD	equ	0
 	endc
+	ifnd	SECS
 SECS	equ	6
+	endc
 
 	section	text
 start:	move.l	4(sp),a0

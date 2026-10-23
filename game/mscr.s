@@ -26,6 +26,14 @@
 ; ms_fade      in: d0-d3 = x1,y1,x2,y2, d4.w alt: plainfadearea (marks)   trashes: d0-d2/a0-a2
 ; mousehide / mouseshow   the original's: hide; flush + show
 ; delay        in: d0.w ms: flush, then tim_delay (the original's delay)  trashes: d0-d2/a0-a2
+; ms_psetp     in: d0.w x, d1.w y, d2.b colour: the shadow pixel and the planar one at once,
+;              nothing marked (for pixel-by-pixel effects; the cursor must be hidden) trashes: d0-d2/a0-a1
+; ms_vscroll   in: d0.w x1, d1.w y1, d2.w x2, d3.w y2 (inclusive), d4.w dir: the same row move on
+;              the shown planar screen as the caller then makes in the shadow (dir 1: row y takes
+;              row y+1, y1 up to y2; -1: row y takes row y-1, y2 down to y1), which it does not mark.
+;              Flushes first; a row whose source line has another LUT (a band split between them)
+;              is marked dirty instead. A scroll costs a planar copy, not a conversion.
+;              trashes: d0-d2/a0-a2
 
 MS_W		equ	320
 MS_H		equ	200
@@ -364,6 +372,110 @@ mousehide:
 mouseshow:
 	bsr	ms_flush
 	bra	kbd_cursor_show
+
+ms_psetp:
+	move.w	d1,-(sp)
+	move.w	d0,-(sp)
+	mulu	#MS_W,d1
+	move.l	ms_buf,a0
+	add.l	d1,a0
+	move.b	d2,0(a0,d0.w)
+	move.w	(sp)+,d0
+	move.w	(sp)+,d1
+	move.l	gfx_target,-(sp)
+	move.l	vid_phys,gfx_target
+	bsr	gfx_pset
+	move.l	(sp)+,gfx_target
+	rts
+
+MSVMASK	macro				; one group, 4 planes: dst ^= (src ^ dst) & \1
+	REPT	4
+	move.w	(a1)+,d0
+	move.w	(a0),d2
+	eor.w	d2,d0
+	and.w	\1,d0
+	eor.w	d0,(a0)+
+	ENDR
+	endm
+
+ms_vscroll:
+	movem.l	d3-d7/a3-a4,-(sp)
+	move.w	d0,-(sp)		; 2(sp) x1 (after the next push)
+	move.w	d2,-(sp)		; 0(sp) x2
+	move.w	d1,d6			; y
+	move.w	d3,d7
+	sub.w	d1,d7			; rows - 1
+	bmi	.x
+	tst.w	d4
+	bpl.s	.up
+	move.w	d3,d6			; dir -1: from y2 down
+.up:	bsr	ms_flush
+	move.w	kbd_cur_on,-(sp)	; 0(sp) cursor, 2(sp) x2, 4(sp) x1
+	beq.s	.off
+	bsr	kbd_cursor_hide
+.off:	move.w	4(sp),d0
+	moveq	#15,d1
+	and.w	d0,d1
+	moveq	#-1,d3
+	lsr.w	d1,d3			; left mask
+	move.w	2(sp),d2
+	moveq	#15,d1
+	and.w	d2,d1
+	eor.w	#15,d1
+	moveq	#-1,d5
+	lsl.w	d1,d5			; right mask
+	lsr.w	#4,d0
+	lsr.w	#4,d2
+	sub.w	d0,d2			; groups - 1
+	bne.s	.two
+	and.w	d5,d3			; one group: both masks
+.two:	move.w	d2,a4
+	lsl.w	#3,d0
+	move.w	d0,a3			; byte offset of the first group
+.row:	lea	vid_line_lut,a0
+	move.w	d6,d0
+	lsl.w	#2,d0
+	move.w	d4,d1
+	lsl.w	#2,d1
+	add.w	d0,d1
+	move.l	0(a0,d0.w),d2
+	cmp.l	0(a0,d1.w),d2
+	beq.s	.copy
+	move.w	4(sp),d0		; another LUT: convert this row from the shadow later
+	move.w	d6,d1
+	move.w	2(sp),d2
+	move.w	d3,-(sp)
+	move.w	d6,d3
+	bsr	ms_dirty
+	move.w	(sp)+,d3
+	bra	.next
+.copy:	move.l	vid_phys,a0
+	move.w	d6,d0
+	mulu	#SCR_BPL,d0
+	add.l	d0,a0
+	add.l	a3,a0
+	move.w	d4,d0
+	muls	#SCR_BPL,d0
+	lea	0(a0,d0.l),a1
+	move.w	a4,d1
+	bne.s	.multi
+	MSVMASK	d3
+	bra.s	.next
+.multi:	MSVMASK	d3
+	subq.w	#1,d1
+	bra.s	.mf
+.mid:	move.l	(a1)+,(a0)+		; whole groups
+	move.l	(a1)+,(a0)+
+.mf:	dbf	d1,.mid
+	MSVMASK	d5
+.next:	add.w	d4,d6
+	dbf	d7,.row
+	tst.w	(sp)+
+	beq.s	.x
+	bsr	kbd_cursor_show
+.x:	addq.l	#4,sp
+	movem.l	(sp)+,d3-d7/a3-a4
+	rts
 
 delay:
 	move.w	d0,-(sp)

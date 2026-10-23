@@ -1,0 +1,52 @@
+vtime
+args /playseed 3
+# m48: the game won - the last link of a start-to-end game (weird.pas event 10002 with every
+# event the armada needs: startarmada; endgame). m47's position at system 182 (events 14, 15,
+# 21, 23, 30, 31, 45-48) with s4's own ship, hull and guns, plus the Temporal Anchor, a full
+# battery and thrust at its cap (1100: crewtick's Increase Thrust stops there). The armada (25
+# heavy cruisers with Terminex shields: a=300 at system 182) cannot be beaten by force (m47);
+# it can be outrun: keypad 7 and - (x, y and z at once: 1100 a step on each axis against the
+# cruisers' ~330), X (shields to 10: the Anchor stops the psionic hits), and every scavenger
+# beyond 1 200 000 km counts as gone (moveships). VICTORY after ~50 s, no bots, savevictories,
+# then endgame: end1-end6, the credits, intro2, exit 3.
+# setup @system=182 @orbit=0 events[1]=192 events[2]=160 events[3]=192 events[5]=224 events[6]=1 ship.damages[6]=0 ship.shield=1513 ship.battery=32000 ship.accelmax=1100
+# vbls 300000
+wait 3000
+key #27
+wait 3000
+shot B1
+key 7
+wait 300
+key -
+wait 300
+key X
+wait 3000
+shot B2
+dump B3
+wait 20000
+shot B4
+dump B5
+wait 33000
+shot B6
+dump B7
+key n
+wait 9000
+shot E1
+key #32
+wait 9000
+shot E2
+key #32
+wait 9000
+shot E3
+key #32
+wait 9000
+shot E4
+key #32
+wait 9000
+shot E5
+key #32
+wait 3000
+shot E6
+key #32
+wait 3000
+quit

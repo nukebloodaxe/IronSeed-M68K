@@ -68,9 +68,9 @@ if [ -s hatari/c/FULL.SCR ] && [ ! -e hatari/c/CRASH.TXT ] && cmp -s <(tail -c +
 else echo "FAIL intro scenes"; fail=1; fi
 # software floating point (kernel/fp.s) against Free Pascal's own arithmetic (tools/fp/fpref)
 [ -x tools/fp/fpref ] || fpc -O1 tools/fp/fpref.pas -otools/fp/fpref > /dev/null
-python3 tests/fptest.py 300 9000 > /tmp/fp.txt && echo "PASS fp ($(tail -1 /tmp/fp.txt): SSE/x87 arithmetic, rounding, str, sin/cos/arctan bit-exact with FPC)" || { echo "FAIL fp: $(tail -1 /tmp/fp.txt)"; fail=1; }
+python3 tests/fptest.py 300 14000 > /tmp/fp.txt && echo "PASS fp ($(tail -1 /tmp/fp.txt): SSE/x87 arithmetic, rounding, str, sin/cos/arctan bit-exact with FPC)" || { echo "FAIL fp: $(tail -1 /tmp/fp.txt)"; fail=1; }
 # crew generation against the Linux oracle (state dumps, screens, saved files)
 tests/check_crewgen.sh || fail=1
 # the main game against the Linux oracle (virtual-time sessions from crewgen's save)
-tests/check_main.sh || fail=1
+[ -n "$NOMAIN" ] || tests/check_main.sh || fail=1   # NOMAIN=1: stop after crewgen (split check_main over tree copies)
 exit $fail

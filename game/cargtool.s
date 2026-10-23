@@ -429,6 +429,7 @@ ct2_drawfilters:
 
 ; opendoors: the gate slides up (OPT_ANIMATION), the button row comes back
 ct2_opendoors:
+	PMARK	1
 	movem.l	d3-d4,-(sp)
 	tst.b	GS_SHIP+SHIP_OPTIONS+OPT_ANIMATION-1(a6)
 	bne.s	.anim
@@ -448,27 +449,27 @@ ct2_opendoors:
 	move.w	GS_TSLICE(a6),d0
 	lsr.w	#2,d0
 	bsr	delay
+	moveq	#90,d0			; the planar rows move too (ms_vscroll: a copy, not a conversion)
+	moveq	#20,d1
+	move.w	#233,d2
+	move.w	#130,d3
+	sub.w	d4,d3
+	move.w	d4,-(sp)
+	moveq	#1,d4
+	bsr	ms_vscroll
+	move.w	(sp)+,d4
 	moveq	#20,d3			; rows 20..130-a := the row below
 .r:	moveq	#90,d0
 	move.w	d3,d1
 	bsr	ms_addr
-	moveq	#144/4-1,d0
-.c:	move.b	MS_W(a0),(a0)+
-	move.b	MS_W(a0),(a0)+
-	move.b	MS_W(a0),(a0)+
-	move.b	MS_W(a0),(a0)+
+	moveq	#144/4-1,d0		; (x 90: even, longs)
+.c:	move.l	MS_W(a0),(a0)+
 	dbf	d0,.c
 	addq.w	#1,d3
 	move.w	#130,d0
 	sub.w	d4,d0
 	cmp.w	d0,d3
 	ble.s	.r
-	moveq	#90,d0
-	moveq	#20,d1
-	move.w	#233,d2
-	move.w	#130,d3
-	sub.w	d4,d3
-	bsr	ms_dirty
 	move.w	#131,d0			; the button row 131-a while it is in 110..126
 	sub.w	d4,d0
 	cmp.w	#127,d0
@@ -482,6 +483,7 @@ ct2_opendoors:
 .f:	FADE	38,78,40,82,-12
 	FADE	44,78,46,82,12
 	movem.l	(sp)+,d3-d4
+	PMARK	2
 	rts
 ; cargobuttons^[row d0, 92..227] -> screen
 ct2_putbuttons:
@@ -507,6 +509,7 @@ ct2_putbuttons:
 
 ; closedoors: the gate comes down again (the picture from cargo.cpr, without the list)
 ct2_closedoors:
+	PMARK	3
 	movem.l	d3-d5/a3,-(sp)
 	tst.b	GS_SHIP+SHIP_OPTIONS+OPT_ANIMATION-1(a6)
 	beq	.x
@@ -535,7 +538,18 @@ ct2_closedoors:
 .a:	move.w	GS_TSLICE(a6),d0
 	lsr.w	#2,d0
 	bsr	delay
-	moveq	#20,d3			; screen[20..20+a] := temp^[110-a+i]
+	cmp.w	#1,d4			; rows 21..20+a show what rows 20..19+a showed: move them
+	beq.s	.cs
+	moveq	#90,d0
+	moveq	#21,d1
+	move.w	#233,d2
+	moveq	#20,d3
+	add.w	d4,d3
+	move.w	d4,-(sp)
+	moveq	#-1,d4
+	bsr	ms_vscroll
+	move.w	(sp)+,d4
+.cs:	moveq	#20,d3			; screen[20..20+a] := temp^[110-a+i]
 .r:	moveq	#90,d0
 	move.w	d3,d1
 	bsr	ms_addr
@@ -544,20 +558,22 @@ ct2_closedoors:
 	add.w	d3,d0
 	mulu	#MS_W,d0
 	lea	90(a3,d0.l),a1
-	moveq	#144/2-1,d0
-.c:	move.w	(a1)+,(a0)+
+	moveq	#144/4-1,d0
+.c:	move.l	(a1)+,(a0)+
 	dbf	d0,.c
 	addq.w	#1,d3
 	move.w	#20,d0
 	add.w	d4,d0
 	cmp.w	d0,d3
 	ble.s	.r
-	moveq	#90,d0
+	moveq	#90,d0			; the new row 20 (a = 1: both rows)
 	moveq	#20,d1
 	move.w	#233,d2
-	move.w	#20,d3
-	add.w	d4,d3
-	bsr	ms_dirty
+	moveq	#20,d3
+	cmp.w	#1,d4
+	bne.s	.d1
+	moveq	#21,d3
+.d1:	bsr	ms_dirty
 	addq.w	#1,d4
 	cmp.w	#110,d4
 	ble.s	.a
@@ -567,6 +583,7 @@ ct2_closedoors:
 	FADE	38,78,40,82,12
 	FADE	44,78,46,82,-12
 .x:	movem.l	(sp)+,d3-d5/a3
+	PMARK	4
 	rts
 
 ct2_readydata:
