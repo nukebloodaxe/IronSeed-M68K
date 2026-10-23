@@ -10,6 +10,12 @@
 ;               ship.options[OPT_FONT]. txt_font_intro selects intro.pas's font, which also
 ;               draws chr(1)/chr(2) as the two halves of a (c) sign (glyphs 83/84; chr(2)
 ;               moves one pixel left, as in intro.pas printxy).
+; txt_mask    in: a0 = Pascal string: renders it once (current font) into a 1-bit mask
+;             for txt_mdraw. trashes: d0-d2/a0-a2
+; txt_mdraw   in: d0.w x1, d1.w y1, d2.w colour: the masked string at x1, y1 exactly as
+;             txt_print draws it flat (txt_set_flat 1) and transparent (bkcolor 255), but
+;             ~20x faster: for text drawn again and again (writestr2's trails).
+;             trashes: d0-d2/a0-a2
 ; Needs GS_TCOLOR, GS_BKCOLOR, GS_SHIP, SHIP_OPTIONS (layout.i).
 
 OPT_FONT	equ	7
@@ -183,9 +189,170 @@ txt_row:
 	movem.l	(sp)+,d4-d7
 	rts
 
+; ---------------------------------------------------------------
+; mask: 6 rows x TXT_MW words; bit index = pixel - (x1+4) (one spare column on the left for
+; chr(2)'s step back), MSB first in each word.
+TXT_MW		equ	82		; 255 chars x 5 + 2 bits, + 1 spare word for the shift
+txt_mask:
+	movem.l	d3-d7/a3-a5,-(sp)
+	lea	txt_mbuf,a1		; clear
+	move.w	#6*TXT_MW/2-1,d0
+.cl:	clr.l	(a1)+
+	dbf	d0,.cl
+	moveq	#0,d7
+	move.b	(a0)+,d7
+	move.w	d7,d0			; words used: (5*len + 2 + 15) / 16, + 1 for the shift
+	mulu	#5,d0
+	add.w	#2+15,d0
+	lsr.w	#4,d0
+	addq.w	#1,d0
+	move.w	d0,txt_mwords
+	tst.w	d7
+	beq	.done
+	subq.w	#1,d7
+	move.l	a0,a5
+	moveq	#1,d6			; bit position of the first glyph column
+	move.l	txt_fontptr,d0
+	beq.s	.game
+	move.l	d0,a4
+	bra.s	.char
+.game:	moveq	#0,d0
+	move.b	GS_SHIP+SHIP_OPTIONS+OPT_FONT-1(a6),d0
+	cmp.w	#2,d0
+	bls.s	.f
+	moveq	#0,d0
+.f:	mulu	#82*3,d0
+	lea	txt_font,a4
+	add.w	d0,a4
+.char:	moveq	#0,d0
+	move.b	(a5)+,d0
+	cmp.l	#txt_font_intro,a4
+	bne.s	.nc
+	cmp.b	#1,d0
+	bne.s	.c2
+	moveq	#83,d0
+	bra.s	.gl
+.c2:	cmp.b	#2,d0
+	bne.s	.nc
+	moveq	#84,d0
+	subq.w	#1,d6
+	bra.s	.gl
+.nc:	bsr	txt_letter
+.gl:	subq.w	#1,d0
+	mulu	#3,d0
+	lea	0(a4,d0.w),a3
+	move.w	d6,d1			; word offset and shift of this column
+	lsr.w	#4,d1
+	add.w	d1,d1
+	lea	txt_mbuf,a2
+	add.w	d1,a2
+	move.w	d6,d5
+	and.w	#15,d5
+	neg.w	d5
+	add.w	#27,d5			; shift = 27 - (pos & 15)
+	moveq	#0,d4			; row
+.row:	move.w	d4,d0
+	lsr.w	#1,d0
+	move.b	0(a3,d0.w),d0
+	btst	#0,d4
+	bne.s	.lo
+	lsr.b	#4,d0
+.lo:	and.l	#15,d0
+	beq.s	.nr
+	add.w	d0,d0
+	lsl.l	d5,d0
+	or.l	d0,(a2)
+.nr:	lea	2*TXT_MW(a2),a2
+	addq.w	#1,d4
+	cmp.w	#6,d4
+	bne.s	.row
+	addq.w	#5,d6
+	dbf	d7,.char
+.done:	movem.l	(sp)+,d3-d7/a3-a5
+	rts
+
+txt_mdraw:
+	movem.l	d3-d7/a3-a5,-(sp)
+	addq.w	#4,d0			; mask bit 0 = x1 + 4
+	move.w	d0,d6
+	and.w	#15,d6			; shift
+	lsr.w	#4,d0
+	move.w	d0,d7			; first group
+	move.w	d2,d5			; colour
+	and.w	#$ff,d5
+	lea	txt_mbuf,a3
+	move.w	d1,d4
+	addq.w	#1,d4			; y = y1 + 1
+	moveq	#6-1,d3
+.row:	move.w	d4,d1
+	bsr	vid_lut_y
+	move.b	0(a1,d5.w),d2		; slot
+	move.l	gfx_target,a0
+	move.w	d4,d0			; y * 160
+	lsl.w	#5,d0
+	move.w	d0,d1
+	add.w	d0,d0
+	add.w	d0,d0
+	add.w	d1,d0
+	add.w	d0,a0
+	move.w	d7,d0
+	lsl.w	#3,d0
+	add.w	d0,a0			; first group
+	move.l	a3,a2
+	move.w	txt_mwords,d1
+	subq.w	#1,d1
+	move.w	d7,a4			; group number (edge test)
+	moveq	#0,d0			; prev:cur
+.grp:	swap	d0
+	move.w	(a2)+,d0
+	move.l	d0,a5
+	lsr.l	d6,d0			; low word = this group's pixels
+	tst.w	d0
+	beq.s	.next
+	cmp.w	#20,a4
+	bhs.s	.next
+	btst	#0,d2
+	beq.s	.c0
+	or.w	d0,(a0)
+	bra.s	.p1
+.c0:	not.w	d0
+	and.w	d0,(a0)
+	not.w	d0
+.p1:	btst	#1,d2
+	beq.s	.c1
+	or.w	d0,2(a0)
+	bra.s	.p2
+.c1:	not.w	d0
+	and.w	d0,2(a0)
+	not.w	d0
+.p2:	btst	#2,d2
+	beq.s	.c2
+	or.w	d0,4(a0)
+	bra.s	.p3
+.c2:	not.w	d0
+	and.w	d0,4(a0)
+	not.w	d0
+.p3:	btst	#3,d2
+	beq.s	.c3
+	or.w	d0,6(a0)
+	bra.s	.next
+.c3:	not.w	d0
+	and.w	d0,6(a0)
+.next:	move.l	a5,d0
+	addq.l	#8,a0
+	addq.w	#1,a4
+	dbf	d1,.grp
+	lea	2*TXT_MW(a3),a3
+	addq.w	#1,d4
+	dbf	d3,.row
+	movem.l	(sp)+,d3-d7/a3-a5
+	rts
+
 	section	bss
 txt_fontptr:	ds.l	1
 txt_flat:	ds.w	1
+txt_mwords:	ds.w	1
+txt_mbuf:	ds.w	6*TXT_MW
 
 	section	data
 	include	"font.i"

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""mktitle.py DATA_DIR OUT.DAT [--png preview.png] - assets for the title screen (intro.pas mainloop).
+"""mktitle.py DATA_DIR OUT.DAT [--logo intro5_tidy.png] [--png preview.png] - assets for the title screen (intro.pas mainloop).
 
 The original scrolls cloud.cpr as one 64000-byte ring (s3[a] = cloud[a-k]) and draws every
 non-zero pixel of intro5.cpr in the linear range [7210, 7210+51453) over it, every frame.
+--logo: palettised PNG with intro5's indices to use instead (assets/intro5_tidy.png, David's
+tidied logo from Ironseed-py, made by tools/mktidy.py).
 
 STE version: the cloud's 12 colours are reduced to 4 shades in slots 1-4, the same in every
 band, so a scrolling star keeps its colour across splits; slot 0 is black. The logo gets
@@ -38,9 +40,12 @@ def kmeans1(vals, weights, k):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('data'); ap.add_argument('out'); ap.add_argument('--png')
+    ap.add_argument('data'); ap.add_argument('out'); ap.add_argument('--png'); ap.add_argument('--logo')
     a = ap.parse_args()
     _, _, logo, pal, _ = c.read_cpr(os.path.join(a.data, 'intro5.cpr'))
+    if a.logo:
+        from PIL import Image
+        logo = np.array(Image.open(a.logo)).astype(logo.dtype)
     _, _, cloud, _, _ = c.read_cpr(os.path.join(a.data, 'cloud.cpr'), pal)
     p4 = pal.astype(float) * 15 / 63
     # --- cloud: 4 shades (slots 1-4)

@@ -10,6 +10,10 @@ tools/run_hatari.sh 2600 /tmp/kt1.png --auto 'C:\KT1.PRG' > /dev/null
 grep -q ok hatari/c/KT1.TXT 2>/dev/null && echo "PASS kt1 (bands, fade, cursor, clean exit)" || { echo "FAIL kt1"; fail=1; }
 tools/run_hatari.sh 1800 /tmp/kt2.png --auto 'C:\KT2.PRG' > /dev/null
 python3 tests/check_kt2.py hatari/c/MAIN.ISP hatari/c/KT2SCR.BIN build/font.i > /tmp/kt2.txt && echo "PASS kt2 (picture, text, primitives pixel-exact)" || { echo "FAIL kt2: $(head -1 /tmp/kt2.txt)"; fail=1; }
+tools/asm.sh tests/ktmask.s hatari/c/KTMASK.PRG > /dev/null || { echo "FAIL build ktmask"; fail=1; }
+rm -f hatari/c/KTMASK.TXT
+tools/run_hatari.sh 2000 /tmp/km.png --auto 'C:\KTMASK.PRG' > /dev/null
+head -c 2 hatari/c/KTMASK.TXT 2>/dev/null | grep -q ok && echo "PASS ktmask (txt_mask/txt_mdraw pixel-exact with txt_print, 28 cases)" || { echo "FAIL ktmask"; fail=1; }
 tools/run_hatari.sh 2300 /tmp/kc.png --auto 'C:\KTCRASH.PRG' > /dev/null
 grep -q 'exception 3' hatari/c/CRASH.TXT 2>/dev/null && echo "PASS ktcrash (address error caught, machine restored)" || { echo "FAIL ktcrash"; fail=1; }
 S=${IRONSEED_SRC:-/root/ironseed_fpc}

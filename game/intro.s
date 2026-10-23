@@ -110,6 +110,9 @@ runintro:
 	bsr	fading
 	bsr	anykey
 	bne	.cont
+	bsr	nblogo			; (STE port) the M68K Ports logo, then Mars
+	bsr	anykey
+	bne	.cont
 	bsr	showmars		; #1.3
 	bsr	anykey
 	bne	.cont
@@ -140,7 +143,9 @@ runintro:
 	beq.s	.nm
 	bsr	mem_release
 	clr.l	scene_mark
-.nm:
+.nm:	clr.l	c7_data			; both lived in the released scene memory
+	clr.l	nb_data
+	clr.l	vid_vbl_hook
 .fl:	bsr	kbd_keypressed
 	tst.b	d0
 	beq.s	.fe
@@ -998,6 +1003,10 @@ writestr2:
 	sub.w	d1,d2
 	move.w	d2,(a4)+
 	dbf	d0,.jl
+	ifd	NBDBG
+	bsr	tim_ms
+	move.l	d0,ws_tconv
+	endc
 	moveq	#31,d7			; i
 .i:	moveq	#0,d6			; line 0..2 (y 90, 100, 110)
 .line:	move.w	d6,d0
@@ -1011,6 +1020,8 @@ writestr2:
 	lsl.w	#1,d0
 	lea	ws_str,a0
 	move.l	0(a0,d0.w),a5		; string
+	move.l	a5,a0			; printxy2 four times = one mask, four fast draws
+	bsr	txt_mask
 	moveq	#4-1,d3			; (-,-) (-,+) (+,-) (+,+)
 .dir:	move.w	d4,d0
 	move.w	d5,d1
@@ -1026,8 +1037,7 @@ writestr2:
 .yp:	add.w	d7,d1
 .yd:	moveq	#31,d2
 	sub.w	d7,d2
-	move.l	a5,a0
-	bsr	printxy2
+	bsr	txt_mdraw
 	dbf	d3,.dir
 	addq.w	#1,d6
 	cmp.w	#3,d6
@@ -1035,6 +1045,11 @@ writestr2:
 	moveq	#TSLICE/2,d0
 	bsr	tim_delay
 	dbf	d7,.i
+	ifd	NBDBG
+	bsr	tim_ms
+	sub.l	ws_tconv,d0
+	move.l	d0,ws_tconv
+	endc
 	bsr	dothefade
 	movem.l	(sp)+,d3-d7/a3-a5
 	rts
@@ -1089,6 +1104,222 @@ dothefade:
 .b:	move.l	(a0)+,(a1)+
 	dbf	d0,.b
 	movem.l	(sp)+,d3-d7/a3-a5
+	rts
+
+; ---------------------------------------------------------------
+; nblogo (STE port, not in intro.pas): David's spinning logo with the sub-text
+; "Nuke Bloodaxe M68K Ports" in the style of 'Destiny: Virtual' (writestr2: the line
+; converges from four directions leaving grey trails, dothefade turns it red), then wait(2)
+; and fading, as after writestr2. tools/mknblogo.py makes DATA\NBLOGO.DAT. The logo turns
+; in the VBL (nb_vbl): one frame per VBL at 60 Hz (1.2 at 50 Hz), copied straight into the
+; shown screen while the beam is still in the top border, so the main code's fades and text
+; never wait for it. If a VBL comes late (beam near the logo) that frame is skipped, not torn.
+NB_HDR		equ	ISP_DATA+64	; 'NBL1' block after the palette header
+NB_FRAMES	equ	NB_HDR+4
+NB_MS		equ	NB_HDR+6
+NB_BX		equ	NB_HDR+8
+NB_Y		equ	NB_HDR+10
+NB_H		equ	NB_HDR+12
+NB_GOLD		equ	NB_HDR+16	; 15 x 3 bytes 6-bit, palette entries 200-214
+NB_DATA		equ	NB_HDR+62
+NB_FBYTES	equ	80		; 10 groups x 8 bytes per line
+NB_TY		equ	160		; sub-text line (trails reach 129..197, all in band 1)
+nblogo:
+	movem.l	d3-d7/a3-a5,-(sp)
+	tst.l	nb_data
+	bne.s	.have
+	lea	fn_nblogo,a0
+	bsr	fil_size
+	bcs	.out
+	move.l	d0,d3
+	bsr	mem_alloc
+	bcs	.out
+	move.l	a0,nb_data
+	move.l	a0,a1
+	lea	fn_nblogo,a0
+	move.l	d3,d0
+	bsr	fil_load
+	bcs	.out
+.have:	moveq	#0,d0			; set up hidden
+	bsr	vid_set_fade
+	move.l	vid_phys,a0
+	bsr	vid_clear
+	move.l	vid_phys,a0
+	bsr	gfx_set_target
+	move.l	nb_data,a3
+	lea	ISP_DATA(a3),a0
+	bsr	vid_set_reps
+	lea	ISP_BANDS(a3),a0
+	bsr	vid_set_bands
+	lea	ISP_LUTS(a3),a0
+	bsr	vid_set_luts
+	bsr	loadmainpalette		; 0-31 for the sub-text, as writestr2
+	lea	GS_COLORS+200*3(a6),a0	; the gold starts black
+	moveq	#45-1,d0
+.z:	clr.b	(a0)+
+	dbf	d0,.z
+	lea	GS_COLORS(a6),a0
+	bsr	vid_set256
+	moveq	#16,d0
+	bsr	vid_set_fade
+	move.l	nb_data,a3		; the VBL's parameters
+	move.w	NB_Y(a3),d0
+	mulu	#SCR_BPL,d0
+	add.w	NB_BX(a3),d0
+	add.l	vid_phys,d0
+	move.l	d0,nb_dst
+	sub.l	#10*SCR_BPL,d0
+	move.l	d0,nb_dlim
+	move.w	NB_H(a3),d0
+	subq.w	#1,d0
+	move.w	d0,nb_h1
+	move.w	NB_H(a3),d0
+	mulu	#NB_FBYTES,d0
+	move.l	d0,nb_fsize
+	lea	NB_DATA(a3),a0
+	move.l	a0,nb_frames
+	move.w	#-1,nb_last
+	clr.l	nb_acc			; frame clock: 60 frames a second, one per VBL at 60 Hz,
+	move.l	#$10000,nb_step		; 1.2 per VBL at 50 Hz (the 200 Hz clock is too coarse:
+	btst	#1,VID_SYNC.w		; it gave steps of 0, 1, 2 frames)
+	beq.s	.hz
+	move.l	#$13333,nb_step
+.hz:	move.l	#nb_vbl,vid_vbl_hook
+	moveq	#1,d7			; the gold fades in: 32 steps of tslice
+.fi:	move.l	nb_data,a0
+	lea	NB_GOLD(a0),a0
+	lea	GS_COLORS+200*3(a6),a1
+	moveq	#45-1,d6
+.g:	moveq	#0,d0
+	move.b	(a0)+,d0
+	mulu	d7,d0
+	lsr.w	#5,d0
+	move.b	d0,(a1)+
+	dbf	d6,.g
+	lea	GS_COLORS(a6),a0
+	bsr	vid_set256
+	moveq	#TSLICE,d0
+	bsr	tim_delay
+	bsr	anykey
+	bne	.stop
+	addq.w	#1,d7
+	cmp.w	#32,d7
+	bls.s	.fi
+	move.w	#500,d0
+	bsr	tim_delay
+	bsr	anykey
+	bne	.stop
+	lea	s_nbports,a5		; writestr2 with one line: j = 156 - (length*5) div 2
+	moveq	#0,d0
+	move.b	(a5),d0
+	mulu	#5,d0
+	lsr.w	#1,d0
+	move.w	#156,d4
+	sub.w	d0,d4
+	ifd	NBDBG
+	bsr	tim_ms
+	move.l	d0,nb_tconv
+	endc
+	move.l	a5,a0
+	bsr	txt_mask
+	moveq	#31,d7			; i
+.i:	moveq	#4-1,d3			; (-,-) (-,+) (+,-) (+,+)
+.dir:	move.w	d4,d0
+	move.w	#NB_TY,d1
+	btst	#1,d3
+	bne.s	.xp
+	sub.w	d7,d0
+	bra.s	.xd
+.xp:	add.w	d7,d0
+.xd:	btst	#0,d3
+	bne.s	.yp
+	sub.w	d7,d1
+	bra.s	.yd
+.yp:	add.w	d7,d1
+.yd:	moveq	#31,d2
+	sub.w	d7,d2
+	bsr	txt_mdraw
+	dbf	d3,.dir
+	moveq	#TSLICE/2,d0
+	bsr	tim_delay
+	dbf	d7,.i
+	ifd	NBDBG
+	bsr	tim_ms
+	sub.l	nb_tconv,d0
+	move.l	d0,nb_tconv
+	endc
+	bsr	anykey
+	bne.s	.stop
+	bsr	dothefade		; trails out, the line turns red (the gold is not in 0-31)
+	bsr	anykey
+	bne.s	.stop
+	move.w	#2000,d0		; wait(2)
+	bsr	tim_delay
+	bsr	anykey
+	bne.s	.stop
+	bsr	fading			; everything, the gold too
+.stop:	clr.l	vid_vbl_hook
+.out:	movem.l	(sp)+,d3-d7/a3-a5
+	rts
+
+; VBL hook: advance the frame clock (60 frames a second, as the GIF), show the frame if
+; it changed. Interrupt context: d0-d7/a0-a3 free, a4-a5 saved.
+nb_vbl:
+	move.l	nb_acc,d0
+	add.l	nb_step,d0
+	cmp.l	#60<<16,d0
+	blo.s	.w
+	sub.l	#60<<16,d0
+.w:	move.l	d0,nb_acc
+	swap	d0			; frame 0..59
+	cmp.w	nb_last,d0
+	beq	.x
+	lea	VID_COUNT.w,a0		; a late VBL (the beam already in the logo): keep the
+	movep.l	0(a0),d1		; old frame rather than risk a tear, draw at the next VBL
+	lsr.l	#8,d1
+	cmp.l	nb_dlim,d1		; beam less than 10 lines above the logo: too late
+	bhs	.skip
+	move.w	d0,nb_last
+	movem.l	a4-a5,-(sp)
+	ifd	NBDBG
+	move.l	nb_late,nb_late0
+	endc
+	move.l	nb_fsize,d1
+	mulu	d0,d1			; (frame size < 64 KB)
+	move.l	nb_frames,a0
+	add.l	d1,a0
+	move.l	nb_dst,a1
+	move.w	nb_h1,d1
+.l:	movem.l	(a0)+,d0/d2-d7/a2-a4
+	movem.l	d0/d2-d7/a2-a4,(a1)
+	movem.l	(a0)+,d0/d2-d7/a2-a4
+	movem.l	d0/d2-d7/a2-a4,40(a1)
+	ifd	NBDBG			; count lines the beam had already passed when written
+	lea	VID_COUNT.w,a2
+	movep.l	0(a2),d0
+	lsr.l	#8,d0
+	cmp.l	vid_shown,d0
+	bls.s	.ok			; still in the top border
+	cmp.l	a1,d0
+	bls.s	.ok
+	addq.l	#1,nb_late
+.ok:	addq.l	#1,nb_lines
+	endc
+	lea	SCR_BPL(a1),a1
+	dbf	d1,.l
+	ifd	NBDBG
+	move.l	nb_late,d0
+	cmp.l	nb_late0,d0
+	beq.s	.nl
+	addq.l	#1,nb_lframes
+.nl:
+	endc
+	movem.l	(sp)+,a4-a5
+.x:	rts
+.skip:
+	ifd	NBDBG
+	addq.l	#1,nb_skips
+	endc
 	rts
 
 ; ---------------------------------------------------------------
@@ -2244,12 +2475,14 @@ fn_icon:	dc.b	"DATA",92,"WEAPICON.DTA",0
 fn_intro2:	dc.b	"SOUND",92,"INTRO2.MOD",0
 fn_intro1:	dc.b	"SOUND",92,"INTRO1.MOD",0
 fn_c7:		dc.b	"DATA",92,"C7.ISP",0
+fn_nblogo:	dc.b	"DATA",92,"NBLOGO.DAT",0
 fn_mars:	dc.b	"DATA",92,"MARS.DAT",0
 fn_mainpal:	dc.b	"DATA",92,"MAIN.PAL",0
 fn_mainpalisl:	dc.b	"DATA",92,"MAINPAL.ISL",0
 ws_a:		dc.b	1,"A"
 ws_b:		dc.b	16,"Destiny: Virtual"
 ws_c:		dc.b	13,"Designed Game"
+s_nbports:	dc.b	24,"Nuke Bloodaxe M68K Ports"
 s_mars:		dc.b	4,"Mars"
 s_year:		dc.b	9,"3784 A.D."
 arg_seed:	dc.b	"/SHOWSEED",0
@@ -2279,13 +2512,13 @@ credits:
 	dc.b	19,1,2,"2020 Matija Nalis"
 	even
 	dc.w	75,5
-	dc.b	39,1,2,"2026 Atari STE port (68000 assembler)"
+	dc.b	42,1,2,"Nuke Bloodaxe 2026 M68K Port (Atari STE)"
 	even
 	dc.w	85,5
 	dc.b	21,"Some rights reserved."
 	even
 	dc.w	105,5
-	dc.b	39,"IronSeed v1.30.0001 fpc 0.2.6 / STE 0.1"
+	dc.b	39,"IronSeed v1.30.0001 fpc 0.2.6 / STE 0.2"
 	even
 	dc.w	-1
 
@@ -2327,4 +2560,22 @@ c7_temppal:	ds.b	768
 cursor_icon:	ds.b	256
 cursor_rec:	ds.w	1
 c7_data:	ds.l	1
+nb_data:	ds.l	1
+nb_acc:		ds.l	1
+nb_step:	ds.l	1
+nb_dst:		ds.l	1
+nb_dlim:	ds.l	1
+nb_frames:	ds.l	1
+nb_fsize:	ds.l	1
+nb_h1:		ds.w	1
+nb_last:	ds.w	1
+	ifd	NBDBG
+nb_late:	ds.l	1
+nb_lines:	ds.l	1
+nb_skips:	ds.l	1
+nb_tconv:	ds.l	1
+ws_tconv:	ds.l	1
+nb_late0:	ds.l	1
+nb_lframes:	ds.l	1
+	endc
 	even

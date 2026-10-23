@@ -30,6 +30,10 @@
 ;                 trashes: d0-d2/a0-a2
 ; Screens: vid_scr = 3 buffers (256-byte aligned, 32000 bytes); vid_log = where to draw next;
 ; vid_phys = last flipped (or the start-up screen); programs that never flip draw into vid_phys.
+; vid_vbl_hook    (long) 0, or a routine the VBL calls every frame after the band-0 palette and
+;                 before the cursor and the mixer, i.e. while the beam is still in the top border
+;                 (~45 lines, ~23 000 cycles before line 0 at 60 Hz). Interrupt context: may
+;                 trash d0-d7/a0-a3 only, no TOS calls, keep it short (the mixer waits).
 
 BAND_SIZE	equ	2+32
 
@@ -319,6 +323,11 @@ vid_vbl_handler:
 	move.l	d1,vid_tb_target
 .nosplit:
 	addq.l	#1,vid_frames
+	move.l	vid_vbl_hook,d0		; screen module hook, runs before cursor and mixer
+	beq.s	.nohook			; (top of the frame: beam still in the border)
+	move.l	d0,a0
+	jsr	(a0)
+.nohook:
 	bsr	kbd_vbl			; mouse cursor
 	bsr	snd_vbl			; mixer refill
 	movem.l	(sp)+,d0-d7/a0-a3
@@ -386,6 +395,7 @@ vid_shown:	ds.l	1
 vid_written:	ds.l	1
 vid_pending:	ds.l	1
 vid_frames:	ds.l	1
+vid_vbl_hook:	ds.l	1
 vid_tb_ptr:	ds.l	1
 vid_tb_target:	ds.l	1
 vid_tb_left:	ds.w	1
