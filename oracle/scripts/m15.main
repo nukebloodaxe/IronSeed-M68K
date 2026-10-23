@@ -1,0 +1,75 @@
+vtime
+args /playseed 3
+# m15: hailing a D'phak ship (comm.pas continuecontact(true)): the race's background, picture,
+# animation and music, the greeting, the info panel, trading (comm2.pas trade: barter, offer
+# cargo, take it back, reject, accept), good bye, the race's log afterwards
+# setup ship.damages[6]=0 ship.wandering.alienid=1002 ship.wandering.orders=2 ship.wandering.relx=4000 ship.wandering.rely=4000 ship.wandering.relz=4000 @contact=2:1002
+# vbls 90000
+wait 3000
+key #27
+wait 2000
+key q
+wait 1500
+key d
+wait 6000
+shot H1
+key ?
+wait 2000
+shot H2
+key t
+key r
+key a
+key d
+key e
+key #13
+wait 6000
+shot H3
+key b
+wait 2000
+shot H4
+key #80
+wait 800
+key +
+wait 800
+key #80
+key +
+wait 800
+shot H5
+key -
+wait 800
+key r
+wait 1500
+shot H6
+click 50 130
+wait 1500
+key +
+key +
+key +
+key +
+key +
+key +
+wait 1500
+shot H7
+key a
+wait 2000
+shot H8
+key #27
+wait 3000
+shot H9
+key b
+key y
+key e
+key #13
+wait 4000
+shot H10
+click 312 150
+wait 6000
+shot H11
+key #27
+wait 3000
+shot H12
+key #291
+wait 1500
+key y
+wait 3000
+quit

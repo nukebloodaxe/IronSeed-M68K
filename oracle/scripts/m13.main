@@ -1,0 +1,55 @@
+vtime
+args /playseed 3
+# m13: crew comm (comm.pas conversewithcrew): a crew member by mouse, the greeting, a subject
+# typed (with backspace and the cursor keys), another by F-key, an answer that needs MORE,
+# good bye, back to the bridge
+# vbls 60000
+wait 3000
+key #27
+wait 2000
+key q
+wait 1500
+key v
+wait 3000
+shot V1
+click 40 40
+wait 4000
+shot V2
+key j
+key o
+key x
+key #8
+key b
+key #13
+wait 5000
+shot V3
+key #284
+wait 4000
+shot V4
+key s
+key y
+key n
+key t
+key h
+key #13
+wait 9000
+shot V5
+key #32
+wait 5000
+shot V6
+click 260 100
+wait 4000
+key b
+key y
+key e
+key #13
+wait 4000
+shot V7
+key #27
+wait 4000
+shot V8
+key #291
+wait 1500
+key y
+wait 3000
+quit

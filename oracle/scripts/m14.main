@@ -1,0 +1,31 @@
+vtime
+args /playseed 3
+# m14: planet comm and ship hail with nobody to talk to (comm.pas continuecontact): "Contact
+# Failure", "No response..." and the static (colours 64-127 recoloured every frame); left by
+# a key and by the exit button
+# setup ship.damages[6]=0
+# vbls 60000
+wait 3000
+key #27
+wait 2000
+key q
+wait 1500
+key e
+wait 2500
+shot N1
+wait 1500
+shot N2
+key x
+wait 4000
+shot N3
+key d
+wait 3000
+shot N4
+click 312 150
+wait 4000
+shot N5
+key #291
+wait 1500
+key y
+wait 3000
+quit

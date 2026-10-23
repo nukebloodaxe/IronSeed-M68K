@@ -305,8 +305,40 @@ wd_e10000:
 wd_e10001:
 	move.w	#ID_ART_MULTI_IMAGER,d0
 	bra	removecargo
-wd_e10002:
-	bra	notported		; the scavenger armada (combat)
+wd_e10002:				; the scavenger armada: combat until the end (or quit)
+	lea	.ev(pc),a0
+.c:	moveq	#0,d0
+	move.b	(a0)+,d0
+	beq.s	.all
+	move.l	a0,-(sp)
+	bsr	chevent
+	move.l	(sp)+,a0
+	bne.s	.c
+	cmp.b	#34,-1(a0)		; (34 or 30)
+	bne.s	.rep
+	addq.l	#1,a0
+	moveq	#30,d0
+	move.l	a0,-(sp)
+	bsr	chevent
+	move.l	(sp)+,a0
+	bne.s	.c
+	bra.s	.rep
+.all:	bsr	wd_startarmada
+	bra	notported		; endgame
+.rep:	bsr	wd_startarmada
+	tst.b	GS_QUIT(a6)
+	beq.s	.rep
+	rts
+.ev:	dc.b	45,46,31,34,47,48,21,23,0
+	even
+wd_startarmada:
+	moveq	#7,d0
+	move.w	#1007,d1
+	bsr	getspecial
+	bsr	addtofile
+	moveq	#WNDORDER_ATTACK,d0
+	bsr	createwandering
+	bra	initiatecombat
 
 ; weird.pas blast(c1 d0, c2 d1, c3 d2): 63 steps of colors towards (c1,c2,c3) (colors itself
 ; moves: each step from the last), then the palette comes back

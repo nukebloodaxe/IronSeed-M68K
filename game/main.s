@@ -75,7 +75,23 @@ init_everything:
 	moveq	#0,d0			; FPC's randseed starts at 0 (main never calls randomize first)
 	bra	mt_seed
 
-fatal:	pea	msg_fatal
+fatal:	movem.l	d0-d7/a0-a7,fatal_regs	; C:\FATAL.BIN: d0-a7, then 64 longs from the stack (the
+	move.l	sp,a0			; return addresses tell where: tools/st_fatal.py)
+	lea	fatal_regs+64,a1
+	moveq	#64-1,d0
+.c:	move.l	(a0)+,(a1)+
+	dbf	d0,.c
+	move.l	sys_basepage,a0	; (+ the text base, and 64 bytes at a0)
+	move.l	8(a0),(a1)+
+	move.l	fatal_regs+32,a0
+	moveq	#64-1,d0
+.c2:	move.b	(a0)+,(a1)+
+	dbf	d0,.c2
+	lea	fatal_fn,a0
+	lea	fatal_regs,a1
+	move.l	#64+256+4+64,d0
+	bsr	fil_save
+	pea	msg_fatal
 	GEMDOS	GD_CCONWS,6
 	moveq	#4,d0
 	bra	sys_exit
@@ -317,6 +333,11 @@ screensaver:				; weird.pas screensaver (after 750 idle frames)
 	include	"weird.s"
 	include	"comm2.s"
 	include	"comm.s"
+	include	"contact.s"
+	include	"trade.s"
+	include	"info.s"
+	include	"planets2.s"
+	include	"combat.s"
 	include	"utils2.s"
 	include	"journey.s"
 	include	"usecode.s"
@@ -345,6 +366,7 @@ fn_weapicon:	dc.b	"DATA",92,"WEAPICON.DTA",0
 fn_sphere:	dc.b	"DATA",92,"SPHERE.DAT",0
 fn_cube:	dc.b	"DATA",92,"CUBE.DAT",0
 msg_fatal:	dc.b	"MAIN: a data file is missing or damaged.",13,10,0
+fatal_fn:	dc.b	"FATAL.BIN",0
 	even
 ; memory for pointer variables: size, GS offset (or 0), own long (when the offset is 0)
 files:	dc.l	ICONARRAY_SIZEOF,GS_ICONS,0
@@ -366,5 +388,6 @@ files:	dc.l	ICONARRAY_SIZEOF,GS_ICONS,0
 	dc.l	0
 
 	section	bss
+fatal_regs:	ds.l	16+64+1+16
 weapicons:	ds.l	1
 mdefault:	ds.b	256

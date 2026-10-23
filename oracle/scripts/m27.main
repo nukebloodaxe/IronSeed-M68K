@@ -1,0 +1,68 @@
+vtime
+args /playseed 3
+# m27: the sector map (info.pas sectorinfo, once event 11 is known): the stars rotating, turned by
+# keys, another sector, the history view, targets picked in the side views and in the star map,
+# a coordinate typed, back home, rotation stopped, leaving
+# setup events[1]|=8 @knowall=1
+# vbls 120000
+wait 3000
+key #27
+wait 2000
+key g
+wait 1500
+key s
+wait 6000
+shot S1
+key #72
+wait 1500
+key #77
+wait 1500
+shot S2
+key -
+wait 3000
+shot S3
+key +
+wait 3000
+click 230 50
+wait 2500
+shot S5
+click 200 130
+wait 2500
+key x
+wait 800
+key 1
+key 2
+key 0
+wait 800
+key #13
+wait 4000
+shot S6
+click 60 100
+wait 2500
+shot S7
+click 6 180
+wait 4000
+key #32
+wait 3000
+shot S8
+click 266 182
+wait 1500
+click 240 172
+wait 1500
+click 270 182
+wait 3000
+shot S9
+key 3
+wait 4000
+shot S4
+key -
+wait 3000
+shot S11
+key #27
+wait 5000
+shot S10
+key #291
+wait 1500
+key y
+wait 3000
+quit

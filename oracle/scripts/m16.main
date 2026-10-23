@@ -1,0 +1,54 @@
+vtime
+args /playseed 3
+# m16: planet comm with a civilised world (comm.pas getlocals/contactsequence/setalienstructure:
+# a new race without a picture, conindex 30): its name and techs, the info panel by mouse and
+# key, a long answer with MORE, a subject it does not know, good bye; contacting it again finds
+# it in the contacts file
+# setup ship.damages[6]=0 planets[576].state=3 planets[576].mode=2 planets[576].age=5000
+# vbls 90000
+wait 3000
+key #27
+wait 2000
+key q
+wait 1500
+key e
+wait 9000
+shot G1
+key #13
+wait 2500
+click 255 107
+wait 2000
+shot G2
+key h
+key o
+key m
+key e
+key #13
+wait 9000
+shot G3
+key #13
+wait 4000
+key x
+key y
+key z
+key z
+key y
+key #13
+wait 4000
+shot G4
+key ?
+wait 1500
+shot G5
+key #27
+wait 4000
+shot G6
+key e
+wait 9000
+shot G7
+key #27
+wait 4000
+key #291
+wait 1500
+key y
+wait 3000
+quit

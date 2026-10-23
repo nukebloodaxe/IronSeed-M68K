@@ -60,11 +60,15 @@ ms_clean:
 	clr.w	ms_any
 	rts
 
-ms_dirty_all:
+ms_dirty_all:				; (keeps d3, as documented)
+	move.w	d3,-(sp)
 	moveq	#0,d0
 	moveq	#0,d1
 	move.w	#MS_W-1,d2
 	move.w	#MS_H-1,d3
+	bsr.s	ms_dirty
+	move.w	(sp)+,d3
+	rts
 ms_dirty:
 	move.w	d3,-(sp)
 	and.w	#$fff8,d0		; whole cells: the flush takes its fast path

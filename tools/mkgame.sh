@@ -8,6 +8,7 @@ mkdir -p "$OUT/DATA" "$OUT/SOUND"
 "$R/tools/gen_layout.sh" > /dev/null
 python3 -I "$R/tools/mkcrewgen.py" "$S/data" "$OUT/DATA" --equ "$R/build/cgdata.i" > "$R/build/mkcrewgen.log"
 python3 -I "$R/tools/mkmain.py" "$S/data" "$R/build/data" > "$R/build/mkmain.log"   # (reads the converted .DTA)
+python3 -I "$R/tools/mkcomm.py" "$S/data" "$R/build/data" > "$R/build/mkcomm.log"
 for p in is intro crewgen main; do
   python3 -I "$R/tools/fixbranches.py" "$R/game/$p.s" > /dev/null
   "$R/tools/asm.sh" "$R/game/$p.s" "$OUT/$(echo $p | tr a-z A-Z).PRG"

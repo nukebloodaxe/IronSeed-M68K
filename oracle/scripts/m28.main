@@ -1,0 +1,23 @@
+vtime
+args /playseed 3
+# m28: the sector map with a damaged computer (CPU damage 80: the noise instead of the stars)
+# and one at 40 (now and then)
+# setup events[1]|=8 ship.damages[7]=40
+# vbls 60000
+wait 3000
+key #27
+wait 2000
+key g
+wait 1500
+key s
+wait 5000
+shot D1
+wait 2000
+shot D2
+key #27
+wait 5000
+key #291
+wait 1500
+key y
+wait 3000
+quit

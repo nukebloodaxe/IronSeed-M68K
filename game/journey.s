@@ -1231,8 +1231,14 @@ mainloop:
 	bsr	makestar
 	bra.s	.anim
 .pl2:	move.w	GS_SPHERE(a6),d0
-	cmp.w	#1,d0
-	bne.s	.anim			; (sphere 2: gas giants, not ported)
+	cmp.w	#2,d0
+	bne.s	.sp1
+	cmp.w	#1,GS_GLOWINDEX(a6)	; sphere 2: a gas giant
+	bne.s	.anim
+	bsr	makegasplanet
+	bra.s	.anim
+.sp1:	cmp.w	#1,d0
+	bne.s	.anim
 	move.w	GS_GLOWINDEX(a6),d0
 	cmp.w	#1,d0
 	bne.s	.g2
@@ -1435,7 +1441,7 @@ jy_processkey:
 	subq.b	#1,d2
 	ext.w	d2
 	cmp.w	GS_CUBE(a6),d2
-	beq.s	.kx
+	beq	.kx
 	move.w	d2,d1
 	move.w	GS_CUBE(a6),d0
 	st	d2
@@ -2230,17 +2236,39 @@ adjustwanderer:
 	bpl.s	.cp
 	neg.w	d0
 .cp:	cmp.w	#500,d0
-	bge.s	.far
+	bge	.far
 	dbf	d2,.cl
 	cmp.w	#WNDACT_ATTACK,GS_ACTION(a6)
-	beq	notported		; initiatecombat
+	beq.s	.fight
 	cmp.w	#WNDORDER_ATTACK,ONEALIEN_ORDERS(a3)
-	beq	notported
+	beq.s	.fight
 	move.w	ONEALIEN_ANGER(a3),d0
 	move.w	ONEALIEN_CONGENIALITY(a3),d1
 	bsr	calc_anger
 	cmp.w	#3,d0
-	bgt	notported
+	ble.s	.far
+.fight:	lea	GS_SHIP+SHIP_DAMAGES(a6),a0	; (the drones: the damages and the hull kept)
+	lea	aw_keep,a1
+	moveq	#7-1,d0
+.k:	move.b	(a0)+,(a1)+
+	dbf	d0,.k
+	move.w	GS_SHIP+SHIP_HULLINTEGRITY(a6),aw_keep+8
+	bsr	initiatecombat
+	cmp.w	#1013,ONEALIEN_ALIENID(a3)
+	bne.s	.nd
+	lea	GS_SHIP+SHIP_DAMAGES(a6),a1
+	lea	aw_keep,a0
+	moveq	#7-1,d0
+.r:	move.b	(a0)+,(a1)+
+	dbf	d0,.r
+	move.w	aw_keep+8,GS_SHIP+SHIP_HULLINTEGRITY(a6)
+.nd:	move.b	#1,GS_SHIP+SHIP_ARMED(a6)
+	moveq	#ALRT_ALERT,d0
+	moveq	#1,d1
+	bsr	setalertmode
+	move.w	#20000,ONEALIEN_ALIENID(a3)
+	bsr	checkwandering
+	clr.w	GS_ACTION(a6)
 .far:	lea	ONEALIEN_RELX(a3),a0	; any beyond 23000: gone
 	moveq	#3-1,d2
 .fl:	move.w	(a0)+,d0
@@ -2367,6 +2395,7 @@ jy_eventsystems: dc.w	211,12,129,13,182,15,31,14,98,16,138,17,229,20,28,24,182,1
 		dc.w	182,10002,14,25,-1
 
 	section	bss
+aw_keep:	ds.w	5
 jy_cubecols:	ds.b	21*77*2		; DATA\CUBE.DAT (read at start-up)
 jy_cuberows:	ds.b	20*67*2
 jy_oldcube:	ds.w	1

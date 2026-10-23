@@ -1,0 +1,23 @@
+vtime
+args /playseed 3
+# m33: the drones' practice fight (combat.pas with alien id 1013): no guns, a weak hull; the
+# drones' hits, the shields, the damage bars, our "death" (the red flash, the drones' fight
+# ends without the death sequence), the damages and hull restored, back to the bridge
+# setup ship.damages[6]=0 ship.hullintegrity=12 ship.wandering.alienid=1013 ship.wandering.orders=0 ship.wandering.relx=520 ship.wandering.rely=520 ship.wandering.relz=520
+# vbls 150000
+wait 3000
+key #27
+wait 5000
+shot E1
+key Z
+key Z
+wait 30000
+shot E2
+wait 60000
+shot E3
+wait 60000
+shot E4
+wait 60000
+shot E5
+wait 5000
+quit

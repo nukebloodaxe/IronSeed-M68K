@@ -327,12 +327,12 @@ readyplanet:
 	tst.b	d0
 	bne.s	.n0
 	cmp.b	#1,d1
-	bgt	notported		; gas giant
-	bra	notported		; cloud
+	bgt	.gas
+	bra	.cloud
 .n0:	cmp.b	#6,d0
 	bne.s	.reg
 	cmp.b	#2,d1
-	beq	notported		; asteroid field
+	beq	.ast
 .reg:	bsr	u2_approach		; 'Approaching planet...'
 	lea	u2_s_planet,a0
 	bsr	u2_approach_text
@@ -449,7 +449,7 @@ readyplanet:
 	bsr	u2_shade
 	bsr	makesphere
 	move.w	#1,GS_SPHERE(a6)
-	bsr	checkstats
+.tail:	bsr	checkstats
 	bsr	showtime
 	bsr	mouseshow
 	bsr	fadein
@@ -461,6 +461,39 @@ readyplanet:
 	bsr	mt_randomize		; randomize
 	bsr	checkwandering
 	movem.l	(sp)+,d3-d7/a3-a5
+	rts
+.gas:	bsr	creategasplanet		; a gas giant (sphere 2)
+	bsr	.appr
+	move.w	#2,GS_SPHERE(a6)
+	bsr	u2_unapproach
+	bsr	u2_grabplanet
+	bsr	makegasplanet
+	bra	.tail
+.ast:	bsr	.clrpl			; an asteroid field (sphere 3)
+	bsr	makeastoroidfield
+	bsr	.appr
+	move.w	#3,GS_SPHERE(a6)
+	bsr	u2_unapproach
+	bsr	drawastoroid
+	bra	.tail
+.cloud:	bsr	.clrpl			; a gas cloud (sphere 3)
+	bsr	makecloud
+	bsr	.appr
+	bsr	u2_grabplanet		; (of the approach screen: zeros)
+	move.w	#3,GS_SPHERE(a6)
+	bsr	u2_unapproach
+	bsr	drawastoroid
+	bra	.tail
+.appr:	bsr	u2_approach
+	lea	u2_s_planet,a0
+	bsr	u2_approach_text
+	bra	gp_countdown
+.clrpl:	move.l	GS_PLANET(a6),a0	; fillchar(planet^, 14400, 0); backgrx := backgry := 0
+	move.w	#14400/4-1,d0
+.cp:	clr.l	(a0)+
+	dbf	d0,.cp
+	clr.w	GS_BACKGRX(a6)
+	clr.w	GS_BACKGRY(a6)
 	rts
 .ones:	move.l	#$01010101,(a0)
 	move.w	#$0101,4(a0)

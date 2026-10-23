@@ -127,6 +127,18 @@ def main_mode(src, out, font, prev=None):
     hist = bf.hist_of(stack, weights)
     for v in (63, 95):
         hist[150:190, v] += 4
+    # gas giants (bands of 32-79 or 96-143), gas clouds (32/48/64 + 0-7) and asteroid fields
+    # (weapicon.dta 80-85) in the viewscreen (planets2.s): some weight for their colours
+    wi = open(os.path.join(src, 'weapicon.dta'), 'rb').read()
+    rocks = np.bincount(np.frombuffer(wi[80 * 400:86 * 400], np.uint8), minlength=256).astype(float)
+    rocks[0] = 0
+    gas = np.zeros(256)
+    gas[32:80] = 1.0; gas[96:144] = 1.0
+    cloudh = np.zeros(256)
+    for hi_ in (32, 48, 64):
+        cloudh[hi_:hi_ + 8] = 1.0
+    for y in range(13, 133):
+        hist[y] += gas * 6 + cloudh * 4 + rocks / rocks.sum() * 60
     for tc in (48, 80, 112):                       # the status lights and the panic button matter
         lit = mm.bridge_base(main, cloud, 0, 0)
         for y0 in (29, 49, 69, 89):
@@ -479,6 +491,168 @@ def tech1_mode(src, out, font, prev=None):
     return d
 
 
+def sector_mode(src, out, font, prev=None):
+    """SECTOR: the sector map (info.pas sectorinfo): sector.cpr; training = the rotating star map
+    (dots 127/95/31, the target circle 44), the damaged computer's noise (0-15), the side views
+    (5 with a grid in 3, the dots, the xor cross-hairs 47), the history view (graybutton, text 211
+    on 5, the bars 83-89), the coordinates and names in 31, the edit cursor 88, the cursor fades"""
+    w, h, base, pal, _ = c.read_cpr(os.path.join(src, 'sector.cpr'))
+    rng = np.random.RandomState(23)
+    stack, weights = [], []
+    for k in range(12):
+        im = base.copy()
+        im[43:149, 27:143] = 0
+        if k == 11:
+            im[43:150, 27:143] = rng.randint(16, size=(107, 116))
+        else:
+            for _ in range(30):
+                im[rng.randint(45, 147), rng.randint(30, 140)] = [127, 95, 31][rng.randint(3)]
+            mm_circle(im, rng.randint(50, 120), rng.randint(60, 130), 4, 44)
+        if k % 2 == 0:                               # side views
+            for (y0, y1) in ((20, 89), (91, 159)):
+                im[y0:y1, 160:301] = 5
+                for j in range(1, 7):
+                    im[y0:y1, j * 20 + 160] = 3
+                for i in range(1, 7):
+                    im[y0 - 1 + i * 10, 160:301] = 3
+                for _ in range(25):
+                    im[rng.randint(y0, y1), rng.randint(160, 301)] = [127, 95, 31][rng.randint(3)]
+                xx = rng.randint(160, 301); yy = rng.randint(y0, y1)
+                im[y0:y1, xx] ^= 47
+                im[yy, 160:301] ^= 47
+            cm.printxy(im, 170, 12, 'X-Y  Side View', 31, 0, font)
+            cm.printxy(im, 170, 160, 'X-Z  Top View', 31, 0, font)
+        else:                                        # history view
+            cm.graybutton(im, 159, 34, 301, 149)
+            im[12:34, 159:302] = 0
+            im[150:167, 159:302] = 0
+            cm.printxy(im, 180, 37, 'EPSILON SECTOR', 211, 5, font)
+            for y, t in ((49, 'Stars'), (55, 'Planets'), (64, 'Stars Explored'), (90, 'Planets Explored'), (117, 'Scans Completed')):
+                cm.printxy(im, 185, y, t, 211, 5, font)
+            for y0 in (75, 101, 128):
+                a_ = rng.randint(0, 101)
+                for i in range(10):
+                    im[y0 + i, 180:180 + a_] = 83 + i if i <= 2 else 89 - i
+        for j, y in enumerate((172, 180, 188)):
+            cm.printxy(im, 42, y, '%3d' % rng.randint(0, 250), 31, 88 if k % 3 == j else 0, font)
+        cm.printxy(im, 50, 24, 'PROCYON', 31, 0, font)
+        stack.append(im); weights.append(1.0)
+    hist = bf.hist_of(stack, weights)
+    d = bf.fit(hist, pal)
+    snap_to_reps(d, pal)
+    save_mode(out, 'SECTOR', d, base, pal)
+    if prev:
+        preview(prev, d, stack[0])
+        preview(prev.replace('.png', '2.png'), d, stack[1])
+    print('SECTOR: splits', d.splits, 'err %.0f' % d.err)
+    return d
+
+def fight_mode(src, out, font, prev=None):
+    """FIGHT: combat (combat.pas): fight.cpr with cloud.cpr in the map's empty pixels; training =
+    the ship marks (xor 6/85/31/12/60), the stats tower pieces, the shield markers, the gun nodes
+    (weapon icons, frames 80-95/48-63/47/63, the faded power switches), the damage and target bars
+    (0-31), the target text (95) or picture (waricon.cpr ships and the message blocks), the lights,
+    the direction pads, the victory screen and the yes/no box. The radar ellipse's colour chase
+    (indices 32-47, setrgb256 per frame) has own slots on the map rows."""
+    w, h, base, pal, _ = c.read_cpr(os.path.join(src, 'fight.cpr'))
+    cloud = c.read_cpr(os.path.join(src, 'cloud.cpr'))[2]
+    war = c.read_cpr(os.path.join(src, 'waricon.cpr'))[2]
+    icons = open(os.path.join(src, 'weapicon.dta'), 'rb').read()
+    nic = len(icons) // 400
+    scr = base.copy()
+    statpic = scr[10:12, 71:81].copy(); shp = scr[10:17, 91:95].copy(); shp2 = scr[10:17, 101:105].copy()
+    msgs = [scr[10:20, 110 + j * 10:120 + j * 10].copy() for j in range(4)]
+    scr[9:21, 71:248] = 0
+    m = scr[9:118, 6:261]
+    m[m == 0] = cloud[9:118, 6:261][m == 0]
+    rng = np.random.RandomState(29)
+    stack, weights = [], []
+    for k in range(16):
+        im = scr.copy()
+        for y0 in (125, 187):
+            im[y0:y0 + 2, 163:215] = [63, 95][rng.randint(2)]
+        cm.printxy(im, 277, 2, '%3d' % rng.randint(1, 30), 63, 0, font)
+        cm.printxy(im, 33, 110, '%7d' % (rng.randint(1, 120) * 50000), 95, 0, font)
+        cm.printxy(im, 3, 10, 'Scavengers', 95, 0, font)
+        if k % 5 == 4:                              # victory
+            im[9:118, 6:260] = 0; im[125:190, 6:99] = 0
+            cm.printxy(im, 18, 8, 'VICTORY!', 95, 0, font)
+            cm.printxy(im, 18, 18, 'SCAVENGER BOTS DEPLOYED...', 22, 0, font)
+            for j in range(rng.randint(1, 8)):
+                cm.printxy(im, 24, 28 + j * 6, 'Unknown Component', 28, 0, font)
+            cm.button(im, 74, 60, 245, 102, 0)
+            for x0 in (110, 169):
+                cm.button(im, x0, 78, x0 + 40, 92, 2)
+            cm.printxy(im, 100, 65, 'DEPLOY SCAVENGER BOTS?', 26, 35, font)
+            stack.append(im); weights.append(1.0)
+            continue
+        for _ in range(rng.randint(3, 12)):          # ship marks
+            x = 132 + rng.randint(-118, 119); y = 62 + rng.randint(-25, 26); z = rng.randint(-34, 35)
+            if not (2 <= y - z <= 115): continue
+            for i in range(min(y, y - z), max(y, y - z) + 1): im[i, x] ^= 6
+            im[y, x] ^= 85; im[y - z, x] ^= [31, 12][rng.randint(2)]
+            if rng.randint(3) == 0:
+                for dx, dy in ((-2, -2), (-1, -2), (-2, -1), (1, 2), (2, 2), (2, 1)):
+                    im[y - z + dy, x + dx] ^= 60
+        for x0 in (269, 285, 301):                   # the stats tower
+            y = 117 - rng.randint(0, 103)
+            im[y:y + 2, x0:x0 + 10] = statpic
+        y = 114 - rng.randint(0, 103); im[y:y + 7, 312:316] = shp
+        y = 114 - rng.randint(0, 103); im[y:y + 7, 296:300] = shp2
+        for a in range(1, 8):                        # damage bars
+            b = max(1, rng.randint(0, 50)); part = 31 / b
+            for j in range(b + 1):
+                im[a * 9 + 127:a * 9 + 129, 267 + j] = round(j * part)
+            im[a * 9 + 127:a * 9 + 129, 268 + b:317] = 0
+        for j in range(10):                          # gun nodes
+            x = (j % 5) * 23 + 105; y = (j // 5) * 31 + 131
+            n = rng.randint(0, nic + 1)
+            if n == 0:
+                im[y:y + 20, x:x + 20] = 3
+            else:
+                im[y:y + 20, x:x + 20] = np.frombuffer(icons[(n - 1) * 400:n * 400], np.uint8).reshape(20, 20)
+                i = round(rng.randint(-1, 101) * 0.31)
+                col = [80 + i if i < 16 else 32 + i, 47, 63][rng.randint(3)]
+                im[y, x:x + 20] = col; im[y + 20, x + 1:x + 21] = col
+                im[y:y + 20, x + 20] = col; im[y + 1:y + 21, x] = col
+            if rng.randint(4) == 0:
+                fx = 109 + (j % 5) * 23; fy = 152 + (j // 5) * 7
+                im[fy:fy + 3, fx:fx + 13] = (im[fy:fy + 3, fx:fx + 13].astype(int) + 32) & 255
+        d = rng.randint(1, 10); x = ((d - 1) % 3) * 12 + 225; y = ((d - 1) // 3) * 10 + 88
+        im[y, x:x + 12] = 63; im[y + 10, x + 1:x + 13] = 63; im[y:y + 10, x + 12] = 63; im[y + 1:y + 11, x] = 63
+        im[125:190, 6:99] = 0
+        if k % 2 == 0:                               # target bars and text
+            cm.printxy(im, 4, 126, 'Hv. Destroyer  C', 95, 0, font)
+            for x0, wd in ((8, 8), (23, 8), (38, 9), (54, 8)) + tuple((62 + 5 * j, 1) for j in range(1, 8)):
+                b = max(1, rng.randint(0, 50)); part = 31 / b
+                for i in range(b + 1):
+                    im[i + 138, x0:x0 + wd] = round(i * part)
+        else:                                        # the target's picture
+            cm.printxy(im, 4, 125, 'Scavengers', 95, 0, font)
+            cm.printxy(im, 4, 131, 'Battleship     A', 95, 0, font)
+            cm.printxy(im, 4, 137, 'Range: %8.1f KM' % (rng.randint(0, 99999) / 10), 95, 0, font)
+            cm.printxy(im, 4, 143, 'Tech Level: 3.2', 95, 0, font)
+            cm.printxy(im, 4, 149, 'Accel: 120', 95, 0, font)
+            pi = rng.randint(0, 10); pj = rng.randint(0, 11)
+            px = pj * 20 if pj < 7 else 140 + (pj - 7) * 40; wd = 40 if px > 139 else 20
+            py = pi * 20; hh = 20 if py >= 179 else 21
+            im[161:161 + hh, 14:14 + wd] = war[py:py + hh, px:px + wd]
+            for x0, o in ((60, 0), (70, 0), (80, 2)):
+                for j in range(2):
+                    im[162 + j * 10:172 + j * 10, x0:x0 + 10] = msgs[o + rng.randint(2)]
+        stack.append(im); weights.append(1.0)
+    hist = bf.hist_of(stack, weights)
+    d = bf.fit(hist, pal, own=[(36, 118, list(range(32, 48)), 6)])
+    snap_to_reps(d, pal)
+    save_mode(out, 'FIGHT', d, base, pal)
+    open(os.path.join(out, 'WARICON.CHK'), 'wb').write(war.astype(np.uint8).tobytes())
+    if prev:
+        preview(prev, d, stack[0])
+        preview(prev.replace('.png', '2.png'), d, stack[1])
+    print('FIGHT: splits', d.splits, 'err %.0f' % d.err)
+    return d
+
+
 def mm_circle(img, x, y, r, col):
     """c_utils.c circle (aspect 0.9)"""
     E = 0.9
@@ -572,6 +746,8 @@ def main():
     psyche_mode(src, out, font, prev and os.path.join(prev, 'psyche_preview.png'))
     cargo_mode(src, out, font, prev and os.path.join(prev, 'cargo_preview.png'))
     tech1_mode(src, out, font, prev and os.path.join(prev, 'tech1_preview.png'))
+    sector_mode(src, out, font, prev and os.path.join(prev, 'sector_preview.png'))
+    fight_mode(src, out, font, prev and os.path.join(prev, 'fight_preview.png'))
     portraits(src, out)
     sphere_dat(out)
     cube_dat(out)

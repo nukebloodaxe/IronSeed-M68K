@@ -1,0 +1,24 @@
+vtime
+args /playseed 3
+# m31: the game starts in orbit of a gas cloud (utils2.pas makecloud: cos-shaped puffs; drawastoroid); planet comm, the cloud put back afterwards
+# setup ship.damages[6]=0 planets[576].state=0 planets[576].mode=1
+# vbls 90000
+wait 3000
+shot P1
+key #27
+wait 4000
+shot P2
+key q
+wait 1500
+key e
+wait 4000
+key #27
+wait 5000
+shot P3
+wait 3000
+shot P4
+key #291
+wait 1500
+key y
+wait 3000
+quit

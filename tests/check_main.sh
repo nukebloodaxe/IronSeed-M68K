@@ -4,14 +4,20 @@
 # game crewgen's s4 session saved in slot 3 (tests/check_crewgen.sh leaves the Linux save in
 # build/oracle_s4/home and the ST one in hatari/c/SAVE3; they are identical after st2dos).
 # Every state dump field by field, every screenshot pixel for pixel through the ST's LUTs.
+# "# setup EDITS" in a script: the session starts from the s4 save changed by tools/mksave.py
+# (both sides; the ST's SAVE3 is made again from the s4 save afterwards).
 R=$(cd "$(dirname "$0")/.." && pwd); cd "$R"
 fail=0
 [ -d build/oracle_s4/home/.ironseed/save3 ] && [ -f hatari/c/SAVE3/SHIP.DTA ] || { echo "FAIL main: no s4 save (run check_crewgen.sh first)"; exit 1; }
-MODES="$(for m in LOG MAIN LAND CHAR2 PSYCHE CARGO TECH1; do printf "hatari/c/DATA/%s.ISP " $m; done)"
+MODES="$(for m in LOG MAIN LAND CHAR2 PSYCHE CARGO TECH1 CCOM COMNR COMA1 COMA2 COMA3 COMA4 COMA5 COMA6 COMA7 COMA8 COMA9 COMA10 COMA11 COMG30 COMG31 COMG32 COMG33 SECTOR FIGHT; do printf "hatari/c/DATA/%s.ISP " $m; done)"
 cp hatari/c/SAVEGAME.DIR /tmp/main_sgdir.bak   # sessions that save get their slots compared, then undone
-for S in ${@:-m1 m2 m3 m4 m5 m6 m7 m8 m9 m10 m11 m12}; do
-  O=build/oracle_$S
-  tools/oracle_main.sh oracle/scripts/$S.main $O build/oracle_s4/home 3 > /dev/null
+for S in ${@:-m1 m2 m3 m4 m5 m6 m7 m8 m9 m10 m11 m12 m13 m14 m15 m16 m17 m18 m19 m20 m21 m22 m23 m24 m25 m26 m27 m28 m29 m30 m31 m32 m33}; do
+  O=build/oracle_$S; H=build/oracle_s4/home
+  SETUP=$(sed -n 's/^# *setup //p' oracle/scripts/$S.main)   # a test position made from the s4 save
+  if [ -n "$SETUP" ]; then
+    H=build/setup_$S; python3 tools/mksave.py build/layout.json build/oracle_s4/home 3 $H 3 hatari/c $SETUP > /dev/null || exit 1
+  fi
+  tools/oracle_main.sh oracle/scripts/$S.main $O $H 3 > /dev/null
   python3 tools/st_script.py oracle/scripts/$S.main hatari/c/INPUT.MN
   rm -rf hatari/c/*.SCR hatari/c/D0*.BIN hatari/c/CRASH.TXT hatari/c/TEMP
   V=$(awk '/^# *vbls /{print $3}' oracle/scripts/$S.main); tools/run_hatari.sh ${V:-30000} /tmp/main_$S.png --auto 'C:\MAIN.PRG' > /dev/null
@@ -34,6 +40,7 @@ for S in ${@:-m1 m2 m3 m4 m5 m6 m7 m8 m9 m10 m11 m12}; do
     rm -rf hatari/c/SAVE$N
   done
   cp /tmp/main_sgdir.bak hatari/c/SAVEGAME.DIR
+  [ -n "$SETUP" ] && python3 tools/mksave.py build/layout.json build/oracle_s4/home 3 build/setup_none 3 hatari/c > /dev/null
   SHOTS=$(awk '/^shot /{n[++k]=$2} /^# *mask /{sub(/^# *mask /,""); split($0,a,":"); m[a[1]]=$0}
     END{for(i=1;i<=k;i++) printf "%s ", (n[i] in m) ? m[n[i]] : n[i]}' oracle/scripts/$S.main)
   python3 tests/check_shots.py $O hatari/c "$MODES" $SHOTS > /tmp/main_$S.txt \

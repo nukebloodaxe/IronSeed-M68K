@@ -525,13 +525,15 @@ us_command:
 	move.w	.tab(pc,d0.w),d0
 	jmp	.tab(pc,d0.w)
 .tab:	dc.w	.c0-.tab,.c12-.tab,.c12-.tab,.c0-.tab,.c45-.tab,.c45-.tab,.c6-.tab,.x-.tab	; 0-7
-	dc.w	.np-.tab,.c9-.tab,.c10-.tab,.c11-.tab,.c12s-.tab,.c13-.tab,.c14-.tab,.c15-.tab ; 8-15
+	dc.w	.c8-.tab,.c9-.tab,.c10-.tab,.c11-.tab,.c12s-.tab,.c13-.tab,.c14-.tab,.c15-.tab ; 8-15
 	dc.w	.x-.tab,.c17-.tab,.c18-.tab,.cex-.tab,.cex-.tab,.c21-.tab,.cex-.tab,.cex-.tab ; 16-23
 	dc.w	.c24-.tab,.x-.tab,.c26-.tab,.c27-.tab,.c27-.tab,.c29-.tab,.c30-.tab,.c31-.tab ; 24-31
 	dc.w	.c32-.tab,.c33-.tab,.x-.tab,.c32-.tab,.c36-.tab,.c37-.tab,.c38-.tab,.c39-.tab ; 32-39
 	dc.w	.c40-.tab,.c40-.tab,.c42-.tab,.x-.tab,.c44-.tab,.c45o-.tab,.c46-.tab,.c47-.tab ; 40-47
 	dc.w	.c48-.tab,.np-.tab,.c47-.tab,.c51-.tab,.x-.tab,.c53-.tab			; 48-53
-.np:	bra	notported		; converse, load
+.np:	bra	notported		; load
+.c8:	bsr	conversewithcrew
+	bra	.x
 .c14:	bsr	creation
 	bra	.x
 .c17:	bsr	inventory
@@ -540,11 +542,15 @@ us_command:
 	bra	.x
 .c6:	bsr	crewstats
 	bra	.x
-.c12:	cmp.b	#39,GS_SHIP+SHIP_DAMAGES+DMG_COMM-1(a6)	; 1,2 / 4,5: continuecontact
-	bls	notported
-	bsr	contactfailure
+.c12:	sf	d0			; 1,2: continuecontact(false)
+.cc:	cmp.b	#39,GS_SHIP+SHIP_DAMAGES+DMG_COMM-1(a6)
+	bhi.s	.cf
+	bsr	continuecontact
 	bra	.x
-.c45:	bra.s	.c12
+.cf:	bsr	contactfailure
+	bra	.x
+.c45:	st	d0			; 4,5: continuecontact(true)
+	bra.s	.cc
 .c9:	cmp.w	#5,GS_VIEWMODE(a6)
 	beq	.x
 	sf	d0
@@ -731,7 +737,10 @@ us_command:
 .c39:	moveq	#11,d0
 	bsr	chevent
 	tst.w	d0
-	bne	notported		; sectorinfo
+	beq.s	.c39n
+	bsr	sectorinfo
+	bra	.x
+.c39n:
 	PRTLN
 	TCOL	94
 	PRT	"NAVIGATION: Sir, we know nothing about this part of the galaxy."

@@ -1,0 +1,69 @@
+vtime
+args /playseed 3
+# m18: hailing a ship of the Aard (race 3): its background, picture and animation, the
+# greeting, the info panel, KENDAR, REPAIR; the race's log on the way back
+# setup ship.damages[6]=0 ship.wandering.alienid=1003 ship.wandering.orders=2 ship.wandering.relx=4000 ship.wandering.rely=4000 ship.wandering.relz=4000 @contact=3:1003
+# vbls 120000
+wait 3000
+key #27
+wait 2000
+key q
+wait 1500
+key d
+wait 8000
+shot R1
+key ?
+wait 3000
+shot R2
+key k
+key e
+key n
+key d
+key a
+key r
+key #13
+wait 9000
+shot R3
+key #32
+wait 5000
+key #32
+wait 5000
+key #32
+wait 5000
+shot R4
+key #8
+key #8
+key #8
+key #8
+key r
+key e
+key p
+key a
+key i
+key r
+key #13
+wait 9000
+shot R5
+key #32
+wait 5000
+key #32
+wait 5000
+key #32
+wait 5000
+shot R6
+key #8
+key #8
+key #8
+key #8
+wait 4000
+shot R7
+key #27
+wait 6000
+shot R8
+key #27
+wait 4000
+key #291
+wait 1500
+key y
+wait 3000
+quit

@@ -23,5 +23,6 @@
  "weapicon.dta": "data:weaponicontype",
  "weapon.dta": "data:weaponarray",
  "icons.vga": "data:iconarray",
- "main.pal": "utils_:paltype"
+ "main.pal": "utils_:paltype",
+ "planname.txt": "raw"
 }

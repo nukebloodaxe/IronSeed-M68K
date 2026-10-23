@@ -4036,10 +4036,121 @@ ex_mainloop:
 addtime2:
 	cmp.w	#16000,GS_SHIP+SHIP_WANDERING+ONEALIEN_ALIENID(a6)
 	bge.s	.t
-	bsr	movewandering
+	bsr	ut_movewandering
 .t:	st	d0
 	moveq	#1,d1
 	bra	gametick
+
+; utils.pas movewandering / adjustwanderer (the screens' own copies, used by addtime2: no
+; drifting for WNDORDER_NONE; a ship that comes close ends the screen (done) instead of combat)
+ut_movewandering:
+	move.w	GS_ACTION(a6),d0
+	cmp.w	#WNDACT_RETREAT,d0
+	beq.s	.r
+	cmp.w	#WNDACT_ATTACK,d0
+	bne.s	.o
+	bsr.s	.ofs
+	bsr	ut_adjustwanderer
+	bra.s	.o
+.r:	bsr.s	.ofs
+	neg.w	d0
+	bsr	ut_adjustwanderer
+.o:	move.w	GS_SHIP+SHIP_WANDERING+ONEALIEN_ORDERS(a6),d0
+	cmp.w	#WNDORDER_ATTACK,d0
+	bne.s	.o2
+	cmp.w	#WNDACT_MASKING,GS_ACTION(a6)
+	bne.s	.a30
+	moveq	#12,d0			; 5-random(12)
+	bsr	mt_random
+	neg.w	d0
+	addq.w	#5,d0
+	bra	ut_adjustwanderer
+.a30:	moveq	#30,d0
+	bra	ut_adjustwanderer
+.o2:	cmp.w	#WNDORDER_RETREAT,d0
+	bne.s	.x
+	moveq	#-70,d0
+	cmp.w	#WNDACT_MASKING,GS_ACTION(a6)
+	bne	ut_adjustwanderer
+	moveq	#-50,d0
+	bra	ut_adjustwanderer
+.x:	rts
+.ofs:	move.w	GS_SHIP+SHIP_ACCELMAX(a6),d0	; (accelmax div 4)*(100-dmg) / 100, banker's
+	ext.l	d0
+	divs	#4,d0
+	moveq	#100,d1
+	sub.b	GS_SHIP+SHIP_DAMAGES+DMG_ENGINES-1(a6),d1
+	and.w	#$ff,d1
+	muls	d1,d0
+	move.l	d0,d1
+	bpl.s	.op
+	neg.l	d1
+.op:	divu	#100,d1
+	move.l	d1,d2
+	swap	d2
+	cmp.w	#50,d2
+	blo.s	.ot
+	bhi.s	.ou
+	btst	#0,d1
+	beq.s	.ot
+.ou:	addq.w	#1,d1
+.ot:	tst.l	d0
+	bpl.s	.os
+	neg.w	d1
+.os:	move.w	d1,d0
+	rts
+
+ut_adjustwanderer:
+	movem.l	d3/a3,-(sp)
+	move.w	d0,d3
+	lea	GS_SHIP+SHIP_WANDERING(a6),a3
+	cmp.w	#16000,ONEALIEN_ALIENID(a3)
+	bgt	.x
+	lea	ONEALIEN_RELX(a3),a0
+	moveq	#3-1,d2
+.c:	move.w	(a0),d0
+	move.w	d0,d1
+	bpl.s	.p
+	neg.w	d1
+.p:	cmp.w	#499,d1
+	ble.s	.n
+	tst.w	d0
+	bpl.s	.m
+	add.w	d3,(a0)
+	bra.s	.n
+.m:	sub.w	d3,(a0)
+.n:	addq.l	#2,a0
+	dbf	d2,.c
+	lea	ONEALIEN_RELX(a3),a0	; all within 500: done
+	moveq	#3-1,d2
+.cl:	move.w	(a0)+,d0
+	bpl.s	.cp
+	neg.w	d0
+.cp:	cmp.w	#500,d0
+	bge.s	.far
+	dbf	d2,.cl
+	st	GS_DONE(a6)
+	bra.s	.x
+.far:	lea	ONEALIEN_RELX(a3),a0	; any beyond 23000: gone
+	moveq	#3-1,d2
+.fl:	move.w	(a0)+,d0
+	bpl.s	.fp
+	neg.w	d0
+.fp:	cmp.w	#23000,d0
+	bgt.s	.gone
+	dbf	d2,.fl
+	bra.s	.x
+.gone:	move.w	#20000,ONEALIEN_ALIENID(a3)
+	cmp.w	#WNDACT_RETREAT,GS_ACTION(a6)
+	bne.s	.na
+	moveq	#4,d0			; showchar(4, 'Evasion successful!')
+	lea	.ev,a0
+	bsr	showchar
+.na:	clr.w	GS_ACTION(a6)
+.x:	movem.l	(sp)+,d3/a3
+	rts
+.ev:	dc.b	19,"Evasion successful!"
+	even
 
 ex_readydata:
 	movem.l	d3-d7/a3,-(sp)
@@ -4202,7 +4313,8 @@ ex_removedata:
 	bsr	orc_dump		; loadscreen(current)
 	moveq	#0,d0
 	bsr	ms_unsnap
-	st	GS_ANYCHANGE(a6)	; (the asteroid field and the cloud: not in readyplanet yet)
+	bsr	gp_extras		; an asteroid field / a cloud in backgr again
+	st	GS_ANYCHANGE(a6)
 	bsr	showtime
 	moveq	#0,d0
 	bsr	displaytextbox
