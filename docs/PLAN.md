@@ -92,7 +92,7 @@ TOS + basepages ~150 KB · program code (one of the four executables at a time) 
 | Phase | Goal | Exit criteria |
 |---|---|---|
 | **0. Spikes (go/no-go)** | Toolchain and the risky numbers | ✅ vasm + Hatari + TOS 1.62 headless · ✅ `SPLIT.PRG` 64 colours · ✅ c2p benchmark (§7) · ✅ split timing under load: 4 500/4 500 on time (§7) · ✅ mixer cost measured: 39 % naive (§7) · ✅ Linux oracle harness: deterministic state dumps + scripted input (§7) · ☐ `SPLIT.PRG` on real STE (David) |
-| **1. Kernel (HAL)** | Hardware layer in asm | Video (double buffer, split manager, planar primitives, dirty c2p), sound (optimised mixer ≤ 20 %, MOD replay, SFX voice), IKBD mouse/keys, timing, file I/O, memory, `.cpr`/planar picture loader, font; written register ABI; test PRG shows a converted picture with 4 bands, fades it, plays a MOD, moves the cursor |
+| **1. Kernel (HAL)** — done except the SFX voice | Hardware layer in asm | Video (double buffer, split manager, planar primitives, dirty c2p), sound (optimised mixer ≤ 20 %, MOD replay, SFX voice), IKBD mouse/keys, timing, file I/O, memory, `.cpr`/planar picture loader, font; written register ABI; test PRG shows a converted picture with 4 bands, fades it, plays a MOD, moves the cursor |
 | **2. Data pipeline** | Host tools | Converter for typed `.dta` files; offline palette quantiser + LUT generator for `.cpr`; `.SAM` sign conversion; packed `IRONSEED` folder for Hatari |
 | **3. Launcher + intro** | First real code | `IS.PRG` → `INTRO.PRG` via `Pexec`, intro sequence runs with music |
 | **4. Crew generation** | First playable program | `CREWGEN.PRG` complete; save data read back correctly by the Linux build after reverse conversion (cross-check of the converter) |
@@ -140,3 +140,14 @@ Gaps found:
 | Linux oracle (`0001-Oracle-hooks-…patch`, branch `atari-ste-oracle`, local) | Headless SDL (dummy driver) reaches the title menu and crew generation from scripted input; state dumps at every `loadscreen()` are **byte-identical across runs**; timed screenshots differ (animation), as expected |
 
 Gotchas met: an `include` that opens `section text` before `start:` becomes the program entry point (keep code includes after the entry code); vasm `bra.s`/`beq.s` range errors in long unrolled blocks (`build.sh` now fails on any assembler message).
+
+### Sound cost (Phase 1, 14 Oct 2026)
+The mixer and replay are bit-exact with `tools/modref.py`. Measured in Hatari (`tests/ktmix.s`): about **57 cycles per voice per output sample plus 38 per stereo pair** (the floor is ~44-52: one sample read, one volume-table read, one add, a 16.16 step).
+
+| Song type | 12 517 Hz | 6 258 Hz |
+|---|---|---|
+| 4-channel (3 of 28 songs: GAME, CARGO, COMPONT) | ≈ 42 % CPU | ≈ 21 % |
+| 6-channel (13 songs), all voices busy | ≈ 60 % | ≈ 30 % |
+| 8-channel (12 songs), all voices busy | ≈ 80 % | ≈ 40 % |
+
+Silent channels cost nothing (skipped), so real songs often sit below these numbers. `snd_mute` drops channels from the mix at no other cost. Options for David: (a) 6 258 Hz everywhere; (b) 12 517 Hz on menu/static screens, 6 258 Hz on real-time ones; (c) a per-song channel budget (mute the least important 2-4 channels of 6/8-channel songs during real-time screens); (d) offline 4-channel reductions of the 6/8-channel songs. Listening samples: `dist/*_12517Hz.wav` / `*_6258Hz.wav` (exactly what the STE mixes, before its analogue filter).

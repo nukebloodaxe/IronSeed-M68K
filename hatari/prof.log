@@ -1,0 +1,45 @@
+INFO : Hatari v2.4.1, compiled on:  Apr  1 2024, 05:56:46
+INFO : GEMDOS HDD emulation, C: <-> /home/claude/ironseed-ste/hatari/c.
+Reading debugger commands from '/tmp/tmp.1ewklejIE4/start.ini'...
+Changed to input file dir '/tmp/tmp.1ewklejIE4'.
+> b VBL = 2000 :quiet :once :file /tmp/tmp.1ewklejIE4/a.ini
+> b VBL = 2300 :quiet :file /tmp/tmp.1ewklejIE4/b.ini
+Changed back to '/home/claude/ironseed-ste' dir.
+WARN : Bus Error writing at address $41fffe, PC=$e0017c addr_e3=e0017c op_e3=d443
+INFO : OS clock ticks / second: 100
+Reading debugger commands from '/tmp/tmp.1ewklejIE4/a.ini'...
+Changed to input file dir '/tmp/tmp.1ewklejIE4'.
+> symbols prg
+Reading symbols from program '/home/claude/ironseed-ste/hatari/c/KTS.PRG' symbol table...
+TOS executable, DRI / GST symbol table, reloc=0, program flags: PRIVATE (0x0)
+Program section sizes:
+  text: 0x1d2e, data: 0xf026, bss: 0x1b0f0, symtab: 0x40dc
+Trying to load DRI symbol table at offset 0x10d70...
+Offsetting BSS/DATA symbols from their own sections.
+Skipping duplicate address & symbol name checks when autoload is enabled.
+Loaded 703 symbols (81 TEXT) from '/home/claude/ironseed-ste/hatari/c/KTS.PRG'.
+> profile on
+Profiling enabled.
+> c
+Returning to emulation...
+Changed back to '/home/claude/ironseed-ste' dir.
+Allocated CPU profile buffer (35 MB).
+Allocated CPU profile callsite buffer for 81 symbols.
+
+----------------------------------------------------------------------
+You have entered debug mode. Type c to continue emulation, h for help.
+Allocated CPU profile address buffer (2 KB).
+Normal RAM (0-0x400000):
+- no activity
+ROM TOS (0xE00000-0xE40000):
+- no activity
+Cartridge ROM (0xFA0000-FC0000):
+- no activity
+
+= 0.00000s
+
+CPU profiling warning counts:
+
+CPU=$12dc4, VBL=2000, FrameCycles=132, HBL=0, LineCycles=132, DSP=N/A
+00012dc4 48e7 fff0                movem.l d0-d7/a0-a3,-(a7)
+> 

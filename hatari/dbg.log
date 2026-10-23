@@ -1,0 +1,26 @@
+INFO : Hatari v2.4.1, compiled on:  Apr  1 2024, 05:56:46
+INFO : GEMDOS HDD emulation, C: <-> /home/claude/ironseed-ste/hatari/c.
+Reading debugger commands from '/tmp/tmp.oNNWlhiEQM/start.ini'...
+Changed to input file dir '/tmp/tmp.oNNWlhiEQM'.
+> b VBL = 2150 :quiet :file /tmp/tmp.oNNWlhiEQM/hit.ini
+Changed back to '/home/claude/ironseed-ste' dir.
+WARN : Bus Error writing at address $41fffe, PC=$e0017c addr_e3=e0017c op_e3=d443
+INFO : OS clock ticks / second: 100
+Reading debugger commands from '/tmp/tmp.oNNWlhiEQM/hit.ini'...
+Changed to input file dir '/tmp/tmp.oNNWlhiEQM'.
+> m $ff8900 16
+00FF8900: 00 03 00 03 00 cf 00 72 00 03 00 d3 00 88 00 03   .......r........
+> screenshot /tmp/tmp.oNNWlhiEQM/done.png
+Screen dump to '/tmp/tmp.oNNWlhiEQM/done.png' succeeded
+Changed back to '/home/claude/ironseed-ste' dir.
+
+----------------------------------------------------------------------
+You have entered debug mode. Type c to continue emulation, h for help.
+Reading symbols from program '/home/claude/ironseed-ste/hatari/c/DEMO.PRG' symbol table...
+TOS executable, DRI / GST symbol table, reloc=0, program flags: PRIVATE (0x0)
+ERROR: symbol table missing from the program!
+ERROR: reading symbols from '/home/claude/ironseed-ste/hatari/c/DEMO.PRG' failed!
+
+CPU=$12e0c, VBL=2150, FrameCycles=132, HBL=0, LineCycles=132, DSP=N/A
+00012e0c 48e7 fff0                movem.l d0-d7/a0-a3,-(a7)
+> 

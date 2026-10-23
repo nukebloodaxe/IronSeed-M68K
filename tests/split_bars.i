@@ -1,0 +1,10 @@
+	dc.w	$0000,$0000,$0000,$0000,$0fff,$0000,$0000,$0000
+	dc.w	$ff00,$00ff,$0000,$0000,$000f,$ffff,$0000,$0000
+	dc.w	$ffff,$ffff,$0000,$0000,$0000,$0000,$ffff,$0000
+	dc.w	$0fff,$0000,$ffff,$0000,$ff00,$00ff,$ffff,$0000
+	dc.w	$000f,$ffff,$ffff,$0000,$ffff,$ffff,$ffff,$0000
+	dc.w	$0000,$0000,$0000,$ffff,$0fff,$0000,$0000,$ffff
+	dc.w	$ff00,$00ff,$0000,$ffff,$000f,$ffff,$0000,$ffff
+	dc.w	$ffff,$ffff,$0000,$ffff,$0000,$0000,$ffff,$ffff
+	dc.w	$0fff,$0000,$ffff,$ffff,$ff00,$00ff,$ffff,$ffff
+	dc.w	$000f,$ffff,$ffff,$ffff,$ffff,$ffff,$ffff,$ffff
