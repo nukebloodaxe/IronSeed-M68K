@@ -11,6 +11,7 @@ comparator.
 """
 import fnmatch, json, os, struct, sys
 
+INTF = {'f64': 8, 'f32': 4}
 INT = {'u8': 1, 's8': 1, 's16': 2, 'u16': 2, 's32': 4, 'u32': 4, 'u64': 8, 's64': 8}
 
 
@@ -23,20 +24,21 @@ def bytes_only(d):
     return False
 
 
-def conv(d, src, so, dst, do):
-    """convert one value described by d from src[so:] (DOS) into dst[do:] (ST)"""
+def conv(d, src, so, dst, do, rev=False):
+    """convert one value described by d from src[so:] (DOS) into dst[do:] (ST);
+    rev=True: the other way (ST layout -> DOS layout)"""
     k = d['kind']
+    S, O = ('size_st', 'off_st') if rev else ('size_dos', 'off_dos')
+    S2, O2 = ('size_dos', 'off_dos') if rev else ('size_st', 'off_st')
     if bytes_only(d) and d['size_dos'] == d['size_st']:
-        dst[do:do + d['size_st']] = src[so:so + d['size_dos']]
+        dst[do:do + d[S2]] = src[so:so + d[S]]
         return
     if k == 'base':
         t = d['type']
         if t in INT:
             n = INT[t]; dst[do:do + n] = src[so:so + n][::-1]
-        elif t == 'f64':
-            dst[do:do + 8] = struct.pack('>d', struct.unpack('<d', src[so:so + 8])[0])
-        elif t == 'f32':
-            dst[do:do + 4] = struct.pack('>f', struct.unpack('<f', src[so:so + 4])[0])
+        elif t in ('f64', 'f32'):
+            dst[do:do + INTF[t]] = src[so:so + INTF[t]][::-1]
         elif t == 'ptr':
             pass  # pointers are meaningless in files: leave 0
         else:
@@ -47,22 +49,23 @@ def conv(d, src, so, dst, do):
         e = d['elem']; n = 1
         for lo, hi in d['dims']: n *= hi - lo + 1
         for i in range(n):
-            conv(e, src, so + i * e['size_dos'], dst, do + i * e['size_st'])
+            conv(e, src, so + i * e[S], dst, do + i * e[S2], rev)
     elif k == 'record':
         for f in d['fields']:
-            conv(f, src, so + f['off_dos'], dst, do + f['off_st'])
+            conv(f, src, so + f[O], dst, do + f[O2], rev)
     else:
         raise ValueError(k)
 
 
-def convert_file(desc, data):
+def convert_file(desc, data, rev=False):
     sd, ss = desc['size_dos'], desc['size_st']
+    if rev: sd, ss = ss, sd
     if len(data) % sd:
         raise ValueError('size %d is not a multiple of the record size %d' % (len(data), sd))
     n = len(data) // sd
     out = bytearray(n * ss)
     for r in range(n):
-        conv(desc, data, r * sd, out, r * ss)
+        conv(desc, data, r * sd, out, r * ss, rev)
     return bytes(out), n
 
 

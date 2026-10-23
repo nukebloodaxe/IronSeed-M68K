@@ -1,0 +1,41 @@
+# a short crew-generation session for a video
+wait 2500
+move 288 166
+wait 500
+click 288 166
+wait 1500
+click 288 166
+wait 1500
+click 288 135
+wait 3000
+key #274
+wait 2000
+key #274
+wait 2000
+key #13
+wait 3500
+key #13
+wait 3500
+key #13
+wait 3500
+key #13
+wait 3500
+key #13
+wait 3500
+key #13
+wait 2500
+key 2
+wait 800
+key #13
+wait 600
+key D
+wait 300
+key e
+wait 300
+key m
+wait 300
+key o
+wait 800
+key #13
+wait 4000
+quit

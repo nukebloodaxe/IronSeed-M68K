@@ -443,8 +443,8 @@ compose:
 	bmi.s	.tail
 .blk:	movem.l	(a3)+,d0-d5/a0-a2/a5-a6
 	movem.l	d0-d5/a0-a2/a5-a6,(a4)
-	move.l	(a3)+,(a4)+		; (11 registers + 1 long = 48 bytes)
-	lea	44(a4),a4
+	move.l	(a3)+,44(a4)		; (11 registers + 1 long = 48 bytes)
+	lea	48(a4),a4
 	sub.w	#6,d6
 	bpl.s	.blk
 .tail:	addq.w	#6,d6

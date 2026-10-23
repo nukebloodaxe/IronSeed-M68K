@@ -5,6 +5,8 @@
 ;            trashes: d0-d2/a0-a2
 ; fil_save   in: a0 = name, a1 = data, d0.l = bytes   out: carry set on error
 ; fil_size   in: a0 = name   out: d0.l = size (carry set if missing)
+; fil_mkdir  in: a0 = folder name: Dcreate (an existing folder is not an error)
+;            trashes: d0-d2/a0-a2
 
 	section	text
 fil_load:
@@ -80,4 +82,9 @@ fil_size:
 	rts
 .err:	move.l	(sp)+,d3
 	or.b	#1,ccr
+	rts
+
+fil_mkdir:
+	move.l	a0,-(sp)
+	GEMDOS	GD_DCREATE,6
 	rts

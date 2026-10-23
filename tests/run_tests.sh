@@ -14,6 +14,9 @@ tools/asm.sh tests/ktmask.s hatari/c/KTMASK.PRG > /dev/null || { echo "FAIL buil
 rm -f hatari/c/KTMASK.TXT
 tools/run_hatari.sh 2000 /tmp/km.png --auto 'C:\KTMASK.PRG' > /dev/null
 head -c 2 hatari/c/KTMASK.TXT 2>/dev/null | grep -q ok && echo "PASS ktmask (txt_mask/txt_mdraw pixel-exact with txt_print, 28 cases)" || { echo "FAIL ktmask"; fail=1; }
+tools/asm.sh tests/ktmt.s hatari/c/KTMT.PRG > /dev/null; rm -f hatari/c/KTMT.BIN
+tools/run_hatari.sh 1900 /tmp/kmt.png --auto 'C:\KTMT.PRG' > /dev/null
+python3 tests/check_mt.py hatari/c/KTMT.BIN > /tmp/mt.txt && echo "PASS ktmt (Free Pascal's random: $(cat /tmp/mt.txt))" || { echo "FAIL ktmt: $(cat /tmp/mt.txt)"; fail=1; }
 tools/run_hatari.sh 2300 /tmp/kc.png --auto 'C:\KTCRASH.PRG' > /dev/null
 grep -q 'exception 3' hatari/c/CRASH.TXT 2>/dev/null && echo "PASS ktcrash (address error caught, machine restored)" || { echo "FAIL ktcrash"; fail=1; }
 S=${IRONSEED_SRC:-/root/ironseed_fpc}
@@ -42,6 +45,8 @@ tools/run_hatari.sh 3000 /tmp/intro_end.png --auto 'C:\IS.PRG' > /dev/null
 rm -f hatari/c/INPUT.INT
 python3 tests/check_cred.py hatari/c/CRED.SCR hatari/c/DATA/CREDITS.ISL tests/ref/linux_credits.raw > /tmp/cred.txt \
   && echo "PASS intro credits ($(cat /tmp/cred.txt))" || { echo "FAIL intro credits: $(cat /tmp/cred.txt)"; fail=1; }
+python3 tests/check_title.py hatari/c/DATA/TITLE.DAT hatari/c/TITLE.SCR > /tmp/title.txt \
+  && echo "PASS title screen (cloud + logo pixel-exact: $(cat /tmp/title.txt))" || { echo "FAIL title screen: $(cat /tmp/title.txt)"; fail=1; }
 if [ -s hatari/c/MENU4.SCR ] && python3 -I -c "
 from PIL import Image; import sys
 sys.exit(0 if Image.open('/tmp/intro_end.png').convert('RGB').getpixel((300,200))==(0,255,0) else 1)"; then
@@ -61,4 +66,6 @@ rm -f hatari/c/INPUT.INT
 if [ -s hatari/c/FULL.SCR ] && [ ! -e hatari/c/CRASH.TXT ] && cmp -s <(tail -c +32001 hatari/c/FULL.SCR) <(tail -c +32001 /tmp/title_ref.scr); then
   echo "PASS intro scenes (whole intro plays through to the title)"
 else echo "FAIL intro scenes"; fail=1; fi
+# crew generation against the Linux oracle (state dumps, screens, saved files)
+tests/check_crewgen.sh || fail=1
 exit $fail

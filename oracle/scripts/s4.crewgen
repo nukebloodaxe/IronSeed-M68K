@@ -1,0 +1,84 @@
+# crewgen oracle session: ship selection, every crew level, back steps, save in slot 3
+wait 3000
+shot S0
+key #274
+wait 800
+shot S1
+key #273
+wait 600
+key #273
+wait 800
+shot S2
+click 288 166
+wait 800
+click 288 155
+wait 800
+click 250 110
+wait 600
+shot S3
+click 250 110
+wait 600
+key #13
+wait 3000
+shot C1
+key #274
+wait 1500
+key #274
+wait 1500
+shot C1B
+key #27
+wait 3000
+shot B0
+key #13
+wait 3000
+key #273
+wait 1500
+shot C1C
+click 295 135
+wait 3000
+shot C2
+key #13
+wait 3000
+key #27
+wait 3000
+shot C1D
+key #13
+wait 3000
+key #274
+wait 1500
+key #13
+wait 3000
+shot C3
+key #274
+wait 1500
+key #13
+wait 3000
+key #13
+wait 3000
+shot C5
+key #274
+wait 1500
+key #274
+wait 1500
+key #13
+wait 3000
+shot C6
+key #13
+wait 3000
+shot SAVE
+key 3
+wait 600
+key #13
+wait 800
+key N
+wait 200
+key u
+wait 200
+key k
+wait 200
+key e
+wait 600
+shot NAME
+key #13
+wait 3000
+quit

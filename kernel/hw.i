@@ -81,6 +81,8 @@ GD_FCLOSE	equ	$3e
 GD_FREAD	equ	$3f
 GD_FWRITE	equ	$40
 GD_FSEEK	equ	$42
+GD_DCREATE	equ	$39
+GD_FDELETE	equ	$41
 GD_MALLOC	equ	$48
 GD_MFREE	equ	$49
 GD_PTERM0	equ	$00

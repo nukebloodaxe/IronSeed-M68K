@@ -1,0 +1,37 @@
+# easter egg + save-dialog cancel (ST visual check; the egg's flicker makes random sequences timing-dependent)
+wait 3000
+click 250 110
+wait 600
+key #13
+wait 3000
+key ^84
+wait 3000
+shot EGG1
+move 160 165
+wait 500
+shot EGG2
+click 160 165
+wait 2500
+shot EGG3
+key #13
+wait 3000
+key #13
+wait 3000
+key #13
+wait 3000
+key #13
+wait 3000
+key #13
+wait 3000
+key #13
+wait 3000
+shot DLG
+key #274
+wait 400
+key #274
+wait 400
+shot DLG2
+key #27
+wait 4000
+shot CANC
+quit

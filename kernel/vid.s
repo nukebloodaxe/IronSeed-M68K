@@ -28,6 +28,13 @@
 ; vid_set256      in: a0 = 256 x 3 bytes, 6-bit VGA palette (the original set256colors): every
 ;                 slot of every band takes the colour of its rep index; the fade level applies.
 ;                 trashes: d0-d2/a0-a2
+; vid_set_keep    in: a0 = 4 x 16 bytes (non-zero: vid_set256 leaves that slot's colour alone,
+;                 e.g. the quantiser's colours where only some slots are animated), or a0 = 0:
+;                 none kept (default)                              trashes: d0/a0-a1
+; vid_lut_remap   in: d0.w first index, d1.w count: in every band, maps those palette indices to
+;                 the slot whose colour is nearest to their colour in GS_COLORS now (for indices
+;                 whose colours were changed at run time, e.g. after colour cycling stopped)
+;                 trashes: d0-d2/a0-a2
 ; Screens: vid_scr = 3 buffers (256-byte aligned, 32000 bytes); vid_log = where to draw next;
 ; vid_phys = last flipped (or the start-up screen); programs that never flip draw into vid_phys.
 ; vid_vbl_hook    (long) 0, or a routine the VBL calls every frame after the band-0 palette and
@@ -175,16 +182,34 @@ vid_set_reps:
 	dbf	d0,.c
 	rts
 
+vid_set_keep:
+	lea	vid_keep,a1
+	moveq	#64/4-1,d0
+	cmp.w	#0,a0
+	beq.s	.clr
+.c:	move.l	(a0)+,(a1)+
+	dbf	d0,.c
+	rts
+.clr:	clr.l	(a1)+
+	dbf	d0,.clr
+	rts
+
 vid_set256:
-	movem.l	d3-d5/a3,-(sp)
+	movem.l	d3-d5/a3-a4,-(sp)
 	lea	vid_reps,a1
+	lea	vid_keep,a4
 	lea	vid_bands_src,a2
 	move.w	(a2)+,d5		; band count
 	subq.w	#1,d5
 	lea	vid_c6tab,a3
 .band:	addq.l	#2,a2			; first line stays
 	moveq	#16-1,d4
-.slot:	moveq	#0,d0
+.slot:	tst.b	(a4)+
+	beq.s	.set
+	addq.l	#1,a1			; kept: skip
+	addq.l	#2,a2
+	bra.s	.nxt
+.set:	moveq	#0,d0
 	move.b	(a1)+,d0
 	move.w	d0,d1
 	add.w	d0,d0
@@ -200,11 +225,11 @@ vid_set256:
 	move.b	2(a0,d0.w),d2		; B
 	or.b	0(a3,d2.w),d1
 	move.w	d1,(a2)+
-	dbf	d4,.slot
+.nxt:	dbf	d4,.slot
 	dbf	d5,.band
 	move.w	vid_fade,d0		; rebuild the displayed copy
 	bsr	vid_set_fade
-	movem.l	(sp)+,d3-d5/a3
+	movem.l	(sp)+,d3-d5/a3-a4
 	rts
 
 vid_set_luts:
@@ -239,6 +264,72 @@ vid_set_luts:
 	bne.s	.y
 	move.l	(sp)+,a3
 	bra	kbd_cursor_build	; the cursor's colours follow the LUTs
+
+vid_lut_remap:
+	movem.l	d3-d7/a3-a5,-(sp)
+	move.w	d0,d6			; index
+	move.w	d1,d7
+	subq.w	#1,d7
+	lea	vid_c6tab,a3
+	lea	vid_dec4,a4
+.idx:	move.w	d6,d0			; this index's colour, as decoded 0-15 levels
+	mulu	#3,d0
+	lea	GS_COLORS(a6,d0.w),a0
+	moveq	#0,d3
+	moveq	#0,d4
+	moveq	#0,d5
+	move.b	(a0)+,d3
+	move.b	0(a3,d3.w),d3
+	move.b	0(a4,d3.w),d3		; r
+	move.b	(a0)+,d4
+	move.b	0(a3,d4.w),d4
+	move.b	0(a4,d4.w),d4		; g
+	move.b	(a0),d5
+	move.b	0(a3,d5.w),d5
+	move.b	0(a4,d5.w),d5		; b
+	lea	vid_bands_src,a1
+	move.w	(a1)+,d2		; bands
+	subq.w	#1,d2
+	lea	vid_luts,a5
+.band:	movem.l	d2/d6-d7,-(sp)
+	addq.l	#2,a1			; first line
+	move.l	#$7fff,d7		; best distance
+	moveq	#0,d6			; slot
+.slot:	move.w	(a1)+,d0		; STE colour
+	move.w	d0,d1
+	lsr.w	#8,d1
+	and.w	#15,d1
+	move.b	0(a4,d1.w),d1
+	sub.w	d3,d1
+	muls	d1,d1
+	move.w	d0,d2
+	lsr.w	#4,d2
+	and.w	#15,d2
+	move.b	0(a4,d2.w),d2
+	sub.w	d4,d2
+	muls	d2,d2
+	add.w	d2,d1
+	and.w	#15,d0
+	move.b	0(a4,d0.w),d0
+	sub.w	d5,d0
+	muls	d0,d0
+	add.w	d0,d1
+	cmp.w	d7,d1
+	bge.s	.ns
+	move.w	d1,d7
+	move.b	d6,vid_best		; nearest so far
+.ns:	addq.w	#1,d6
+	cmp.w	#16,d6
+	bne.s	.slot
+	movem.l	(sp)+,d2/d6-d7
+	move.b	vid_best,0(a5,d6.w)
+	lea	256(a5),a5
+	dbf	d2,.band
+	addq.w	#1,d6
+	dbf	d7,.idx
+	movem.l	(sp)+,d3-d7/a3-a5
+	lea	vid_luts,a0
+	bra	vid_set_luts
 
 vid_lut_y:
 	move.l	d1,-(sp)
@@ -380,6 +471,8 @@ vid_acia_wrap:
 vid_c6tab:				; 6-bit VGA level -> STE nibble: round(c*15/63), LSB moved to bit 3
 	dc.b	0,0,0,8,8,8,8,1,1,1,1,9,9,9,9,2,2,2,2,10,10,10,10,10,3,3,3,3,11,11,11,11
 	dc.b	4,4,4,4,12,12,12,12,5,5,5,5,5,13,13,13,13,6,6,6,6,14,14,14,14,7,7,7,7,15,15,15
+vid_dec4:				; STE nibble -> level 0-15
+	dc.b	0,2,4,6,8,10,12,14,1,3,5,7,9,11,13,15
 vid_black_bands:
 	dc.w	1,0
 	dcb.w	16,0
@@ -408,6 +501,9 @@ vid_luts:	ds.b	4*256
 vid_line_lut:	ds.l	SCR_H
 vid_line_band:	ds.b	SCR_H
 vid_reps:	ds.b	64
+vid_best:	ds.b	1
+	even
+vid_keep:	ds.b	64
 	even
 vid_screens:	ds.b	3*SCR_SIZE+256
 

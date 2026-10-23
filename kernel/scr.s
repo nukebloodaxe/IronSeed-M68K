@@ -3,6 +3,7 @@
 ;
 ; scr_open   in: a0 = script file name. If the file exists, input comes from it as well as
 ;            from the real keyboard/mouse. Call once at program start. trashes d0-d2/a0-a2
+;            scr_test (word) stays 1 for the whole run once a script was found.
 ; scr_tick   advance the script (called by kbd_keypressed / kbd_mouse_status / kbd_mouse_xy)
 ;
 ; Script lines (one command each, '#' = comment):
@@ -26,6 +27,7 @@ scr_open:
 	clr.b	0(a0,d0.l)		; terminate
 	move.l	a0,scr_ptr
 	move.w	#1,scr_on
+	move.w	#1,scr_test
 	clr.l	scr_resume
 .x:	rts
 
@@ -185,6 +187,8 @@ scr_eol:
 ; save the shown screen + band table
 scr_shot:
 	movem.l	d3/a3,-(sp)
+	move.w	kbd_cur_on,-(sp)	; without the mouse cursor (like the Linux shots)
+	bsr	kbd_cursor_hide
 	lea	scr_name,a0
 	clr.w	-(sp)
 	move.l	a0,-(sp)
@@ -202,7 +206,10 @@ scr_shot:
 	GEMDOS	GD_FWRITE,12
 	move.w	d3,-(sp)
 	GEMDOS	GD_FCLOSE,4
-.x:	movem.l	(sp)+,d3/a3
+.x:	tst.w	(sp)+
+	beq.s	.h
+	bsr	kbd_cursor_show
+.h:	movem.l	(sp)+,d3/a3
 	rts
 
 	section	data
@@ -213,6 +220,7 @@ scr_name:	dc.b	"C:",92,0,0,0,0,0,0,0,0,0,0,0,0,0
 scr_ptr:	ds.l	1
 scr_resume:	ds.l	1
 scr_on:		ds.w	1
+scr_test:	ds.w	1		; a script was given: test run (fixed random seed, state dumps)
 scr_key:	ds.b	1
 scr_ext:	ds.b	1
 	even

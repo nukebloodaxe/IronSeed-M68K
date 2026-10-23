@@ -17,6 +17,10 @@
 ; gfx_copy_rect  in: a0 = source screen (same layout; only the rectangle is read), d0.w x1,
 ;                 d1.w y1, d2.w x2, d3.w y2 (inclusive): copies those pixels to gfx_target
 ;                 trashes: d0-d2/a0-a2
+; gfx_cline       in: d0.w x1, d1.w y1, d2.w x2, d3.w y2, d4.b colour: c_utils.c line() (the
+;                 original's line/lineto: its own stepping, pixel-exact), sets the pen to x2, y2
+;                 trashes: d0-d2/a0-a2
+; gfx_lineto      in: d0.w x, d1.w y, d4.b colour: gfx_cline from the pen (moveto: gfx_pen)
 ; No clipping beyond the screen edges: callers stay inside 0-319 / 0-199 like the original.
 
 	section	text
@@ -201,6 +205,84 @@ gfx_line:
 	rts
 
 ; ---------------------------------------------------------------
+gfx_lineto:
+	move.l	d3,-(sp)
+	move.w	d1,d3
+	move.w	d0,d2
+	move.w	gfx_pen,d0
+	move.w	gfx_pen+2,d1
+	bsr.s	gfx_cline
+	move.l	(sp)+,d3
+	rts
+gfx_cline:
+	movem.l	d3-d7,-(sp)
+	move.b	d4,gfx_lcol
+	move.w	d2,gfx_pen
+	move.w	d3,gfx_pen+2
+	move.w	d2,d5
+	sub.w	d0,d5			; dx
+	moveq	#1,d6
+	tst.w	d5
+	bgt.s	.sx
+	moveq	#-1,d6
+.sx:	move.w	d6,gfx_sdx
+	tst.w	d5
+	bpl.s	.ax
+	neg.w	d5			; dxabs
+.ax:	move.w	d3,d6
+	sub.w	d1,d6			; dy
+	moveq	#1,d7
+	tst.w	d6
+	bgt.s	.sy
+	moveq	#-1,d7
+.sy:	move.w	d7,gfx_sdy
+	tst.w	d6
+	bpl.s	.ay
+	neg.w	d6			; dyabs
+.ay:	move.w	d0,d3			; px
+	move.w	d1,d4			; py
+	move.w	d6,d7
+	lsr.w	#1,d7
+	move.w	d7,gfx_accx		; x = dyabs >> 1
+	move.w	d5,d7
+	lsr.w	#1,d7
+	move.w	d7,gfx_accy		; y = dxabs >> 1
+	bsr.s	.put
+	cmp.w	d6,d5
+	blt.s	.vert
+	move.w	d5,d7			; more horizontal: dxabs steps
+	bra.s	.hn
+.hl:	move.w	gfx_accy,d0
+	add.w	d6,d0
+	cmp.w	d5,d0
+	blt.s	.h1
+	sub.w	d5,d0
+	add.w	gfx_sdy,d4
+.h1:	move.w	d0,gfx_accy
+	add.w	gfx_sdx,d3
+	bsr.s	.put
+.hn:	dbf	d7,.hl
+	bra.s	.x
+.vert:	move.w	d6,d7
+	bra.s	.vn
+.vl:	move.w	gfx_accx,d0
+	add.w	d5,d0
+	cmp.w	d6,d0
+	blt.s	.v1
+	sub.w	d6,d0
+	add.w	gfx_sdx,d3
+.v1:	move.w	d0,gfx_accx
+	add.w	gfx_sdy,d4
+	bsr.s	.put
+.vn:	dbf	d7,.vl
+.x:	movem.l	(sp)+,d3-d7
+	rts
+.put:	move.w	d3,d0
+	move.w	d4,d1
+	move.b	gfx_lcol,d2
+	bra	gfx_pset
+
+; ---------------------------------------------------------------
 gfx_chunky_span:
 	movem.l	d0-d2,-(sp)
 	bsr	vid_lut_y		; a1 = this line's LUT
@@ -372,4 +454,10 @@ gfx_target:	ds.l	1
 gfx_lx2:	ds.w	1
 gfx_ly2:	ds.w	1
 gfx_lcol:	ds.b	1
+	even
+gfx_pen:	ds.w	2
+gfx_sdx:	ds.w	1
+gfx_sdy:	ds.w	1
+gfx_accx:	ds.w	1
+gfx_accy:	ds.w	1
 	even

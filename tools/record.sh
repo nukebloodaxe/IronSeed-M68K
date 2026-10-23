@@ -18,6 +18,6 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy hatari --machine ste --memsize 4096 
 P=$!
 for i in $(seq 1 1200); do sleep 1; [ -s "$T/done.png" ] && { sleep 2; break; }; done
 kill -INT $P 2>/dev/null; sleep 3; kill -9 $P 2>/dev/null; wait $P 2>/dev/null
-ffmpeg -v error -y $CUT -i "$T/rec.avi" -vf "crop=640:400:96:76,format=yuv420p" -c:v libx264 -crf 18 -c:a aac -b:a 128k "$OUT"
+ffmpeg -v error -y $CUT -i "$T/rec.avi" -vf "crop=640:400:96:${CROPY:-64},format=yuv420p" -c:v libx264 -crf 18 -c:a aac -b:a 128k "$OUT"
 rm -rf "$T"
 [ -s "$OUT" ] && echo "recorded $OUT ($(du -h "$OUT" | cut -f1))" || { echo FAILED; exit 1; }

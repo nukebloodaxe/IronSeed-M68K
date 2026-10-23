@@ -43,3 +43,8 @@ Every routine in `kernel/` and in the screen modules follows these rules. A rout
 - Kernel routines: `vid_`, `snd_`, `kbd_`, `tim_`, `fil_`, `mem_`, `gfx_`, `txt_`, `pic_` prefixes. Screen modules: prefix from the original unit (`cargo_`, `comm_`, `explore_`, …) plus the original Pascal procedure name, so oracle mismatches map back to the Pascal source.
 - Local labels `.name`; equates UPPER_CASE; generated layout equates `REC_FIELD` (e.g. `SHIP_FUEL`) and `GS_name` for global offsets.
 - One routine per Pascal procedure where practical; keep the Pascal source line references in comments (`; journey.pas:559 makesphere1`).
+
+## Determinism and tests (Phase 3)
+- Random numbers that affect game state come from `mt_random` (FPC's generator, kernel `mt.s`), called in the same order as the Pascal code, so state dumps match the Linux oracle. `rnd` (LCG) is only for visual noise that the original made with its own random calls where exact sequences do not matter (the intro).
+- `scr_test` = 1 when a script file was found: fixed seed 1994, `orc_dump` writes `C:\Dnnnn.BIN` at every point where the original calls loadscreen. Programs may skip their command-line check in test runs.
+- A screen module that switches band designs must redraw everything visible afterwards (the planar pixels hold slots, not colours).

@@ -1,12 +1,13 @@
 #!/bin/bash
-# mkgame.sh [OUTDIR] : build the game folder (default hatari/c): IS.PRG + ported programs,
+# mkgame.sh [OUTDIR] : build the game folder (default hatari/c): IS.PRG + ported programs (INTRO, CREWGEN),
 # DATA\ (converted data files, pictures, title assets, palettes), SOUND\ (MODs, SAMs).
 set -e
 R=$(cd "$(dirname "$0")/.." && pwd); S=${IRONSEED_SRC:-/root/ironseed_fpc}
 OUT=${1:-$R/hatari/c}
 mkdir -p "$OUT/DATA" "$OUT/SOUND"
 "$R/tools/gen_layout.sh" > /dev/null
-for p in is intro; do
+python3 -I "$R/tools/mkcrewgen.py" "$S/data" "$OUT/DATA" --equ "$R/build/cgdata.i" > "$R/build/mkcrewgen.log"
+for p in is intro crewgen; do
   python3 -I "$R/tools/fixbranches.py" "$R/game/$p.s" > /dev/null
   "$R/tools/asm.sh" "$R/game/$p.s" "$OUT/$(echo $p | tr a-z A-Z).PRG"
 done

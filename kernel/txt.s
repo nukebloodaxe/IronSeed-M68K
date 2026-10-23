@@ -16,6 +16,9 @@
 ;             txt_print draws it flat (txt_set_flat 1) and transparent (bkcolor 255), but
 ;             ~20x faster: for text drawn again and again (writestr2's trails).
 ;             trashes: d0-d2/a0-a2
+;  txt_fast   in: d0.w x1, d1.w y1, a0 = Pascal string: exactly txt_print (shaded or flat,
+;             bkcolor opaque or 255 transparent), but a whole row of the string at a time from
+;             a txt_mask mask: ~5x faster for long lines. trashes: d0-d2/a0-a2
 ; Needs GS_TCOLOR, GS_BKCOLOR, GS_SHIP, SHIP_OPTIONS (layout.i).
 
 OPT_FONT	equ	7
@@ -348,11 +351,136 @@ txt_mdraw:
 	movem.l	(sp)+,d3-d7/a3-a5
 	rts
 
+txt_fast:
+	movem.l	d3-d7/a3-a5,-(sp)
+	movem.w	d0-d1,-(sp)
+	moveq	#0,d7
+	move.b	(a0),d7			; length
+	bsr	txt_mask
+	; touched pixels (bkcolor): bits 1 .. 5*len of the same layout
+	lea	txt_tbuf,a1
+	move.w	txt_mwords,d0
+	subq.w	#1,d0
+.tc:	clr.w	(a1)+
+	dbf	d0,.tc
+	move.w	GS_BKCOLOR(a6),d0
+	cmp.w	#255,d0
+	bhs.s	.not
+	mulu	#5,d7			; bits 1 .. 5*len
+	moveq	#1,d0
+	lea	txt_tbuf,a1
+.tb:	cmp.w	d7,d0
+	bgt.s	.not
+	move.w	d0,d1
+	lsr.w	#4,d1
+	add.w	d1,d1
+	move.w	d0,d2
+	and.w	#15,d2
+	not.w	d2			; bit 15 - (pos & 15) (MSB first)
+	and.w	#15,d2
+	move.w	0(a1,d1.w),d3
+	bset	d2,d3
+	move.w	d3,0(a1,d1.w)
+	addq.w	#1,d0
+	bra.s	.tb
+.not:	movem.w	(sp)+,d0-d1
+	addq.w	#4,d0			; mask bit 0 = x1 + 4
+	move.w	d0,d6
+	and.w	#15,d6			; shift
+	lsr.w	#4,d0
+	move.w	d0,d7			; first group
+	move.w	d1,d4
+	addq.w	#1,d4			; y = y1 + 1
+	lea	txt_mbuf,a3
+	moveq	#0,d3			; row
+.row:	move.w	d4,d1
+	bsr	vid_lut_y
+	move.w	GS_TCOLOR(a6),d0
+	tst.w	txt_flat
+	bne.s	.fl
+	sub.w	d3,d0
+	sub.w	d3,d0
+.fl:	and.w	#$ff,d0
+	move.b	0(a1,d0.w),d5		; fg slot
+	move.w	GS_BKCOLOR(a6),d0
+	moveq	#0,d2			; bg slot (unused when transparent)
+	cmp.w	#255,d0
+	bhs.s	.nb
+	move.b	0(a1,d0.w),d2
+.nb:	lsl.w	#8,d2
+	move.b	d5,d2
+	move.w	d2,txt_fb		; bg slot << 8 | fg slot
+	move.l	gfx_target,a0
+	move.w	d4,d0			; y * 160
+	lsl.w	#5,d0
+	move.w	d0,d1
+	add.w	d0,d0
+	add.w	d0,d0
+	add.w	d1,d0
+	add.w	d0,a0
+	move.w	d7,d0
+	lsl.w	#3,d0
+	add.w	d0,a0
+	move.l	a3,a2			; glyph mask row
+	lea	txt_tbuf,a5		; touched mask
+	move.w	txt_mwords,d1
+	subq.w	#1,d1
+	move.w	d7,a4			; group number
+	moveq	#0,d0			; prev:cur glyph
+	moveq	#0,d5			; prev:cur touched
+.grp:	swap	d0
+	move.w	(a2)+,d0
+	swap	d5
+	move.w	(a5)+,d5
+	movem.l	d0/d5,-(sp)
+	lsr.l	d6,d0			; glyph bits of this group
+	lsr.l	d6,d5			; touched bits
+	or.w	d0,d5			; written = touched | glyph
+	beq	.next
+	cmp.w	#20,a4
+	bhs	.next
+	move.w	d5,d2		; background bits = written & ~glyph, kept in d0's high word
+	not.w	d0
+	and.w	d0,d2
+	not.w	d0
+	swap	d0
+	move.w	d2,d0
+	swap	d0
+	not.w	d5			; keep mask
+	move.w	txt_fb,d2		; bg slot << 8 | fg slot
+	rept	4
+	and.w	d5,(a0)
+	btst	#0,d2
+	beq.s	*+4
+	or.w	d0,(a0)
+	btst	#8,d2
+	beq.s	*+8
+	swap	d0
+	or.w	d0,(a0)
+	swap	d0
+	addq.l	#2,a0
+	lsr.w	#1,d2
+	endr
+	subq.l	#8,a0
+.next:	movem.l	(sp)+,d0/d5
+	addq.l	#8,a0
+	addq.w	#1,a4
+	dbf	d1,.grp
+	lea	2*TXT_MW(a3),a3
+	addq.w	#1,d4
+	addq.w	#1,d3
+	cmp.w	#6,d3
+	bne	.row
+	movem.l	(sp)+,d3-d7/a3-a5
+	rts
+
 	section	bss
 txt_fontptr:	ds.l	1
 txt_flat:	ds.w	1
 txt_mwords:	ds.w	1
 txt_mbuf:	ds.w	6*TXT_MW
+txt_tbuf:	ds.w	TXT_MW
+txt_fb:		ds.w	1
 
 	section	data
 	include	"font.i"

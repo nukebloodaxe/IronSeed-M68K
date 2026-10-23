@@ -24,3 +24,6 @@
 	include	"pic.s"
 	include	"mod.s"
 	include	"scr.s"
+	include	"mt.s"
+	include	"chk.s"
+	include	"orc.s"
