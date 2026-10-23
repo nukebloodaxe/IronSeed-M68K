@@ -34,7 +34,7 @@ else echo "FAIL kts+sfx"; fail=1; fi
 # --- the intro (game folder via tools/mkgame.sh): credits vs Linux, scripted menu, quit to desktop
 tools/mkgame.sh > /dev/null
 sed 's/$/\r/' tests/intro_input.txt > hatari/c/INPUT.INT; rm -f hatari/c/*.SCR
-tools/run_hatari.sh 2700 /tmp/intro_end.png --auto 'C:\IS.PRG' > /dev/null
+tools/run_hatari.sh 3000 /tmp/intro_end.png --auto 'C:\IS.PRG' > /dev/null
 rm -f hatari/c/INPUT.INT
 python3 tests/check_cred.py hatari/c/CRED.SCR hatari/c/DATA/CREDITS.ISL tests/ref/linux_credits.raw > /tmp/cred.txt \
   && echo "PASS intro credits ($(cat /tmp/cred.txt))" || { echo "FAIL intro credits: $(cat /tmp/cred.txt)"; fail=1; }

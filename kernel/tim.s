@@ -5,6 +5,7 @@
 ; tim_delay   in: d0.w = milliseconds (original delay()); waits at least that long
 ;             (advances a test script meanwhile)  trashes: d0-d1
 ; tim_ms      out: d0.l = milliseconds since tim_init (5 ms resolution)  trashes: d1
+; rnd         in: d0.w = range n   out: d0.w = random 0..n-1 (Pascal random(n))  trashes: d1
 
 	section	text
 tim_init:
@@ -38,3 +39,29 @@ tim_delay:
 
 	section	bss
 tim_base:	ds.l	1
+
+	section	text
+rnd:
+	move.w	d0,-(sp)
+	move.l	rnd_seed,d0		; 32-bit LCG (Numerical Recipes); high word used
+	mulu	#$660d,d0		; seed * 1664525 + 1013904223, done in 16-bit pieces:
+	move.l	rnd_seed,d1		; lo*lo + ((hi*lo + lo*hi') << 16)
+	swap	d1
+	mulu	#$660d,d1
+	swap	d1
+	clr.w	d1
+	add.l	d1,d0
+	move.l	rnd_seed,d1
+	mulu	#$0019,d1
+	swap	d1
+	clr.w	d1
+	add.l	d1,d0
+	add.l	#1013904223,d0
+	move.l	d0,rnd_seed
+	swap	d0
+	mulu	(sp)+,d0		; (high word * n) >> 16
+	swap	d0
+	rts
+
+	section	data
+rnd_seed:	dc.l	1994

@@ -167,14 +167,41 @@ def planar(slot_img):
     return W, out.astype('>u2').tobytes()
 
 
-def write_isp(fn, W, h, table, luts, pdata):
-    b = bytearray(b'ISP1') + struct.pack('>HH', W, h)
+def compute_reps(img, pal6, table, luts):
+    """per band and slot, the original palette index that stands for the slot (vid_set256):
+    the most used index in the band that maps to it, else the nearest-coloured index mapping to
+    it, else 0. Returns 4 x 16 bytes."""
+    h = img.shape[0] if img is not None else 200
+    bounds = [t[0] for t in table] + [h]
+    reps = []
+    for b in range(4):
+        if b >= len(table): reps.append([0] * 16); continue
+        lut = luts[b]
+        cnt = np.bincount(img[bounds[b]:bounds[b + 1]].ravel(), minlength=256) if img is not None else np.zeros(256)
+        row = []
+        for sl in range(16):
+            idx = np.nonzero(lut == sl)[0]
+            if len(idx) == 0: row.append(0); continue
+            if cnt[idx].max() > 0: row.append(int(idx[np.argmax(cnt[idx])])); continue
+            col = table[b][1][sl]
+            dec = np.array([(((col >> sh) & 7) << 1 | ((col >> sh) & 15) >> 3) for sh in (8, 4, 0)]) * 63 / 15
+            row.append(int(idx[np.argmin(((pal6[idx] - dec) ** 2).sum(1))]))
+        reps.append(row)
+    return bytes(sum(reps, []))
+
+
+def write_isp(fn, W, h, table, luts, pdata, reps=None):
+    """ISP1, or ISP2 when reps (64 bytes, see compute_reps) are given: same layout with the
+    rep table inserted after the LUTs."""
+    b = bytearray(b'ISP2' if reps is not None else b'ISP1') + struct.pack('>HH', W, h)
     b += struct.pack('>H', len(table))
     for i in range(4):
         line, cols = table[i] if i < len(table) else (0, [0] * 16)
         b += struct.pack('>H16H', line, *cols)
     for i in range(4):
         b += bytes(luts[i] if i < len(luts) else np.zeros(256, np.uint8))
+    if reps is not None:
+        b += reps
     b += pdata
     open(fn, 'wb').write(b)
 
@@ -235,7 +262,7 @@ def main():
         else: splits = [0]
         table, luts, slot_img, err = convert(img, pal6, splits)
         W, pdata = planar(slot_img)
-        write_isp(out, W, h, table, luts, pdata)
+        write_isp(out, W, h, table, luts, pdata, compute_reps(img, pal6, table, luts))
         ncol = len(np.unique(img))
         print('%-12s %3dx%3d %3d colours%s  bands at %-16s mean sq err %.3f  -> %s (%d bytes)' % (
             os.path.basename(inp), w, h, ncol, '' if haspal else ' (default pal)',

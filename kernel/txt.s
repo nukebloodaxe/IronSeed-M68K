@@ -5,6 +5,7 @@
 ;             original) and bkcolor (255 = transparent); font = ship.options[OPT_FONT].
 ;             Glyph pixels at x1+5.., rows y1+1..y1+6, 5 pixels per character.
 ;             trashes: d0-d2/a0-a2
+; txt_set_flat  in: d0.w = 1: every row in tcolor (intro.pas printxy2), 0: shaded (printxy)
 ; txt_set_font  in: a0 = font table (3 bytes per glyph), or 0 for the game font chosen in
 ;               ship.options[OPT_FONT]. txt_font_intro selects intro.pas's font, which also
 ;               draws chr(1)/chr(2) as the two halves of a (c) sign (glyphs 83/84; chr(2)
@@ -69,7 +70,10 @@ txt_print:
 	move.w	GS_TCOLOR(a6),d2
 	move.w	d4,d3
 	add.w	d3,d3
+	tst.w	txt_flat
+	bne.s	.flat
 	sub.w	d3,d2			; tcolor - 2*row
+.flat:
 	bsr	txt_row
 	addq.w	#1,d4
 	cmp.w	#6,d4
@@ -81,6 +85,10 @@ txt_print:
 
 txt_set_font:
 	move.l	a0,txt_fontptr
+	rts
+
+txt_set_flat:
+	move.w	d0,txt_flat
 	rts
 
 ; d0.b = char -> d0.w = glyph index (printxy's case statement)
@@ -177,6 +185,7 @@ txt_row:
 
 	section	bss
 txt_fontptr:	ds.l	1
+txt_flat:	ds.w	1
 
 	section	data
 	include	"font.i"

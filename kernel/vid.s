@@ -20,6 +20,14 @@
 ;                 builds vid_line_lut / vid_line_band from the current bands; rebuilds the cursor
 ;                 trashes: d0-d2/a0-a2
 ; vid_lut_y       in: d1.w = y   out: a1 = LUT for that line           trashes: nothing else
+; vid_set_lines   in: d0.w = band count (1-4), a0 = first line of each band (words; band 0 = 0,
+;                 increasing, < 200): moves the splits, keeps the colours (e.g. bands that
+;                 follow a scrolling picture). Call vid_set_luts(vid_luts) afterwards before
+;                 drawing with game colours.   trashes: d0-d2/a0-a2
+; vid_set_reps    in: a0 = 4 x 16 bytes: per band and slot, the original palette index it shows
+; vid_set256      in: a0 = 256 x 3 bytes, 6-bit VGA palette (the original set256colors): every
+;                 slot of every band takes the colour of its rep index; the fade level applies.
+;                 trashes: d0-d2/a0-a2
 ; Screens: vid_scr = 3 buffers (256-byte aligned, 32000 bytes); vid_log = where to draw next;
 ; vid_phys = last flipped (or the start-up screen); programs that never flip draw into vid_phys.
 
@@ -146,6 +154,55 @@ vid_set_fade:
 	rts
 
 ; ---------------------------------------------------------------
+vid_set_lines:
+	lea	vid_bands_src,a1
+	move.w	d0,(a1)+
+	subq.w	#1,d0
+.l:	move.w	(a0)+,(a1)
+	lea	BAND_SIZE(a1),a1
+	dbf	d0,.l
+	move.w	vid_fade,d0
+	bra	vid_set_fade
+
+vid_set_reps:
+	lea	vid_reps,a1
+	moveq	#64/4-1,d0
+.c:	move.l	(a0)+,(a1)+
+	dbf	d0,.c
+	rts
+
+vid_set256:
+	movem.l	d3-d5/a3,-(sp)
+	lea	vid_reps,a1
+	lea	vid_bands_src,a2
+	move.w	(a2)+,d5		; band count
+	subq.w	#1,d5
+	lea	vid_c6tab,a3
+.band:	addq.l	#2,a2			; first line stays
+	moveq	#16-1,d4
+.slot:	moveq	#0,d0
+	move.b	(a1)+,d0
+	move.w	d0,d1
+	add.w	d0,d0
+	add.w	d1,d0			; index * 3
+	moveq	#0,d1
+	move.b	0(a0,d0.w),d1		; R (0-63)
+	move.b	0(a3,d1.w),d1
+	lsl.w	#4,d1
+	moveq	#0,d2
+	move.b	1(a0,d0.w),d2		; G
+	or.b	0(a3,d2.w),d1
+	lsl.w	#4,d1
+	move.b	2(a0,d0.w),d2		; B
+	or.b	0(a3,d2.w),d1
+	move.w	d1,(a2)+
+	dbf	d4,.slot
+	dbf	d5,.band
+	move.w	vid_fade,d0		; rebuild the displayed copy
+	bsr	vid_set_fade
+	movem.l	(sp)+,d3-d5/a3
+	rts
+
 vid_set_luts:
 	move.l	a3,-(sp)
 	lea	vid_luts,a1
@@ -311,6 +368,9 @@ vid_acia_wrap:
 	rts
 
 	section	data
+vid_c6tab:				; 6-bit VGA level -> STE nibble: round(c*15/63), LSB moved to bit 3
+	dc.b	0,0,0,8,8,8,8,1,1,1,1,9,9,9,9,2,2,2,2,10,10,10,10,10,3,3,3,3,11,11,11,11
+	dc.b	4,4,4,4,12,12,12,12,5,5,5,5,5,13,13,13,13,6,6,6,6,14,14,14,14,7,7,7,7,15,15,15
 vid_black_bands:
 	dc.w	1,0
 	dcb.w	16,0
@@ -337,6 +397,7 @@ vid_fadetab:	ds.b	17*16
 vid_luts:	ds.b	4*256
 vid_line_lut:	ds.l	SCR_H
 vid_line_band:	ds.b	SCR_H
+vid_reps:	ds.b	64
 	even
 vid_screens:	ds.b	3*SCR_SIZE+256
 

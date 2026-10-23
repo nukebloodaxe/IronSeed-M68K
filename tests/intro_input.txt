@@ -1,7 +1,9 @@
-# intro test: credits, title, menu by keys, quit
+# intro test: credits, skip the intro with a key, title, menu by keys, quit
 wait 800
 shot CRED
-wait 5000
+wait 2500
+key #32
+wait 4000
 shot TITLE
 key ^80
 wait 400

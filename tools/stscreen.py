@@ -16,7 +16,8 @@ def planar_to_slots(b):
 
 def read_isp(fn):
     d = open(fn, 'rb').read()
-    assert d[:4] == b'ISP1'
+    assert d[:4] in (b'ISP1', b'ISP2')
+    extra = 64 if d[:4] == b'ISP2' else 0
     w, h = struct.unpack('>HH', d[4:8])
     n = struct.unpack('>H', d[8:10])[0]
     bands = []
@@ -24,7 +25,7 @@ def read_isp(fn):
         line, *cols = struct.unpack_from('>H16H', d, 10 + i * 34)
         if i < n: bands.append((line, cols))
     luts = [np.frombuffer(d[146 + i * 256:146 + (i + 1) * 256], np.uint8) for i in range(4)]
-    slots = planar_to_slots(d[146 + 1024:]) if (w, h) == (320, 200) else None
+    slots = planar_to_slots(d[146 + 1024 + extra:]) if (w, h) == (320, 200) else None
     return bands, luts, slots
 
 
