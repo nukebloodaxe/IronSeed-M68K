@@ -9,13 +9,13 @@ V=$1; OUT=$(readlink -f "$2"); shift 2
 ROM=${ISTE_ROM:-$R/rom/tos162us.img}
 T=$(mktemp -d)
 printf 'b VBL = %s :quiet :file %s/hit.ini\n' "$V" "$T" > "$T/start.ini"
-printf 'screenshot %s\n' "$OUT" > "$T/hit.ini"
+{ [ -n "$HDBG" ] && echo "$HDBG" | tr ';' '\n'; printf 'screenshot %s\n' "$OUT"; } > "$T/hit.ini"   # HDBG="r;m a0 16": debugger commands first (output in hatari/last.log)
 rm -f "$OUT"
 SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy hatari --machine ste --memsize 4096 \
   --tos "$ROM" --harddrive "$R/hatari/c" --gemdos-drive c --drive-a false --drive-b false \
   --fast-forward on --sound off --statusbar off --confirm-quit false \
-  --parse "$T/start.ini" "$@" > "$R/hatari/last.log" 2>&1 < <(sleep 900) &
+  --parse "$T/start.ini" "$@" > "$R/hatari/last.log" 2>&1 < <(sleep $((V / 150 + 600))) &
 P=$!
-for i in $(seq 1 300); do sleep 1; [ -s "$OUT" ] && { sleep 1; break; }; done
+for i in $(seq 1 $((V / 150 + 300))); do sleep 1; [ -s "$OUT" ] && { sleep 1; break; }; done
 kill -9 $P 2>/dev/null; wait $P 2>/dev/null; rm -rf "$T"
 if [ -s "$OUT" ]; then echo "screenshot $OUT (${i}s)"; else echo "FAILED"; tail -5 "$R/hatari/last.log"; exit 1; fi

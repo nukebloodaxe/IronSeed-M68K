@@ -3629,7 +3629,11 @@ addcargo2:
 	addq.w	#1,d1
 	cmp.w	#251,d1
 	bne.s	.f
-	bra	notported		; printbigbox('No cargo slot available. ...')
+	lea	ex_t_noslot1,a0		; printbigbox('No cargo slot available. ...'); addcargo2 := false
+	lea	ex_t_noslot2,a1
+	bsr	printbigbox
+	moveq	#0,d0
+	bra	.x
 .ff:	move.w	d3,SHIP_CARGO-SHIP_NUMCARGO(a0)
 	move.w	#1,(a0)
 	bra.s	.ok
@@ -3951,8 +3955,12 @@ processkey:
 .dn:	st	GS_DONE(a6)
 	bra	.x
 .r:	cmp.b	#13,d3
-	bne	.x			; ('`' bossmode, #10 heap stats: not on the ST)
+	bne.s	.rb
 	bsr	retrieve
+	bra	.x
+.rb:	cmp.b	#'`',d3			; bossmode (#10 heap stats: not on the ST)
+	bne	.x
+	bsr	bossmode
 	bra	.x
 .ext:	bsr	kbd_readkey
 	move.b	d0,d3
@@ -4531,5 +4539,11 @@ ex_showscan:	ds.b	1
 ex_doneano:	ds.b	1
 ex_dirty:	ds.b	1
 ex_sum:		ds.b	1
+	even
+	section	text
+
+	section	data
+ex_t_noslot1:	dc.b	54,"No cargo slot available.  Some cargo should be dumped."
+ex_t_noslot2:	dc.b	14,"Can not store."
 	even
 	section	text

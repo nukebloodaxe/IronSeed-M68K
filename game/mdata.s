@@ -104,6 +104,21 @@ playing:
 	move.w	mod_on,d0
 	rts
 
+; modplay pausemod / continuemod: the replay stops ticking (silence) and goes on where it was
+pausemod:
+	move.w	mod_on,md_paused
+	clr.w	mod_on
+	rts
+continuemod:
+	tst.w	md_paused
+	beq.s	.x
+	move.w	md_paused,mod_on
+	clr.w	md_paused
+.x:	rts
+	section	bss
+md_paused:	ds.w	1
+	section	text
+
 printxy:
 	bra	ms_print
 

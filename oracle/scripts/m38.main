@@ -1,0 +1,28 @@
+vtime
+args /killseed
+# killseed
+# m38: the ending (ending.pas endgame, "main /killseed"): end1-end4 with their story text after
+# halffading, the end5-over-end6 scroll and its text, the credits (writestr2, dothefade) and
+# intro2 until a key; exit code 3. (The script waits while a key is unread: the credits run
+# between Z5 and Z6 - the original reads that key only on intro2; the intro2 dump checks the palette.)
+# vbls 120000
+wait 9000
+shot Z1
+key #32
+wait 9000
+shot Z2
+key #32
+wait 9000
+shot Z3
+key #32
+wait 9000
+shot Z4
+key #32
+wait 9000
+shot Z5
+key #32
+wait 3000
+shot Z6
+key #32
+wait 3000
+quit

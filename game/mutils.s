@@ -643,16 +643,53 @@ mu_cargorec:
 
 ; checkweight(background d0.b): out d0.w = 1 (Z clear) if the cargo fits
 checkweight:
-	movem.l	d3-d4,-(sp)
+	movem.l	d3-d4/a3,-(sp)
 	move.b	d0,d4
 	bsr	mu_weight
 	divs	#10,d0			; (weight is small: fits a word quotient)
 	ext.l	d0
 	move.w	d0,d3
 	cmp.w	GS_SHIP+SHIP_CARGOMAX(a6),d3
-	ble.s	.ok
+	ble	.ok
 	tst.b	d4
-	bne	notported		; printbigbox (background)
+	beq	.fg
+	lea	mu_bb,a3		; printbigbox('Cargo full! '+str1+'/'+str2+' used.', 'Must Jettison Cargo.')
+	move.l	a3,a0			; (str1 string[4], str2 string[5])
+	lea	.cf,a1
+	bsr	pstr_cpy
+	move.w	d3,d0
+	bsr	mu_wstr
+	move.l	a3,a0
+	lea	mu_s,a1
+	bsr	pstr_cat
+	move.l	a3,a0
+	lea	.sl,a1
+	bsr	pstr_cat
+	move.w	GS_SHIP+SHIP_CARGOMAX(a6),d0
+	ext.l	d0
+	moveq	#0,d1
+	lea	mu_s,a0
+	bsr	int_str
+	cmp.b	#5,mu_s
+	bls.s	.s5
+	move.b	#5,mu_s
+.s5:	move.l	a3,a0
+	lea	mu_s,a1
+	bsr	pstr_cat
+	move.l	a3,a0
+	lea	.us,a1
+	bsr	pstr_cat
+	move.l	a3,a0
+	lea	.mj,a1
+	bsr	printbigbox
+	moveq	#0,d0
+	bra	.x
+.cf:	dc.b	12,"Cargo full! "
+.sl:	dc.b	1,"/"
+.us:	dc.b	6," used."
+.mj:	dc.b	20,"Must Jettison Cargo."
+	even
+.fg:
 	PRTLN
 	TCOL	94
 	PRT	"Cargo Full! "
@@ -675,9 +712,12 @@ checkweight:
 	moveq	#0,d0
 	bra.s	.x
 .ok:	moveq	#1,d0
-.x:	movem.l	(sp)+,d3-d4
+.x:	movem.l	(sp)+,d3-d4/a3
 	tst.w	d0
 	rts
+	section	bss
+mu_bb:	ds.b	40
+	section	text
 mu_wstr:				; str(d0.w) into mu_s, cut to 4 characters (a string[4])
 	ext.l	d0
 	moveq	#0,d1

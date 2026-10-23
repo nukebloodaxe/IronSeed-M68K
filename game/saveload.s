@@ -238,15 +238,251 @@ sl_mainloop:
 	move.w	d1,sl_lasty
 	move.w	#320,d0			; k:=random(320) (only used by the star background)
 	bsr	mt_random
+	ifd	SL_LOAD
+	move.w	d0,sl_k
+	move.w	#1,sl_k2		; k2 := 1; mode := 0
+	clr.w	sl_mode
+	tst.b	sl_stars
+	beq.s	.l
+	bsr	fadein
+	endc
 .l:	bsr	sl_findmouse
 	bsr	kbd_keypressed
 	tst.b	d0
 	beq.s	.nk
 	bsr	sl_processkey
-.nk:	tst.w	sl_done
+.nk:
+	ifd	SL_LOAD
+	tst.b	sl_stars
+	beq.s	.ns
+	bsr	sl_starstep
+.ns:
+	endc
+	tst.w	sl_done
 	beq.s	.l
 	move.w	sl_cursor,d0
 	rts
+
+	ifd	SL_LOAD
+; saveload.pas loadgamedata(tofadein d0.b): the load dialog; tofadein (MAIN started without a
+; slot): over the scrolling stars (mode LOADG). out d0.w = 1 a game was loaded (then event(10),
+; event(1001) after event 12, as the original)   trashes: d0-d2/a0-a2
+sl_loadgamedata:
+	movem.l	d3-d7/a3-a5,-(sp)
+	move.b	d0,sl_stars
+	clr.w	sl_alt			; calt := 0
+	move.w	#26,GS_TCOLOR(a6)
+	bsr	mousehide
+	tst.b	sl_stars
+	beq.s	.nm
+	lea	sl_mode_loadg,a0	; (the ST: the band design for the stars; a black screen)
+	bsr	ms_load
+	bcs	fatal
+.nm:	bsr	sl_keep			; tempscr := rows 40..140, x 74..245
+	move.w	#75,d0			; button(75,40,244,140,0)
+	moveq	#40,d1
+	move.w	#244,d2
+	move.w	#140,d3
+	moveq	#0,d4
+	bsr	sl_button
+	moveq	#1,d5			; button(85,40+a*10,235,48+a*10,2)
+.b:	move.w	d5,d1
+	mulu	#10,d1
+	add.w	#40,d1
+	move.w	d1,d3
+	addq.w	#8,d3
+	move.w	#85,d0
+	move.w	#235,d2
+	moveq	#2,d4
+	bsr	sl_button
+	addq.w	#1,d5
+	cmp.w	#8,d5
+	ble.s	.b
+	move.w	#185,d0			; button(185,130,225,138,2)
+	move.w	#130,d1
+	move.w	#225,d2
+	move.w	#138,d3
+	moveq	#2,d4
+	bsr	sl_button
+	bsr	sl_loadfilenames
+	move.w	#35,GS_BKCOLOR(a6)
+	move.w	#130,d0
+	moveq	#41,d1
+	lea	sl_s_load,a0
+	bsr	chk_print
+	bsr	sl_displayfilenames
+	tst.b	sl_stars
+	beq.s	.go
+	bsr	sl_keep
+	bsr	orc_dump		; loadscreen(cloud, @screen)
+	lea	u2_cloud,a0
+	move.l	ms_buf,a1
+	bsr	loadchk
+	move.l	ms_buf,a0		; backgr^ := screen
+	move.l	GS_BACKGR(a6),a1
+	move.l	#64000,d1
+	bsr	sl_bcopy
+	bsr	sl_restore
+	bsr	ms_dirty_all
+	bra.s	.go2
+.go:	moveq	#74,d0			; (the dialog to the screen)
+	moveq	#40,d1
+	move.w	#245,d2
+	move.w	#140,d3
+	bsr	ms_dirty
+.go2:	bsr	ms_flush
+	bsr	sl_mainloop		; result = the slot (9 = cancel)
+	move.w	d0,d3
+	moveq	#0,d7
+	cmp.w	#9,d3
+	beq.s	.out
+	move.w	d3,d0			; FileExists(SAVEn\SHIP.DTA), else a "cancel"
+	lea	sl_fn_ship,a1
+	bsr	sl_path
+	bsr	fil_size
+	bcc.s	.ld
+	moveq	#9,d3
+	bra.s	.out
+.ld:	moveq	#1,d7
+	move.w	d3,d0
+	bsr	sl_loadgame
+.out:	bsr	mousehide
+	tst.b	sl_stars
+	bne.s	.ns
+	bsr	sl_restore
+	moveq	#74,d0
+	moveq	#40,d1
+	move.w	#245,d2
+	move.w	#140,d3
+	bsr	ms_dirty
+.ns:	bsr	mouseshow
+	move.w	#3,GS_BKCOLOR(a6)
+	tst.w	d7
+	beq.s	.x
+	moveq	#10,d0			; event(10); if chevent(12) then event(1001)
+	bsr	event
+	moveq	#12,d0
+	bsr	chevent
+	tst.w	d0
+	beq.s	.x
+	move.w	#1001,d0
+	bsr	event
+.x:	move.w	d7,d0
+	sf	sl_stars
+	movem.l	(sp)+,d3-d7/a3-a5
+	rts
+
+; tempscr := screen rows 40..140, x 74..245 (sl_keep) and back (sl_restore)
+sl_keep:
+	moveq	#0,d2
+	bra.s	sl_kr
+sl_restore:
+	moveq	#1,d2
+sl_kr:	move.l	ms_buf,a0
+	lea	40*320+74(a0),a0
+	lea	sl_tmp,a1
+	tst.w	d2
+	beq.s	.k
+	exg	a0,a1
+.k:	moveq	#101-1,d1
+.r:	moveq	#43-1,d0
+.c:	move.b	(a0)+,(a1)+		; (74 is even, but keep it simple: 172 bytes)
+	move.b	(a0)+,(a1)+
+	move.b	(a0)+,(a1)+
+	move.b	(a0)+,(a1)+
+	dbf	d0,.c
+	tst.w	d2
+	beq.s	.k2
+	lea	320-172(a1),a1
+	bra.s	.n
+.k2:	lea	320-172(a0),a0
+.n:	dbf	d1,.r
+	rts
+
+; a0 -> a1, d1.l bytes (longs when both have the same parity)
+sl_bcopy:
+	tst.l	d1
+	beq.s	.x
+	move.l	a0,d0
+	move.l	a1,d2
+	eor.w	d2,d0
+	btst	#0,d0
+	bne.s	.b
+	move.l	a0,d0
+	btst	#0,d0
+	beq.s	.al
+	move.b	(a0)+,(a1)+
+	subq.l	#1,d1
+.al:	move.l	d1,d0
+	lsr.l	#4,d0			; 16 bytes a step
+	bra.s	.le
+.l:	move.l	(a0)+,(a1)+
+	move.l	(a0)+,(a1)+
+	move.l	(a0)+,(a1)+
+	move.l	(a0)+,(a1)+
+.le:	subq.l	#1,d0
+	bpl.s	.l
+	and.w	#15,d1
+	bra.s	.re
+.r:	move.b	(a0)+,(a1)+
+.re:	dbf	d1,.r
+.x:	rts
+.b:	subq.l	#1,d1			; different parity: bytes
+.bl:	move.b	(a0)+,(a1)+
+	subq.l	#1,d1
+	bpl.s	.bl
+	rts
+
+; one step of mainloop(true)'s stars: k moves one pixel in one of 8 directions (a new one every
+; 15 steps); the screen := backgr rotated by k with the dialog over it; delay(tslice*2)
+sl_starstep:
+	subq.w	#1,sl_k2
+	bne.s	.m
+	move.w	#15,sl_k2
+	move.w	sl_mode,d0
+	addq.w	#1,d0
+	and.w	#7,d0
+	move.w	d0,sl_mode
+	add.w	d0,d0
+	lea	.k3,a0
+	move.w	0(a0,d0.w),sl_k3
+.m:	move.w	sl_k,d0			; k := k + k3 (a word)
+	add.w	sl_k3,d0
+	cmp.w	#65000,d0
+	bls.s	.a
+	add.w	#64000,d0
+	bra.s	.b
+.a:	cmp.w	#64000,d0
+	bls.s	.b
+	sub.w	#64000,d0
+.b:	move.w	d0,sl_k
+	bsr	mousehide		; tempscr := the dialog (with its cursor)
+	bsr	sl_keep
+	bsr	mouseshow
+	move.l	GS_BACKGR(a6),a0	; s[k..] := backgr[0..63999-k]
+	moveq	#0,d0
+	move.w	sl_k,d0
+	move.l	ms_buf,a1
+	add.l	d0,a1
+	move.l	#64000,d1
+	sub.l	d0,d1
+	bsr	sl_bcopy
+	move.l	GS_BACKGR(a6),a0	; s[0..k-1] := backgr[64000-k..]
+	add.l	#64000,a0
+	moveq	#0,d1
+	move.w	sl_k,d1
+	sub.l	d1,a0
+	move.l	ms_buf,a1
+	bsr	sl_bcopy
+	bsr	sl_restore
+	bsr	mousehide		; screen := s
+	bsr	ms_dirty_all
+	bsr	mouseshow
+	move.w	GS_TSLICE(a6),d0	; delay(b), b = tslice*2
+	add.w	d0,d0
+	bra	delay
+.k3:	dc.w	-320,-319,1,321,320,319,-1,-321
+	endc
 
 sl_undocursor:
 	moveq	#-3,d4
@@ -727,8 +963,9 @@ sl_loadgame:
 	move.b	GS_SHIP+SHIP_OPTIONS+1(a6),d0
 	move.w	d0,GS_TSLICE(a6)
 	bsr	rebuildcargoreserve
+	bsr	resetcrew
 	movem.l	(sp)+,d3-d5/a3
-	rts				; (ResetCrew: crewtick's lastalienid, set when crewtick is ported)
+	rts
 
 ; saveload.pas convertevents: a save from before EVENTS.DTA existed
 sl_convertevents:
@@ -791,9 +1028,11 @@ sl_fn_tempdir:	dc.b	"TEMP",0
 
 	section	data
 sl_s_save:	dc.b	9,"Save Game"
+sl_s_load:	dc.b	9,"Load Game"
+sl_mode_loadg:	dc.b	"LOADG",0
 sl_s_cancel:	dc.b	6,"Cancel"
 sl_slash:	dc.b	1,"/"
-sl_version:	dc.b	20,"v1.30.0001 STE 0.3  "
+sl_version:	dc.b	20,"v1.30.0001 STE 0.4  "
 sl_fn_dir:	dc.b	"SAVEGAME.DIR",0
 sl_fn_planets:	dc.b	"PLANETS.DTA",0
 sl_fn_contacts:	dc.b	"CONTACTS.DTA",0
@@ -818,6 +1057,12 @@ sl_files:	dc.w	GS_SHIP,SHIP_SIZEOF
 
 	section	bss
 sl_alt:		ds.w	1
+sl_k:		ds.w	1
+sl_k2:		ds.w	1
+sl_k3:		ds.w	1
+sl_mode:	ds.w	1
+sl_stars:	ds.b	1
+	even
 sl_text:	ds.w	1
 sl_cursor:	ds.w	1
 sl_done:	ds.w	1
@@ -831,4 +1076,7 @@ sl_ch:		ds.b	2
 sl_pathbuf:	ds.b	32
 	even
 sl_win:		ds.b	SL_WW*SL_WH
+	ifd	SL_LOAD
+sl_tmp:		ds.b	101*172
+	endc
 	even

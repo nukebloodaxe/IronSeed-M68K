@@ -324,7 +324,7 @@ wd_e10002:				; the scavenger armada: combat until the end (or quit)
 	bne.s	.c
 	bra.s	.rep
 .all:	bsr	wd_startarmada
-	bra	notported		; endgame
+	bra	endgame
 .rep:	bsr	wd_startarmada
 	tst.b	GS_QUIT(a6)
 	beq.s	.rep
@@ -445,3 +445,36 @@ msg_notported:	dc.b	"This part of the game is not ported yet.",13,10,0
 	section	bss
 wd_c:		ds.w	3
 wd_temppal:	ds.b	768
+
+	section	text
+; weird.pas bossmode (the FPC build's: the text-mode screens are commented out): music paused,
+; the palette black, until a key or a click; delay(150); the keys read ('7' with the button held:
+; easteregg6 - not ported); colors back, music on
+bossmode:
+	bsr	pausemod
+	lea	wd_black,a0
+	bsr	set256colors
+.w:	bsr	kbd_keypressed		; repeat until fastkeypressed or mouse.getstatus
+	tst.b	d0
+	bne.s	.k
+	bsr	kbd_mouse_status
+	tst.b	d0
+	beq.s	.w
+.k:	move.w	#150,d0
+	bsr	delay
+.d:	bsr	kbd_keypressed		; while fastkeypressed do (upcase(readkey) = '7') and button: egg 6
+	tst.b	d0
+	beq.s	.e
+	bsr	kbd_readkey
+	cmp.b	#'7',d0
+	bne.s	.d
+	bsr	kbd_mouse_status
+	tst.b	d0
+	beq.s	.d
+	bra	notported		; (easteregg6)
+.e:	lea	GS_COLORS(a6),a0
+	bsr	set256colors
+	bra	continuemod
+	section	bss
+wd_black:	ds.b	768
+	section	text

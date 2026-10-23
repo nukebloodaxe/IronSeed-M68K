@@ -1,0 +1,20 @@
+vtime
+args /playseed 3
+# m42: bossmode on the bridge (the ` key: music paused, palette black until a key; the FPC build
+# has the text-mode screens commented out), then the bridge goes on
+wait 3000
+key #27
+wait 2000
+key `
+wait 1000
+shot B1
+key x
+wait 1500
+shot B2
+wait 3000
+dump B3
+key #291
+wait 1500
+key y
+wait 3000
+quit

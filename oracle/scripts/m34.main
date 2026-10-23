@@ -1,0 +1,66 @@
+vtime
+args /playseed 3
+# m34: the crew's backup chips (saveload.pas encodecrew/decodecrew): encode one member by keys
+# onto chip 4, Encode All by the mouse through the yes/no request, a cancelled encode, decode a
+# chip by the mouse, psychometry's encode button (encodecrew(181)) left by Esc
+wait 3000
+key #27
+wait 2000
+key b
+wait 1500
+key r
+wait 1500
+shot N1
+key 2
+wait 300
+key #13
+wait 2500
+shot N2
+key #274
+wait 300
+key #274
+wait 300
+key #273
+wait 300
+key 4
+wait 300
+key #13
+wait 2000
+shot N3
+key r
+wait 1500
+click 80 143
+wait 1500
+shot N4
+key y
+wait 2000
+shot N5
+key r
+wait 1500
+key c
+wait 300
+key #13
+wait 1500
+key f
+wait 1500
+shot N6
+click 100 70
+wait 2000
+shot N7
+key q
+wait 1500
+key w
+wait 3000
+click 15 40
+wait 1500
+shot N8
+key #27
+wait 2000
+shot N9
+key #27
+wait 2000
+key #291
+wait 1500
+key y
+wait 3000
+quit

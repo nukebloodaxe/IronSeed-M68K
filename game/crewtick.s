@@ -812,6 +812,62 @@ ct_daytick:
 	movem.l	(sp)+,d3-d6/a3
 	rts
 
+; crewtick.pas tempinsanity's message (after the 1-in-5 draw): i := random(19), s := the line
+; with chr(n+64) for '@', showchar(n, s)   in: d0.w = n   trashes: d0-d2/a0-a2
+ct_insanemsg:
+	move.w	d3,-(sp)
+	move.w	d0,d3
+	moveq	#19,d0
+	bsr	mt_random
+	lea	ct_insane,a0		; the d0-th 0-terminated line
+	bra.s	.f
+.s:	tst.b	(a0)+
+	bne.s	.s
+.f:	dbf	d0,.s
+	lea	ct_insbuf+1,a1
+	moveq	#0,d1
+.c:	move.b	(a0)+,d0
+	beq.s	.e
+	cmp.b	#'@',d0
+	bne.s	.p
+	move.b	d3,d0
+	add.b	#64,d0
+.p:	move.b	d0,(a1)+
+	addq.w	#1,d1
+	bra.s	.c
+.e:	lea	ct_insbuf,a0
+	move.b	d1,(a0)
+	move.w	d3,d0
+	bsr	showchar
+	move.w	(sp)+,d3
+	rts
+
+	section	data
+ct_insane:
+	dc.b	"Out of memory error on brain @.",0
+	dc.b	"Brain @ not a supported device.",0
+	dc.b	"Read error on brain @ incompatible media.",0
+	dc.b	"CRC checksum error on brain @.",0
+	dc.b	"Brain @ has been upgraded to patch level 3.",0
+	dc.b	"Segmentation error on brain @. Reboot?",0
+	dc.b	"Mentation error, corpse dumped.",0
+	dc.b	"Network error on brain @. Abandom, Retry, Apologize?",0
+	dc.b	"Brain @ is not a system brain.",0
+	dc.b	"Runtime error in LIFE.BIN.",0
+	dc.b	"Runtime error 226 in LIFE.BIN exceeded 10.",0
+	dc.b	"Divide by zero error in brain @.",0
+	dc.b	"Write protection fault on core sector 02AF@.",0
+	dc.b	"Runtime error 1 in program CHECKING.BIN.",0
+	dc.b	"Underflow error in CHECKING.EXE.",0
+	dc.b	"Overflow in TOWELETBOWEL.EXE. Flush stack?",0
+	dc.b	"Interrupt vector table restored.",0
+	dc.b	"Default settings.",0
+	dc.b	"Power fluxuation detected on brain @.",0
+	even
+	section	bss
+ct_insbuf:	ds.b	82
+	section	text
+
 ; SanityFailure(crew d0): tempinsanity when a stat is below 10; a random stat drops by one
 ct_sanityfailure:
 	movem.l	d3/a3,-(sp)
@@ -829,7 +885,9 @@ ct_sanityfailure:
 	moveq	#5,d0
 	bsr	mt_random
 	tst.w	d0
-	beq	notported		; showchar (the crew member's portrait box)
+	bne.s	.r
+	move.w	d3,d0
+	bsr	ct_insanemsg		; i := random(19): the message, showchar(n, s)
 .r:	moveq	#8,d0
 	bsr	mt_random
 	btst	#0,d0

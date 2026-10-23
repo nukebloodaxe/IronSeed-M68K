@@ -36,6 +36,7 @@ ms_init:
 	bsr	mem_alloc
 	bcs	fatal
 	move.l	a0,ms_buf
+	move.l	a0,orc_scrbuf		; (state dumps carry the shadow: tools/screen_cmp.py)
 	moveq	#0,d0
 	moveq	#0,d1
 	move.w	#MS_W,d2

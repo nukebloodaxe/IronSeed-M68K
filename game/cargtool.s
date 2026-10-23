@@ -10,7 +10,7 @@
 ; startbuild    in: d0.b background, d1.w root, d2.w item, d3.w team  out: d0.w (1 started,
 ;               0 no parts, -1 level, -2 unknown, -3 knowledge)       trashes: d0-d2/a0-a2
 ; getbuildtime  in: d0.w item  out: d0.w                              trashes: d0-d1/a0
-; Printing the cargo (yes to 'PRINT CARGO?') is not ported (notported).
+; Printing the cargo (yes to 'PRINT CARGO?'): printcargo (print.s) writes TEMP\LPT1.
 
 II_SIZE		equ	118		; iteminfotype: index.w, 4 x string[28]
 FADE_MUL_CARGTOOL equ	4
@@ -1201,7 +1201,11 @@ ct2_dropit:
 	bra.s	.box
 .need:	lea	ct2_t_need1,a0
 	lea	ct2_t_need2,a1
-.box:	bra	notported		; printbigbox (forced on) - not ported yet
+.box:	lea	GS_SHIP+SHIP_OPTIONS+OPT_MSGS-1(a6),a2	; printbigbox with the messages option forced to 2
+	move.b	(a2),-(sp)
+	move.b	#2,(a2)
+	bsr	printbigbox
+	move.b	(sp)+,GS_SHIP+SHIP_OPTIONS+OPT_MSGS-1(a6)
 .x:	movem.l	(sp)+,d3-d4/a3
 	rts
 
@@ -1336,7 +1340,8 @@ ct2_findmouse:
 	moveq	#31,d1
 	bsr	yesnorequest
 	tst.w	d0
-	bne	notported		; printcargo
+	beq	.af
+	bsr	printcargo
 	bra	.af
 .lst:	cmp.w	#22,d4			; 22..106: the list
 	blt	.af
@@ -1395,7 +1400,7 @@ ct2_processkey:
 	cmp.b	#'Q',d0
 	bne.s	.n1
 .dn:	st	GS_DONE(a6)
-	bra.s	.af
+	bra	.af
 .n1:	cmp.b	#'1',d0
 	blt.s	.n2
 	cmp.b	#'4',d0
@@ -1409,7 +1414,11 @@ ct2_processkey:
 	bne.s	.n3
 	bsr	ct2_dropit
 	bra.s	.af
-.n3:	cmp.b	#'/',d0			; ('`' bossmode, #10 heap stats: not on the ST)
+.n3:	cmp.b	#'`',d0			; bossmode
+	bne.s	.n3b
+	bsr	bossmode
+	bra	.af
+.n3b:	cmp.b	#'/',d0			; (#10 heap stats: not on the ST)
 	beq.s	.m
 	cmp.b	#'?',d0
 	bne.s	.af

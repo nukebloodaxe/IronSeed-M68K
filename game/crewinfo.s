@@ -552,7 +552,11 @@ ci_processkey:
 	bne.s	.e
 	st	GS_DONE(a6)
 	bra.s	.n
-.e:	tst.b	d0			; ('`' bossmode: not on the ST)
+.e:	cmp.b	#'`',d0			; bossmode
+	bne.s	.eb
+	bsr	bossmode
+	bra.s	.n
+.eb:	tst.b	d0
 	bne.s	.n
 	bsr	kbd_readkey
 	cmp.b	#72,d0
@@ -575,10 +579,11 @@ ci_displaymsg:
 	moveq	#9,d0
 	bsr	mt_random
 	move.w	d0,ci_a
+	bsr	mousehide		; (before a1 is set: it trashes a1)
+	move.w	ci_a,d0
 	mulu	#CI_MSG,d0
 	lea	ci_msgs,a1
 	add.w	d0,a1
-	bsr	mousehide
 	moveq	#0,d3
 .r:	move.w	#273,d0
 	move.w	d3,d1
@@ -604,10 +609,11 @@ ci_displaylittlemsgs:
 	moveq	#8,d0
 	bsr	mt_random
 	move.w	d0,ci_a
+	bsr	mousehide		; (before a1 is set: it trashes a1)
+	move.w	ci_a,d0
 	mulu	#CI_LMSG,d0
 	lea	ci_lmsgs,a1
 	add.w	d0,a1
-	bsr	mousehide
 	move.w	#273,d4
 	btst	#0,ci_msgindex+1
 	beq.s	.e

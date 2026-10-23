@@ -3,7 +3,7 @@
 ; three stats traded against each other with the +/- buttons, the graph display (opened and
 ; closed by sliding the portrait aside), the rising bubbles, the clock running. Mode PSYCHE
 ; (tools/mkmain.py: psyche.cpr; indices 96-127 and 128-159 change at run time: own slots).
-; The encode button (encodecrew / lifesupportfailure) is not ported yet (notported).
+; The encode button: encodecrew(181) / lifesupportfailure (encode.s).
 ;
 ; psyche      crew2.pas psyche                                       trashes: d0-d2/a0-a2
 ; pushrand / poprand   utils.pas PushRand / PopRand
@@ -831,7 +831,11 @@ ps_processkey:
 	bra.s	.x
 .o:	bsr	ps_toopen
 	bra.s	.x
-.e:	cmp.b	#27,d0			; ('`' bossmode, #10 heap stats: not on the ST)
+.e:	cmp.b	#'`',d0			; bossmode
+	bne.s	.eb
+	bsr	bossmode
+	bra.s	.x
+.eb:	cmp.b	#27,d0			; (#10 heap stats: not on the ST)
 	bne.s	.x
 	st	GS_DONE(a6)
 .x:	clr.w	GS_IDLETIME(a6)
@@ -924,7 +928,8 @@ ps_findmouse:
 	ble.s	.i
 	cmp.w	#20,d3
 	bge.s	.i
-	bra	notported		; lifesupportfailure / encodecrew(181)
+	moveq	#1,d0			; lifesupportfailure or encodecrew(181)
+	bsr	en_lifecheck
 .i:	clr.w	GS_IDLETIME(a6)
 .x:	movem.l	(sp)+,d3-d4
 	rts

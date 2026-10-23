@@ -1,0 +1,23 @@
+vtime
+args /playseed 3
+# m39: the shunt drive (utils2.pas dothatartifactthing, crewtick's research job finishing on the
+# bridge): engineering team 1 finishes researching it, the drive throws the ship to a random
+# place (redoscreen(random(2500) x3, drawn right to left), autosave off), "Whoops!" (showchar with
+# messages forced on), event 36; then the star map of the new place
+# setup ship.engrteam[1].job=6900 ship.engrteam[1].jobtype=5 ship.engrteam[1].timeleft=3
+# vbls 60000
+wait 3000
+key #27
+wait 6000
+shot W1
+key #13
+wait 20000
+shot W2
+key #27
+wait 4000
+shot W3
+key #291
+wait 1500
+key y
+wait 3000
+quit

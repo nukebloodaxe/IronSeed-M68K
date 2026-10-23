@@ -1,0 +1,34 @@
+vtime
+args /playseed 3
+# m43: bossmode (the ` key) in the crew status and psychometry screens, back to each
+wait 3000
+key #27
+wait 2000
+key q
+wait 1500
+key x
+wait 3000
+key `
+wait 1000
+key x
+wait 2000
+shot O1
+key #27
+wait 2000
+key q
+wait 1500
+key w
+wait 3000
+key `
+wait 1000
+key x
+wait 2000
+shot O2
+key #27
+wait 2000
+shot O3
+key #291
+wait 1500
+key y
+wait 3000
+quit

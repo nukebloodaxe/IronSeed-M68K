@@ -85,7 +85,27 @@ orc_dump:
 	move.l	#PLANARRAY_SIZEOF,-(sp)
 	move.w	d3,-(sp)
 	GEMDOS	GD_FWRITE,12
-.cl2:	move.w	d3,-(sp)
+.cl2:	move.l	orc_scrbuf,d0		; the chunky shadow (MAIN.PRG), like the Linux build's screen[]
+	beq.s	.cl3
+	move.l	d0,a4
+	lea	orc_hdr,a0
+	moveq	#24/4-1,d1
+.z3:	clr.l	(a0)+
+	dbf	d1,.z3
+	lea	orc_hdr,a0
+	lea	orc_sc,a1
+.t3:	move.b	(a1)+,(a0)+
+	bne.s	.t3
+	move.l	#64000,orc_hdr+24
+	pea	orc_hdr
+	move.l	#28,-(sp)
+	move.w	d3,-(sp)
+	GEMDOS	GD_FWRITE,12
+	move.l	a4,-(sp)
+	move.l	#64000,-(sp)
+	move.w	d3,-(sp)
+	GEMDOS	GD_FWRITE,12
+.cl3:	move.w	d3,-(sp)
 	GEMDOS	GD_FCLOSE,4
 .out:	movem.l	(sp)+,d3-d4/a3-a4
 .x:	rts
@@ -93,6 +113,7 @@ orc_dump:
 	section	data
 orc_name:	dc.b	"C:",92,"D0000.BIN",0
 orc_tp:		dc.b	8,"tempplan",0
+orc_sc:		dc.b	6,"screen",0
 	even
 orc_blocks:
 	dc.w	GS_SHIP,SHIP_SIZEOF
@@ -162,4 +183,5 @@ orc_blocks:
 
 	section	bss
 orc_seq:	ds.w	1
+orc_scrbuf:	ds.l	1		; set by a program with a chunky shadow (MAIN: ms_buf)
 orc_hdr:	ds.b	28

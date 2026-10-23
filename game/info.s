@@ -1391,7 +1391,11 @@ if_processkey:
 	bne.s	.sp
 	st	GS_DONE(a6)
 	bra.s	.x
-.sp:	cmp.b	#' ',d0			; ('`' bossmode, #10 heap stats: not on the ST)
+.sp:	cmp.b	#'`',d0			; bossmode
+	bne.s	.spb
+	bsr	bossmode
+	bra.s	.x
+.spb:	cmp.b	#' ',d0			; (#10 heap stats: not on the ST)
 	bne.s	.x
 	clr.w	if_rotatemode
 .x:	clr.w	GS_IDLETIME(a6)

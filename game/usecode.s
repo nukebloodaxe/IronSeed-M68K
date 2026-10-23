@@ -530,8 +530,20 @@ us_command:
 	dc.w	.c24-.tab,.x-.tab,.c26-.tab,.c27-.tab,.c27-.tab,.c29-.tab,.c30-.tab,.c31-.tab ; 24-31
 	dc.w	.c32-.tab,.c33-.tab,.x-.tab,.c32-.tab,.c36-.tab,.c37-.tab,.c38-.tab,.c39-.tab ; 32-39
 	dc.w	.c40-.tab,.c40-.tab,.c42-.tab,.x-.tab,.c44-.tab,.c45o-.tab,.c46-.tab,.c47-.tab ; 40-47
-	dc.w	.c48-.tab,.np-.tab,.c47-.tab,.c51-.tab,.x-.tab,.c53-.tab			; 48-53
-.np:	bra	notported		; load
+	dc.w	.c48-.tab,.np-.tab,.c50-.tab,.c51-.tab,.x-.tab,.c53-.tab			; 48-53
+.np:	sf	d0			; loadgamedata(false): a game loaded -> reloading, quit, colors black
+	bsr	sl_loadgamedata
+	tst.w	d0
+	beq	.x
+	st	GS_RELOADING(a6)
+	st	GS_QUIT(a6)
+	lea	GS_COLORS(a6),a0
+	move.w	#768/4-1,d0
+.cl:	clr.l	(a0)+
+	dbf	d0,.cl
+	lea	GS_COLORS(a6),a0
+	bsr	set256colors
+	bra	.x
 .c8:	bsr	conversewithcrew
 	bra	.x
 .c14:	bsr	creation
@@ -769,8 +781,12 @@ us_command:
 	moveq	#31,d1
 	bsr	savegamedata
 	bra	.x
-.c47:	cmp.b	#39,GS_SHIP+SHIP_DAMAGES+DMG_LIFESUPPORT-1(a6)
-	bra	notported		; lifesupportfailure / encodecrew / decodecrew
+.c47:	moveq	#0,d0			; lifesupportfailure or encodecrew(26)
+	bsr	en_lifecheck
+	bra	.x
+.c50:	moveq	#2,d0			; lifesupportfailure or decodecrew
+	bsr	en_lifecheck
+	bra	.x
 .c48:	PLEA	"Initiate Time Burst?"
 	moveq	#0,d0
 	moveq	#31,d1

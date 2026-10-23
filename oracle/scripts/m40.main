@@ -1,0 +1,27 @@
+vtime
+args /playseed 3
+# prn
+# m40: printing the cargo (saveload.pas printcargo from the cargo hold's print button): the
+# yes/no request, the file TEMP\LPT1 (compared with Linux's tmp/LPT1, line ends aside)
+# vbls 60000
+wait 3000
+key #27
+wait 2000
+key a
+wait 1500
+key v
+wait 9000
+shot K1
+click 243 80
+wait 1500
+shot K2
+key y
+wait 2000
+shot K3
+key #27
+wait 9000
+key #291
+wait 1500
+key y
+wait 3000
+quit

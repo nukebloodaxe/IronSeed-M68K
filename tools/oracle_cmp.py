@@ -85,7 +85,9 @@ def main():
         return
     b = load(layout, sys.argv[3]); out = []
     for k in a:
-        if k not in b: out.append('%s: missing in second dump' % k); continue
+        if k not in b:
+            if hasattr(a[k], '__len__') and len(a[k]) == 0: continue   # (an empty block: Linux's nil tempplan)
+            out.append('%s: missing in second dump' % k); continue
         diff(a[k], b[k], k, out)
     print('\n'.join(out) if out else 'identical')
     sys.exit(1 if out else 0)

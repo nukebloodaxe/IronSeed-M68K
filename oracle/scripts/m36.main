@@ -1,0 +1,44 @@
+vtime
+args /playseed 3
+# m36: loading from the cube (saveload.pas loadgamedata(false), usecode.pas 49): an empty slot
+# (a fake cancel), Esc, then slot 3 after 30 s of game time: reloading - the bridge starts again
+# from the saved game (event 10's log is already known)
+wait 3000
+key #27
+wait 2000
+key b
+wait 1500
+key d
+wait 2000
+shot H1
+# mask H1:84,130,190,138
+key 5
+wait 300
+key #13
+wait 2000
+shot H2
+key d
+wait 1500
+key #27
+wait 1500
+wait 30000
+shot H3
+key d
+wait 1500
+key #273
+wait 300
+key #273
+wait 300
+key 3
+wait 300
+key #13
+wait 8000
+shot H4
+key #27
+wait 4000
+shot H5
+key #291
+wait 1500
+key y
+wait 3000
+quit

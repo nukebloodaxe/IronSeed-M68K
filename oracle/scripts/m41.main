@@ -1,0 +1,27 @@
+vtime
+args /playseed 3
+# prn
+# m41: printing the planet file (saveload.pas printinfo, key 3 on the system info panel): 80
+# planets marked visited with scans/contacts mixed (the sector headings, systems, sizes, states,
+# robots, caches, the scan's elements, the life found with its re-seeded random numbers)
+# setup planets[1].visits=1 planets[1].notes=1 planets[2].visits=1 planets[2].notes=3 planets[3].visits=1 planets[3].notes=35 planets[4].visits=1 planets[4].notes=0 planets[5].visits=1 planets[5].notes=1 planets[6].visits=1 planets[6].notes=3 planets[7].visits=1 planets[7].notes=35 planets[8].visits=1 planets[8].notes=0 planets[9].visits=1 planets[9].notes=1 planets[10].visits=1 planets[10].notes=3 planets[11].visits=1 planets[11].notes=35 planets[12].visits=1 planets[12].notes=0 planets[13].visits=1 planets[13].notes=1 planets[14].visits=1 planets[14].notes=3 planets[15].visits=1 planets[15].notes=35 planets[16].visits=1 planets[16].notes=0 planets[17].visits=1 planets[17].notes=1 planets[18].visits=1 planets[18].notes=3 planets[19].visits=1 planets[19].notes=35 planets[20].visits=1 planets[20].notes=0 planets[21].visits=1 planets[21].notes=1 planets[22].visits=1 planets[22].notes=3 planets[23].visits=1 planets[23].notes=35 planets[24].visits=1 planets[24].notes=0 planets[25].visits=1 planets[25].notes=1 planets[26].visits=1 planets[26].notes=3 planets[27].visits=1 planets[27].notes=35 planets[28].visits=1 planets[28].notes=0 planets[29].visits=1 planets[29].notes=1 planets[30].visits=1 planets[30].notes=3 planets[31].visits=1 planets[31].notes=35 planets[32].visits=1 planets[32].notes=0 planets[33].visits=1 planets[33].notes=1 planets[34].visits=1 planets[34].notes=3 planets[35].visits=1 planets[35].notes=35 planets[36].visits=1 planets[36].notes=0 planets[37].visits=1 planets[37].notes=1 planets[38].visits=1 planets[38].notes=3 planets[39].visits=1 planets[39].notes=35 planets[40].visits=1 planets[40].notes=0 planets[41].visits=1 planets[41].notes=1 planets[42].visits=1 planets[42].notes=3 planets[43].visits=1 planets[43].notes=35 planets[44].visits=1 planets[44].notes=0 planets[45].visits=1 planets[45].notes=1 planets[46].visits=1 planets[46].notes=3 planets[47].visits=1 planets[47].notes=35 planets[48].visits=1 planets[48].notes=0 planets[49].visits=1 planets[49].notes=1 planets[50].visits=1 planets[50].notes=3 planets[51].visits=1 planets[51].notes=35 planets[52].visits=1 planets[52].notes=0 planets[53].visits=1 planets[53].notes=1 planets[54].visits=1 planets[54].notes=3 planets[55].visits=1 planets[55].notes=35 planets[56].visits=1 planets[56].notes=0 planets[57].visits=1 planets[57].notes=1 planets[58].visits=1 planets[58].notes=3 planets[59].visits=1 planets[59].notes=35 planets[60].visits=1 planets[60].notes=0 planets[61].visits=1 planets[61].notes=1 planets[62].visits=1 planets[62].notes=3 planets[63].visits=1 planets[63].notes=35 planets[64].visits=1 planets[64].notes=0 planets[65].visits=1 planets[65].notes=1 planets[66].visits=1 planets[66].notes=3 planets[67].visits=1 planets[67].notes=35 planets[68].visits=1 planets[68].notes=0 planets[69].visits=1 planets[69].notes=1 planets[70].visits=1 planets[70].notes=3 planets[71].visits=1 planets[71].notes=35 planets[72].visits=1 planets[72].notes=0 planets[73].visits=1 planets[73].notes=1 planets[74].visits=1 planets[74].notes=3 planets[75].visits=1 planets[75].notes=35 planets[76].visits=1 planets[76].notes=0 planets[77].visits=1 planets[77].notes=1 planets[78].visits=1 planets[78].notes=3 planets[79].visits=1 planets[79].notes=35 planets[80].visits=1 planets[80].notes=0
+# vbls 60000
+wait 3000
+key #27
+wait 2000
+key g
+wait 1500
+key v
+wait 3000
+shot I1
+key 3
+wait 1500
+shot I2
+key y
+wait 3000
+shot I3
+key #291
+wait 1500
+key y
+wait 3000
+quit

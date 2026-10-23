@@ -1,0 +1,25 @@
+vtime
+args /playseed
+# noslot
+# m37: MAIN.PRG without a slot (IS.PRG's Continue): saveload.pas loadgamedata(true), the load
+# dialog over the scrolling stars (mainloop(true): fadein, k rotating the cloud in 8 directions),
+# the cursor by keys, slot 3 loaded, the bridge
+wait 3000
+shot G1
+# mask G1:84,130,190,138
+key #274
+wait 1500
+key #274
+wait 1500
+key #274
+wait 2500
+shot G2
+# mask G2:84,130,190,138
+key #13
+wait 6000
+shot G3
+key #291
+wait 1500
+key y
+wait 3000
+quit

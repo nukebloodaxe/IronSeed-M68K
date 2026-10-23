@@ -186,6 +186,11 @@ sys_crash:
 	move.w	#$2700,sr
 	move.l	2(sp),sys_crashpc
 	movem.l	d0-d7/a0-a7,sys_crashregs
+	lea	6(sp),a0		; the stack above the frame (return addresses for tools/st_fatal.py)
+	lea	sys_crashstk,a1
+	moveq	#64-1,d0
+.cs:	move.l	(a0)+,(a1)+
+	dbf	d0,.cs
 	lea	sys_kstack_top,sp
 	bsr	sys_restore
 	move.w	#$2300,sr
@@ -249,8 +254,10 @@ sys_dumpcrash:
 	move.l	d1,-(sp)
 	move.w	d2,-(sp)
 	GEMDOS	GD_FWRITE,12
+	move.l	sys_basepage,a0
+	move.l	8(a0),sys_crashtb
 	pea	sys_crashregs
-	pea	64.w
+	pea	64+256+4.w
 	move.w	d2,-(sp)
 	GEMDOS	GD_FWRITE,12
 	move.w	d2,-(sp)
@@ -295,6 +302,8 @@ sys_oldvec:	ds.l	8
 sys_crashpc:	ds.l	1
 sys_crashaddr:	ds.l	1
 sys_crashregs:	ds.l	16
+sys_crashstk:	ds.l	64
+sys_crashtb:	ds.l	1
 sys_oldrez:	ds.w	1
 sys_active:	ds.w	1
 sys_exitcode:	ds.w	1

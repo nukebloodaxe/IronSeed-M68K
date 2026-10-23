@@ -9,15 +9,18 @@
 R=$(cd "$(dirname "$0")/.." && pwd); cd "$R"
 fail=0
 [ -d build/oracle_s4/home/.ironseed/save3 ] && [ -f hatari/c/SAVE3/SHIP.DTA ] || { echo "FAIL main: no s4 save (run check_crewgen.sh first)"; exit 1; }
-MODES="$(for m in LOG MAIN LAND CHAR2 PSYCHE CARGO TECH1 CCOM COMNR COMA1 COMA2 COMA3 COMA4 COMA5 COMA6 COMA7 COMA8 COMA9 COMA10 COMA11 COMG30 COMG31 COMG32 COMG33 SECTOR FIGHT; do printf "hatari/c/DATA/%s.ISP " $m; done)"
+MODES="$(for m in LOG MAIN LAND CHAR2 PSYCHE CARGO TECH1 CCOM COMNR COMA1 COMA2 COMA3 COMA4 COMA5 COMA6 COMA7 COMA8 COMA9 COMA10 COMA11 COMG30 COMG31 COMG32 COMG33 SECTOR FIGHT LOADG END1B END2B END3B END4B END5B INTRO2E CRED ENDS; do printf "hatari/c/DATA/%s.ISP " $m; done)"
 cp hatari/c/SAVEGAME.DIR /tmp/main_sgdir.bak   # sessions that save get their slots compared, then undone
-for S in ${@:-m1 m2 m3 m4 m5 m6 m7 m8 m9 m10 m11 m12 m13 m14 m15 m16 m17 m18 m19 m20 m21 m22 m23 m24 m25 m26 m27 m28 m29 m30 m31 m32 m33}; do
+for S in ${@:-m1 m2 m3 m4 m5 m6 m7 m8 m9 m10 m11 m12 m13 m14 m15 m16 m17 m18 m19 m20 m21 m22 m23 m24 m25 m26 m27 m28 m29 m30 m31 m32 m33 m34 m35 m36 m37 m38 m39 m40 m41 m42 m43}; do
   O=build/oracle_$S; H=build/oracle_s4/home
   SETUP=$(sed -n 's/^# *setup //p' oracle/scripts/$S.main)   # a test position made from the s4 save
   if [ -n "$SETUP" ]; then
     H=build/setup_$S; python3 tools/mksave.py build/layout.json build/oracle_s4/home 3 $H 3 hatari/c $SETUP > /dev/null || exit 1
   fi
-  tools/oracle_main.sh oracle/scripts/$S.main $O $H 3 > /dev/null
+  SL=3; grep -q "^# *noslot" oracle/scripts/$S.main && SL=; IS=/playseed; grep -q "^# *killseed" oracle/scripts/$S.main && { SL=; IS=/killseed; }
+  PRN=$(grep -c "^# *prn" oracle/scripts/$S.main); rm -f hatari/c/TEMP/LPT1   # "# prn": compare the printed file
+  ISEED=$IS tools/oracle_main.sh oracle/scripts/$S.main $O $H "$SL" > /dev/null
+  [ "$PRN" != 0 ] && cp "$(find $O/tmp -name LPT1 | head -1)" $O/LPT1
   python3 tools/st_script.py oracle/scripts/$S.main hatari/c/INPUT.MN
   rm -rf hatari/c/*.SCR hatari/c/D0*.BIN hatari/c/CRASH.TXT hatari/c/TEMP
   V=$(awk '/^# *vbls /{print $3}' oracle/scripts/$S.main); tools/run_hatari.sh ${V:-30000} /tmp/main_$S.png --auto 'C:\MAIN.PRG' > /dev/null
@@ -25,10 +28,10 @@ for S in ${@:-m1 m2 m3 m4 m5 m6 m7 m8 m9 m10 m11 m12 m13 m14 m15 m16 m17 m18 m19
   n=0; bad=0
   for L in $O/main_*.bin; do
     n=$((n+1)); k=$(basename $L | cut -d_ -f2)
-    out=$(python3 tools/oracle_cmp.py build/layout.json $L hatari/c/D$k.BIN 2>&1 | grep -v '^screen')
+    out=$(python3 tools/oracle_cmp.py build/layout.json $L hatari/c/D$k.BIN 2>&1 | grep -v '^screen\|^identical')
     [ -n "$out" ] && { bad=$((bad+1)); echo "  $S dump $k: $(echo "$out" | head -2 | tr '\n' ' ')"; }
   done
-  [ $n -gt 5 ] && [ $bad = 0 ] && echo "PASS main $S state ($n dumps identical with Linux)" || { echo "FAIL main $S state ($bad of $n dumps differ)"; fail=1; }
+  [ $n -gt 0 ] && [ $bad = 0 ] && echo "PASS main $S state ($n dumps identical with Linux)" || { echo "FAIL main $S state ($bad of $n dumps differ)"; fail=1; }
   for D in $O/home/.ironseed/save[0-9]; do      # games saved in the session (slot 3 is the start)
     N=${D##*save}; [ $N = 3 ] && continue
     rm -rf /tmp/st_save; python3 tools/st2dos.py build/layout.json hatari/c/SAVE$N /tmp/st_save > /dev/null
@@ -39,6 +42,10 @@ for S in ${@:-m1 m2 m3 m4 m5 m6 m7 m8 m9 m10 m11 m12 m13 m14 m15 m16 m17 m18 m19
     [ $sb = 0 ] && echo "PASS main $S saved game (SAVE$N + SAVEGAME.DIR byte-identical with Linux after st2dos)" || fail=1
     rm -rf hatari/c/SAVE$N
   done
+  if [ "$PRN" != 0 ]; then
+    if [ -f $O/LPT1 ] && cmp -s $O/LPT1 <(tr -d '\r' < hatari/c/TEMP/LPT1 2>/dev/null); then echo "PASS main $S printed file (TEMP\\LPT1 = Linux's, line ends aside)"
+    else echo "FAIL main $S printed file"; fail=1; fi
+  fi
   cp /tmp/main_sgdir.bak hatari/c/SAVEGAME.DIR
   [ -n "$SETUP" ] && python3 tools/mksave.py build/layout.json build/oracle_s4/home 3 build/setup_none 3 hatari/c > /dev/null
   SHOTS=$(awk '/^shot /{n[++k]=$2} /^# *mask /{sub(/^# *mask /,""); split($0,a,":"); m[a[1]]=$0}

@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""st_fatal.py FATAL.BIN PROG.s : where MAIN.PRG stopped with 'a data file is missing' (fatal):
+"""st_fatal.py FATAL.BIN|CRASH.TXT PROG.s : where MAIN.PRG stopped with 'a data file is missing' (fatal):
 the registers and the stack's longs that point into the program's text, as source lines
 (a vasm listing of PROG.s is made; the text base is taken from the return addresses' range)."""
 import os, re, struct, subprocess, sys, tempfile
 d = open(sys.argv[1], 'rb').read()
+if b'Press a key.' in d:   # C:\CRASH.TXT: message, then registers, stack, text base
+    i = d.index(b'Press a key.\r\n') + 14; print(d[:i].decode('latin1').strip()); d = d[i:] + bytes(64)
 regs = struct.unpack('>16I', d[:64]); stack = struct.unpack('>64I', d[64:320])
 print(' '.join('d%d=%08x' % (i, regs[i]) for i in range(8)))
 print(' '.join('a%d=%08x' % (i, regs[8 + i]) for i in range(8)))

@@ -1213,7 +1213,11 @@ cc_processkey:
 	bsr	cc_cursorlights
 	move.w	#-1,cm_contactindex
 	bra.s	.x
-.esc:	cmp.b	#27,d3			; ('`' bossmode: not on the ST)
+.esc:	cmp.b	#'`',d3			; bossmode
+	bne.s	.eb
+	bsr	bossmode
+	bra.s	.x
+.eb:	cmp.b	#27,d3
 	bne.s	.x
 	st	GS_DONE(a6)
 .x:	clr.w	GS_IDLETIME(a6)
@@ -2131,7 +2135,11 @@ cm_processkey3:
 	bne.s	.esc
 .gi:	bsr	getinfo
 	bra.s	.x
-.esc:	cmp.b	#27,d3			; ('`' bossmode, #10 heap stats: not on the ST)
+.esc:	cmp.b	#'`',d3			; bossmode
+	bne.s	.eb
+	bsr	bossmode
+	bra.s	.x
+.eb:	cmp.b	#27,d3
 	bne.s	.x
 	st	GS_DONE(a6)
 .x:	clr.w	GS_IDLETIME(a6)

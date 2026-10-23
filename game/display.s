@@ -3091,7 +3091,7 @@ displaysysteminfo:
 	bsr	yesnorequest
 	tst.w	d0
 	beq.s	.c8n
-	bra	notported		; printinfo (the planet file to the printer)
+	bsr	printinfo		; (print.s: TEMP\LPT1)
 .c8n:	bsr	mousehide
 .draw:	TCOL	191
 	BKCOL	5
@@ -5001,8 +5001,8 @@ dp_cfg_job:
 	bsr	dp_gun
 	tst.w	d1
 	beq	.x0
+	move.w	d1,d3			; (kept across mouseshow)
 	bsr	mouseshow		; remove: the weapon's name without trailing blanks
-	move.w	d1,d3
 	add.w	#ID_DIRK-1,d3
 	moveq	#0,d1			; i := 0; while (i < maxcargo) and (cargo[i].index <> w) do inc(i)
 	lea	GS_CARGO-CARGO_SIZEOF+CARGO_INDEX(a6),a0

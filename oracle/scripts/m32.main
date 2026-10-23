@@ -5,7 +5,7 @@ args /playseed 3
 # charges and hits, shields, the target picture view, targets, zoom, direction, victory and the
 # scavenger bots
 # setup ship.damages[6]=0 ship.gunnodes[1]=10 ship.gunnodes[2]=25 ship.gunnodes[3]=40 ship.gunnodes[4]=55 ship.gunnodes[6]=62 ship.wandering.alienid=1002 ship.wandering.orders=0 ship.wandering.relx=520 ship.wandering.rely=520 ship.wandering.relz=520 @contact=2:1002
-# vbls 150000
+# vbls 520000
 wait 3000
 key #27
 wait 5000

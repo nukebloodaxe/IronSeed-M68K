@@ -443,7 +443,36 @@ dothatartifactthing:
 	bsr	chevent
 	tst.w	d0
 	bne	.x
-	bra	notported		; (redoscreen to a random place, event 36)
+	move.w	#ID_ART_SHUNT_DRIVE,d0	; addcargo(shunt drive, true); viewmode(2) := 0
+	st	d1
+	bsr	addcargo
+	clr.w	GS_VIEWMODE(a6)
+	clr.w	GS_VIEWMODE2(a6)
+	lea	GS_SHIP+SHIP_OPTIONS+OPT_AUTOSAVE-1(a6),a0	; no autosave on this journey
+	move.b	(a0),-(sp)
+	clr.b	(a0)
+	move.w	#2500,d0		; redoscreen(random(2500) x3): FPC draws the arguments right to
+	bsr	mt_random		; left (z, y, x: seen in the oracle's code)
+	move.w	d0,-(sp)
+	move.w	#2500,d0
+	bsr	mt_random
+	move.w	d0,-(sp)
+	move.w	#2500,d0
+	bsr	mt_random
+	move.w	(sp)+,d1
+	move.w	(sp)+,d2
+	bsr	redoscreen
+	move.b	(sp)+,GS_SHIP+SHIP_OPTIONS+OPT_AUTOSAVE-1(a6)
+	lea	GS_SHIP+SHIP_OPTIONS+OPT_MSGS-1(a6),a0	; showchar(2, 'Whoops! ...') with messages on
+	move.b	(a0),-(sp)
+	move.b	#2,(a0)
+	moveq	#2,d0
+	lea	ej_t_whoops,a0
+	bsr	showchar
+	move.b	(sp)+,GS_SHIP+SHIP_OPTIONS+OPT_MSGS-1(a6)
+	moveq	#36,d0
+	bsr	event
+	bra	.x
 .b2:	cmp.w	#ID_ART_THERMAL_PLATING,d3
 	bne.s	.b3
 	lea	ej_t_thermo,a0
@@ -511,5 +540,10 @@ ej_t_noinfo:	dc.b	37,"No new information from the artifact."
 ej_old:		ds.b	10
 ej_s:		ds.b	256
 ej_s2:		ds.b	256
+	even
+	section	text
+
+	section	data
+ej_t_whoops:	dc.b	50,"Whoops! Didn't know the Shunt Drive would do that!"
 	even
 	section	text

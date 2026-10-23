@@ -47,6 +47,8 @@ scr_open:
 	bsr	scr_kw
 	bne.s	.args
 	move.w	#1,scr_vtime		; virtual time from the start
+	clr.w	kbd_mx			; (and the mouse at 0,0 like the Linux build's dummy SDL mouse)
+	clr.w	kbd_my
 	bsr	scr_eol
 	bra.s	.lead
 .args:	lea	scr_kw_args,a1

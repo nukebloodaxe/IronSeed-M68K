@@ -94,9 +94,9 @@ snd_sfx_load:
 	clr.l	SMP_LS(a3)
 	clr.l	SMP_LL(a3)
 	move.w	#64,SMP_VOL(a3)
-	lea	0(a0,d3.l),a1		; zero the padding
-	move.w	#MOD_PAD/2-1,d0
-.z:	clr.w	(a1)+
+	lea	0(a0,d3.l),a1		; zero the padding (bytes: a .SAM can have an odd length)
+	move.w	#MOD_PAD-1,d0
+.z:	clr.b	(a1)+
 	dbf	d0,.z
 	move.l	a4,a0
 	move.l	SMP_ADDR(a3),a1

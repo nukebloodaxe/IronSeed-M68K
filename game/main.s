@@ -107,10 +107,16 @@ cmdtail:
 	lea	scr_args,a0
 .x:	rts
 
-; starter.pas checkparams: "/playseed" (or "/killseed": the ending, not ported yet)
+; starter.pas checkparams: "/playseed", or "/killseed": the ending (ending.s)
 checkparams:
 	bsr	cmdtail
 	addq.l	#1,a0
+	move.l	a0,-(sp)
+	lea	arg_kill,a1
+	bsr	has_arg
+	move.l	(sp)+,a0
+	tst.w	d0
+	bne.s	.kill
 	lea	arg_seed,a1
 	bsr	has_arg
 	tst.w	d0
@@ -121,6 +127,14 @@ checkparams:
 	bra	sys_exit
 .ok:	move.w	#10,GS_TSLICE(a6)
 	rts
+.kill:	move.w	#10,GS_TSLICE(a6)
+	move.b	#1,GS_SHIP+SHIP_OPTIONS+OPT_SOUND-1(a6)
+	move.b	#63,GS_SHIP+SHIP_OPTIONS+OPT_VOLUME-1(a6)
+	move.l	GS_TEMPPLAN(a6),a0	; (tempplan^ as a fresh FPC heap block: zeros)
+	move.w	#PLANARRAY_SIZEOF/2-1,d0
+.z:	clr.w	(a0)+
+	dbf	d0,.z
+	bra	endgame
 
 ; starter.pas readydata: icons, weapons, cargo, artifacts, planet icons; readybuildtimes
 readydata:
@@ -271,8 +285,11 @@ journeyon:
 	bsr	loadspecial
 	tst.w	GS_CURFILENUM(a6)
 	bne.s	.loaded
-	; loadgamedata(true): the load dialog - not ported yet
-	moveq	#3,d0
+	st	d0			; loadgamedata(true): the load dialog over the stars
+	bsr	sl_loadgamedata
+	tst.w	d0
+	bne.s	.loaded
+	moveq	#3,d0			; (closegraph; halt(3))
 	bra	sys_exit
 .loaded:
 	bra	bridge
@@ -318,8 +335,8 @@ loadspecial:
 .x:	rts
 
 ; ---------------------------------------------------------------
-; not ported yet
-screensaver:				; weird.pas screensaver (after 750 idle frames)
+; weird.pas screensaver (after 750 idle frames): the FPC build has its body commented out
+screensaver:
 	clr.w	GS_IDLETIME(a6)
 	rts
 
@@ -350,11 +367,15 @@ screensaver:				; weird.pas screensaver (after 750 idle frames)
 	include	"crew2.s"
 	include	"cargtool.s"
 	include	"engjobs.s"
+	include	"encode.s"
+	include	"ending.s"
+	include	"print.s"
 	include	"fp.s"
 
 	section	data
 fn_script:	dc.b	"INPUT.MN",0
 arg_seed:	dc.b	"/PLAYSEED",0
+arg_kill:	dc.b	"/KILLSEED",0
 fn_icons:	dc.b	"DATA",92,"ICONS.VGA",0
 fn_mainpal:	dc.b	"DATA",92,"MAIN.PAL",0
 fn_weapon:	dc.b	"DATA",92,"WEAPON.DTA",0

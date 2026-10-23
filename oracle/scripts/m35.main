@@ -1,0 +1,36 @@
+vtime
+args /playseed 3
+# m35: life support damaged past 39 (weird.pas lifesupportfailure: the medic's message, the chips'
+# stats wiped) from the cube's encode and decode and from psychometry's button
+# setup ship.damages[5]=45
+wait 3000
+key #27
+wait 2000
+key b
+wait 1500
+key r
+wait 2000
+shot L1
+key #13
+wait 1500
+key f
+wait 2000
+key #13
+wait 1500
+key q
+wait 1500
+key w
+wait 3000
+click 15 40
+wait 2000
+shot L2
+key #13
+wait 1500
+key #27
+wait 2000
+shot L3
+key #291
+wait 1500
+key y
+wait 3000
+quit

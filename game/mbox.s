@@ -6,6 +6,7 @@
 ;
 ; showchar  in: d0.w crew (0 computer, 1-6), a0 = message (Pascal string)   trashes: d0-d2/a0-a2
 ; printbox  in: a0 = message                                               trashes: d0-d2/a0-a2
+; printbigbox in: a0 = s1, a1 = s2 (two lines)                             trashes: d0-d2/a0-a2
 
 	section	text
 ; the box colours from the palette (the original tests colors[31,3], colors[32,2], colors[32,1]):
@@ -385,6 +386,125 @@ printbox:
 .bk1:	dc.w	9,35,109,35,109
 .bk2:	dc.w	11,37,115,37,115
 
+; utils.pas printbigbox(s1, s2): like printbox, two lines, a wider box (rows 50-102, x 70-249)
+; in: a0 = s1, a1 = s2   trashes: d0-d2/a0-a2
+printbigbox:
+	movem.l	d3-d7/a3-a5,-(sp)
+	move.l	a0,a4
+	move.l	a1,a5
+	tst.b	GS_SHIP+SHIP_OPTIONS+OPT_MSGS-1(a6)
+	beq	.x
+	move.w	GS_TCOLOR(a6),d6	; oldt
+	move.w	#31,GS_TCOLOR(a6)
+	bsr	shadowprintln
+	lea	mb_s1,a1		; shadowprint(s1+' '+s2) (shortstring: at most 255)
+	lea	1(a1),a2
+	moveq	#0,d1
+	move.l	a4,a0
+	bsr	.cat
+	lea	.sp,a0
+	bsr	.cat
+	move.l	a5,a0
+	bsr	.cat
+	move.b	d1,(a1)
+	move.l	a1,a0
+	bsr	shadowprint
+	move.w	d6,GS_TCOLOR(a6)
+	cmp.b	#1,GS_SHIP+SHIP_OPTIONS+OPT_MSGS-1(a6)
+	beq	.x
+	lea	.tt,a0
+	bsr	mb_pick
+	move.w	d0,d5			; t
+	bsr	mousehide		; tempscr := rows 50..102, x 70..249
+	lea	mb_save,a3
+	moveq	#50,d3
+.sv:	moveq	#70,d0
+	move.w	d3,d1
+	bsr	ms_addr
+	move.w	#180-1,d0
+.svc:	move.b	(a0)+,(a3)+
+	dbf	d0,.svc
+	addq.w	#1,d3
+	cmp.w	#102,d3
+	ble.s	.sv
+	lea	.of1,a0			; button(70, 50, 249, 102, ofsc)
+	bsr	mb_pick
+	move.w	d0,d4
+	moveq	#70,d0
+	moveq	#50,d1
+	move.w	#249,d2
+	moveq	#102,d3
+	bsr	mb_button
+	lea	.of2,a0			; button(139, 78, 179, 92, ofsc)
+	bsr	mb_pick
+	move.w	d0,d4
+	move.w	#139,d0
+	moveq	#78,d1
+	move.w	#179,d2
+	moveq	#92,d3
+	bsr	mb_button
+	move.w	d5,GS_TCOLOR(a6)
+	lea	.bk1,a0
+	bsr	mb_pick
+	move.w	d0,GS_BKCOLOR(a6)
+	move.l	a4,a0			; printxy(round((170-length(s1)*5)/2)+70, 55, s1)
+	bsr	mb_centre
+	moveq	#55,d1
+	move.l	a4,a0
+	bsr	printxy
+	move.l	a5,a0			; ... 61, s2
+	bsr	mb_centre
+	moveq	#61,d1
+	move.l	a5,a0
+	bsr	printxy
+	lea	.bk2,a0
+	bsr	mb_pick
+	move.w	d0,GS_BKCOLOR(a6)
+	PXY	149,82,"OK"
+	bsr	mouseshow
+	moveq	#78,d3
+	moveq	#1,d4
+	bsr	mb_wait
+	bsr	mousehide		; the rows back
+	lea	mb_save,a3
+	moveq	#50,d3
+.rs:	moveq	#70,d0
+	move.w	d3,d1
+	bsr	ms_addr
+	move.w	#180-1,d0
+.rsc:	move.b	(a3)+,(a0)+
+	dbf	d0,.rsc
+	addq.w	#1,d3
+	cmp.w	#102,d3
+	ble.s	.rs
+	moveq	#70,d0
+	moveq	#50,d1
+	move.w	#249,d2
+	moveq	#102,d3
+	bsr	ms_dirty
+	bsr	mouseshow
+	move.w	d6,GS_TCOLOR(a6)
+	clr.w	GS_BKCOLOR(a6)
+	move.w	#82,ms_color
+.x:	movem.l	(sp)+,d3-d7/a3-a5
+	rts
+.cat:	moveq	#0,d0			; append the Pascal string a0 at a2 (d1 = length so far, max 255)
+	move.b	(a0)+,d0
+	bra.s	.ce
+.cc:	cmp.w	#255,d1
+	beq.s	.cx
+	move.b	(a0)+,(a2)+
+	addq.w	#1,d1
+.ce:	dbf	d0,.cc
+.cx:	rts
+.sp:	dc.b	1," "
+	even
+.tt:	dc.w	26,26,26,197,182
+.of1:	dc.w	-26,0,74,0,74
+.of2:	dc.w	-24,2,78,2,78
+.bk1:	dc.w	9,35,109,35,109
+.bk2:	dc.w	11,37,115,37,115
+
 	section	data
 mb_heads:				; showchar's s (string[12])
 	dc.b	9,"COMPUTER:   "
@@ -400,7 +520,7 @@ mb_fn_pics:	dc.b	"DATA",92,"PORTRAIT.DAT",0
 mb_pics:	ds.l	1
 mb_s1:		ds.b	256
 mb_s2:		ds.b	256
-mb_save:	ds.b	53*172
+mb_save:	ds.b	53*180
 mb_ans:		ds.b	1
 mb_done:	ds.b	1
 mb_loaded:	ds.b	1

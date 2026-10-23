@@ -1641,8 +1641,12 @@ cr_processkey:
 	cmp.b	#'C',d0
 	bne.s	.k4
 	bsr	cr_setcolorcode
-	bra.s	.x
-.k4:	cmp.b	#13,d0			; ('`' bossmode, #10 heap stats: not on the ST)
+	bra	.x
+.k4:	cmp.b	#'`',d0			; bossmode
+	bne.s	.k4b
+	bsr	bossmode
+	bra	.x
+.k4b:	cmp.b	#13,d0			; (#10 heap stats: not on the ST)
 	bne.s	.x
 	tst.w	ct2_mode_
 	bne.s	.cm

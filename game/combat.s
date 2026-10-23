@@ -27,11 +27,48 @@ cb_weap:
 	rts
 
 ; r (a double at a0) := sqrt(sqr(relx/10)+sqr(rely/10)+sqr(relz/10))*100 for the ship at a1
+; Speed: the result only depends on relx/y/z (ships move every 8th pass), so the last 8 are kept
+; (cb_rcache: relx, rely, relz, the double) - the same double the FPU steps would give.
 cb_range:
 	movem.l	a3-a4,-(sp)
 	move.l	a0,a4
 	move.l	a1,a3
+	lea	cb_rcache,a0		; a hit: copy the double
+	moveq	#8-1,d1
+.h:	move.l	ALIENSHIP_RELX(a3),d0
+	cmp.l	(a0),d0
+	bne.s	.hn
+	move.l	ALIENSHIP_RELY(a3),d0
+	cmp.l	4(a0),d0
+	bne.s	.hn
+	move.l	ALIENSHIP_RELZ(a3),d0
+	cmp.l	8(a0),d0
+	bne.s	.hn
+	tst.b	20(a0)			; (a valid entry)
+	beq.s	.hn
+	move.l	12(a0),(a4)
+	move.l	16(a0),4(a4)
 	FSSE
+	movem.l	(sp)+,a3-a4
+	rts
+.hn:	lea	22(a0),a0
+	dbf	d1,.h
+	bsr.s	.calc
+	move.w	cb_rnext,d0		; keep it: round robin
+	addq.w	#1,cb_rnext
+	and.w	#7,d0
+	mulu	#22,d0
+	lea	cb_rcache,a0
+	add.w	d0,a0
+	move.l	ALIENSHIP_RELX(a3),(a0)+
+	move.l	ALIENSHIP_RELY(a3),(a0)+
+	move.l	ALIENSHIP_RELZ(a3),(a0)+
+	move.l	(a4),(a0)+
+	move.l	4(a4),(a0)+
+	st	(a0)
+	movem.l	(sp)+,a3-a4
+	rts
+.calc:	FSSE
 	move.l	ALIENSHIP_RELX(a3),d0
 	bsr	.sq
 	move.l	ALIENSHIP_RELY(a3),d0
@@ -44,9 +81,7 @@ cb_range:
 	FLDI	100
 	bsr	fp_mul
 	move.l	a4,a0
-	bsr	fp_std
-	movem.l	(sp)+,a3-a4
-	rts
+	bra	fp_std
 .sq:	bsr	fp_ldi			; sqr(v/10)
 	FLDI	10
 	bsr	fp_div
@@ -122,7 +157,23 @@ cb_statbar:
 cb_displaystats:
 	tst.b	cb_done
 	bne	.x
-	bsr	mousehide
+	lea	cb_dskey,a0		; (speed: the same hull, battery, shields and stats as the last
+	move.w	GS_SHIP+SHIP_HULLMAX(a6),d0	; pass: nothing to redraw - part is assigned again
+	cmp.w	(a0)+,d0		; before any other use)
+	bne.s	.go
+	move.w	GS_SHIP+SHIP_HULLINTEGRITY(a6),d0
+	cmp.w	(a0)+,d0
+	bne.s	.go
+	move.w	GS_SHIP+SHIP_BATTERY(a6),d0
+	cmp.w	(a0)+,d0
+	bne.s	.go
+	move.w	GS_SHIP+SHIP_SHIELDLEVEL(a6),d0
+	cmp.w	(a0)+,d0
+	bne.s	.go
+	move.l	cb_stats,d0		; (stats[1..3] as left by that pass)
+	cmp.l	(a0),d0
+	beq	.x
+.go:	bsr	mousehide
 	FSSE				; part := 102/hullmax*hullintegrity
 	FLDI	102
 	move.w	GS_SHIP+SHIP_HULLMAX(a6),d0
@@ -158,6 +209,12 @@ cb_displaystats:
 	moveq	#3,d0
 	move.w	#301,d1
 	bsr	cb_statbar
+	lea	cb_dskey,a0		; the inputs and stats of this pass
+	move.w	GS_SHIP+SHIP_HULLMAX(a6),(a0)+
+	move.w	GS_SHIP+SHIP_HULLINTEGRITY(a6),(a0)+
+	move.w	GS_SHIP+SHIP_BATTERY(a6),(a0)+
+	move.w	GS_SHIP+SHIP_SHIELDLEVEL(a6),(a0)+
+	move.l	cb_stats,(a0)
 	bsr	mouseshow
 .x:	rts
 
@@ -705,6 +762,28 @@ cb_noderect:
 	move.w	d1,GS_Y(a6)
 	move.w	(sp)+,d4
 	move.l	d3,-(sp)
+	movem.w	d0-d1,-(sp)		; (speed: a frame already in this colour is left alone)
+	bsr	ms_addr			; rows y and y+20, x..x+19; columns x and x+20, y..y+19
+	moveq	#20-1,d2
+.ck:	cmp.b	(a0),d4
+	bne.s	.draw
+	cmp.b	20*320(a0),d4
+	bne.s	.draw
+	addq.l	#1,a0
+	dbf	d2,.ck
+	movem.w	(sp),d0-d1
+	bsr	ms_addr
+	moveq	#20-1,d2
+.cv:	cmp.b	(a0),d4
+	bne.s	.draw
+	cmp.b	20(a0),d4
+	bne.s	.draw
+	lea	320(a0),a0
+	dbf	d2,.cv
+	addq.l	#4,sp
+	move.l	(sp)+,d3
+	rts
+.draw:	movem.w	(sp)+,d0-d1
 	move.w	d0,d2
 	add.w	#20,d2
 	move.w	d1,d3
@@ -756,11 +835,11 @@ cb_powerup:
 .inc:	tst.w	(a3)
 	ble.s	.dr
 	addq.w	#1,(a3)
-.dr:	move.w	(a3),d0
+.dr:	bsr	mousehide
+	move.w	(a3),d0
 	bsr	cb_powcol
 	move.w	d0,d1
 	move.w	d7,d0
-	bsr	mousehide
 	bsr	cb_noderect
 	bsr	mouseshow
 	bra	.jn
@@ -784,8 +863,10 @@ cb_powerup:
 	tst.b	d3
 	beq.s	.c
 	moveq	#63,d1
-.c:	move.w	d7,d0
+.c:	move.w	d1,-(sp)
 	bsr	mousehide
+	move.w	(sp)+,d1
+	move.w	d7,d0
 	bsr	cb_noderect
 	bsr	mouseshow
 	tst.b	d3
@@ -1220,10 +1301,26 @@ cb_e100:
 
 ; a bar of the target's display: b := round(v/max*49) (at least 1); part := 31/b; rows
 ; 138+i for i 0..b in round(i*part), the rest to 49 in 0; at x d2, d3 wide
+; in: d0 = v, d1 = max. Speed: round(i*(31/b)) comes from cb_rtab (built once by the same FPU
+; steps, so bit-identical); a row is written and marked dirty only when it changes.
 cb_tbar:
-	movem.l	d3-d7,-(sp)
+	movem.l	d3-d7/a3,-(sp)
 	move.w	d2,d6			; x
 	move.w	d3,d7			; width
+	lea	cb_bcache,a0		; b for (v, max): kept (16 entries: v, max, b, valid)
+	moveq	#16-1,d2
+.h:	cmp.w	(a0),d0
+	bne.s	.hn
+	cmp.w	2(a0),d1
+	bne.s	.hn
+	tst.w	6(a0)
+	beq.s	.hn
+	move.w	4(a0),d5
+	FSSE
+	bra.s	.got
+.hn:	addq.l	#8,a0
+	dbf	d2,.h
+	movem.w	d0-d1,-(sp)
 	FSSE
 	move.w	d1,-(sp)
 	bsr	fp_ldw
@@ -1234,62 +1331,237 @@ cb_tbar:
 	bsr	fp_mul
 	bsr	fp_rnd
 	move.w	d0,d5
+	movem.w	(sp)+,d0-d1
+	move.w	cb_bnext,d2
+	addq.w	#1,cb_bnext
+	and.w	#15,d2
+	lsl.w	#3,d2
+	lea	cb_bcache,a0
+	add.w	d2,a0
+	move.w	d0,(a0)+
+	move.w	d1,(a0)+
+	move.w	d5,(a0)+
+	move.w	#1,(a0)
+.got:	tst.w	d5
 	bgt.s	.b
 	moveq	#1,d5
-.b:	FLDI	31
+.b:	cmp.w	#49,d5			; b > 49 (v > max): the FPU for each row, as the original
+	bgt	.slow
+	bsr	cb_rtab_init
+	move.w	d5,d0			; a3 = the table's row for b
+	mulu	#50,d0
+	lea	cb_rtab,a3
+	add.w	d0,a3
+	move.l	a4,-(sp)
+	move.w	d6,d0			; a4 = screen[138, x]: one row further each step
+	move.w	#138,d1
+	bsr	ms_addr
+	move.l	a0,a4
+	moveq	#0,d4			; i
+.i:	moveq	#0,d3			; colour: round(i*part) for i <= b, else 0
+	cmp.w	d5,d4
+	bgt.s	.c
+	move.b	0(a3,d4.w),d3
+.c:	move.l	a4,a0			; written and marked only when the row differs
+	move.w	d7,d0
+	subq.w	#1,d0
+.fc:	cmp.b	(a0)+,d3
+	dbne	d0,.fc
+	beq.s	.fn
+	move.l	a4,a0
+	move.w	d7,d0
+	subq.w	#1,d0
+.fw:	move.b	d3,(a0)+
+	dbf	d0,.fw
+	move.w	d6,d0			; ms_dirty(x, y, x+w-1, y)
+	move.w	d4,d1
+	add.w	#138,d1
+	move.w	d6,d2
+	add.w	d7,d2
+	subq.w	#1,d2
+	move.w	d3,-(sp)
+	move.w	d1,d3
+	bsr	ms_dirty
+	move.w	(sp)+,d3
+.fn:	lea	320(a4),a4
+	addq.w	#1,d4
+	cmp.w	#49,d4
+	ble.s	.i
+	move.l	(sp)+,a4
+	movem.l	(sp)+,d3-d7/a3
+	rts
+.slow:	FLDI	31			; part := 31/b; rows 0..b in round(i*part)
 	move.w	d5,d0
 	bsr	fp_ldw
 	bsr	fp_div
 	lea	cb_part,a0
 	bsr	fp_std
 	moveq	#0,d4
+.si:	lea	cb_part,a0
+	bsr	fp_ldd
+	move.w	d4,d0
+	bsr	fp_ldw
+	bsr	fp_mul
+	bsr	fp_rnd
+	move.w	d0,d3
+	bsr.s	.row
+	addq.w	#1,d4
+	cmp.w	d5,d4
+	ble.s	.si
+	movem.l	(sp)+,d3-d7/a3
+	rts
+; row i (d4) of the bar in colour d3: written and marked only when it differs
+.row:	move.w	d4,d1			; the row: screen[138+i, x..x+w-1]
+	add.w	#138,d1
+	move.w	d6,d0
+	bsr	ms_addr
+	move.w	d7,d0
+	subq.w	#1,d0
+.cmp:	cmp.b	(a0)+,d3
+	dbne	d0,.cmp
+	beq.s	.n			; all equal: nothing to do
+	move.w	d4,d1
+	add.w	#138,d1
+	move.w	d6,d0
+	bsr	ms_addr
+	move.w	d7,d0
+	subq.w	#1,d0
+.w:	move.b	d3,(a0)+
+	dbf	d0,.w
+	move.w	d6,d0			; ms_dirty(x, y, x+w-1, y)
+	move.w	d4,d1
+	add.w	#138,d1
+	move.w	d6,d2
+	add.w	d7,d2
+	subq.w	#1,d2
+	move.w	d3,-(sp)
+	move.w	d1,d3
+	bsr	ms_dirty
+	move.w	(sp)+,d3
+.n:	rts
+
+; cb_rtab[b*50+i] := round(i*(31/b)) (FPC's SSE doubles, banker's), b 1..49, i 0..b: once
+cb_rtab_init:
+	tst.b	cb_rtab_ok
+	bne.s	.x
+	movem.l	d3-d4,-(sp)
+	FSSE
+	moveq	#1,d3			; b
+.b:	FLDI	31
+	move.w	d3,d0
+	bsr	fp_ldw
+	bsr	fp_div
+	lea	cb_part,a0
+	bsr	fp_std
+	moveq	#0,d4			; i
 .i:	lea	cb_part,a0
 	bsr	fp_ldd
 	move.w	d4,d0
 	bsr	fp_ldw
 	bsr	fp_mul
 	bsr	fp_rnd
-	move.w	d0,-(sp)
-	move.w	d6,d0
-	move.w	d4,d1
-	add.w	#138,d1
-	move.w	d6,d2
-	add.w	d7,d2
-	subq.w	#1,d2
-	move.w	d1,d3
-	move.w	(sp)+,d4
-	move.w	d4,-(sp)
-	bsr	.bar
-	move.w	(sp)+,d4
-	move.w	d1,d4			; (d1 = row: i = row - 138)
-	sub.w	#138,d4
+	move.w	d3,d1
+	mulu	#50,d1
+	add.w	d4,d1
+	lea	cb_rtab,a0
+	move.b	d0,0(a0,d1.w)
 	addq.w	#1,d4
-	cmp.w	d5,d4
+	cmp.w	d3,d4
 	ble.s	.i
-	cmp.w	#49,d5
-	bge.s	.x
-	move.w	d5,d4			; i := b+1 .. 49 in 0
-	addq.w	#1,d4
-.z:	move.w	d6,d0
+	addq.w	#1,d3
+	cmp.w	#49,d3
+	ble.s	.b
+	st	cb_rtab_ok
+	movem.l	(sp)+,d3-d4
+.x:	rts
+
+	section	bss
+cb_rtab:	ds.b	50*50
+cb_rcache:	ds.b	8*22		; relx, rely, relz, r (double), valid (+pad)
+cb_rnext:	ds.w	1
+cb_bcache:	ds.w	16*4
+cb_bnext:	ds.w	1
+cb_dskey:	ds.w	4		; displaystats' inputs: hullmax, hull, battery, shieldlevel
+		ds.l	1		; + stats[1..3] (one long, written as one)
+cb_lct:		ds.w	1
+cb_lcb:		ds.w	1
+cb_lcs:		ds.b	32
+cb_lcreg:	ds.b	6*110
+cb_rtab_ok:	ds.b	1
+	even
+	section	text
+
+; printxy(4, 126, cb_s) - skipped when the same text in the same colours was printed last time
+; and its pixels (rows 127-132, x 4 .. 9+5*len) are still in the shadow (speed: the target's
+; class line is printed every pass)
+cb_classprint:
+	movem.l	d3-d4/a3,-(sp)
+	moveq	#0,d3
+	move.b	cb_s,d3			; w = 5*len + 6 bytes a row
+	mulu	#5,d3
+	addq.w	#6,d3
+	cmp.w	#110,d3			; (longer than the kept rows: always print, keep nothing)
+	bhi	.pl
+	lea	cb_s,a0			; same string?
+	lea	cb_lcs,a1
+	moveq	#0,d0
+	move.b	(a0),d0
+.sc:	cmpm.b	(a0)+,(a1)+
+	dbne	d0,.sc
+	bne.s	.pr
+	move.w	GS_TCOLOR(a6),d0
+	cmp.w	cb_lct,d0
+	bne.s	.pr
+	move.w	GS_BKCOLOR(a6),d0
+	cmp.w	cb_lcb,d0
+	bne.s	.pr
+	lea	cb_lcreg,a3		; the pixels as left by that print?
+	moveq	#127,d4
+.rc:	moveq	#4,d0
 	move.w	d4,d1
-	add.w	#138,d1
-	move.w	d6,d2
-	add.w	d7,d2
-	subq.w	#1,d2
-	move.w	d1,d3
-	move.w	d4,-(sp)
-	moveq	#0,d4
-	bsr	.bar
-	move.w	(sp)+,d4
+	bsr	ms_addr
+	move.l	a3,a1
+	move.w	d3,d0
+	subq.w	#1,d0
+.cc:	cmpm.b	(a0)+,(a1)+
+	dbne	d0,.cc
+	bne.s	.pr
+	lea	110(a3),a3
 	addq.w	#1,d4
-	cmp.w	#49,d4
-	ble.s	.z
-.x:	movem.l	(sp)+,d3-d7
+	cmp.w	#132,d4
+	ble.s	.rc
+	bra.s	.x
+.pr:	moveq	#4,d0
+	moveq	#126,d1
+	lea	cb_s,a0
+	bsr	printxy
+	lea	cb_lcs,a0		; remember the text, colours and pixels
+	lea	cb_s,a1
+	bsr	pstr_cpy
+	move.w	GS_TCOLOR(a6),cb_lct
+	move.w	GS_BKCOLOR(a6),cb_lcb
+	lea	cb_lcreg,a3
+	moveq	#127,d4
+.rs:	moveq	#4,d0
+	move.w	d4,d1
+	bsr	ms_addr
+	move.l	a3,a1
+	move.w	d3,d0
+	subq.w	#1,d0
+.cs:	move.b	(a0)+,(a1)+
+	dbf	d0,.cs
+	lea	110(a3),a3
+	addq.w	#1,d4
+	cmp.w	#132,d4
+	ble.s	.rs
+.x:	movem.l	(sp)+,d3-d4/a3
 	rts
-.bar:	movem.w	d1/d4,-(sp)		; ms_bar keeping the row (d1) and the colour
-	bsr	ms_bar
-	movem.w	(sp)+,d1/d4
-	rts
+.pl:	clr.b	cb_lcs
+	moveq	#4,d0
+	moveq	#126,d1
+	lea	cb_s,a0
+	bsr	printxy
+	bra.s	.x
 
 cb_displaytargetinfo:
 	movem.l	d3-d7/a3,-(sp)
@@ -1310,10 +1582,7 @@ cb_displaytargetinfo:
 	move.l	a3,a1
 	bsr	cb_range
 	bsr	cb_classline
-	moveq	#4,d0
-	moveq	#126,d1
-	lea	cb_s,a0
-	bsr	printxy
+	bsr	cb_classprint		; printxy(4,126,...) unless it is already there
 	move.w	ALIENSHIP_HULLINTEGRITY(a3),d0	; hull
 	move.w	ALIENSHIP_MAXHULL(a3),d1
 	moveq	#8,d2
@@ -1494,6 +1763,7 @@ cb_displaymap:
 cb_drawdirection:
 	movem.l	d3-d4,-(sp)
 	move.w	d0,d4
+	bsr	mousehide		; (first: it trashes d0-d2)
 	move.w	cb_shipdir,d0		; x := ((dir-1) mod 3)*12+225, y := ((dir-1) div 3)*10+88
 	subq.w	#1,d0
 	ext.l	d0
@@ -1506,7 +1776,6 @@ cb_drawdirection:
 	add.w	#225,d0
 	move.w	d0,GS_X(a6)
 	move.w	d1,GS_Y(a6)
-	bsr	mousehide
 	move.w	d0,d2
 	add.w	#12,d2
 	move.w	d1,d3
@@ -2220,12 +2489,12 @@ cb_light2:				; rows d0, d0+1 at 163 (52 wide): 63 when on, 95 off
 	tst.b	d1
 	beq.s	.c
 	moveq	#63,d4
-.c:	move.w	d0,d1
-	move.w	d0,d3
+.c:	move.w	d0,d3
+	bsr	mousehide
+	move.w	d3,d1
 	addq.w	#1,d3
 	move.w	#163,d0
 	move.w	#214,d2
-	bsr	mousehide
 	bsr	ms_bar
 	bsr	mouseshow
 	movem.l	(sp)+,d3-d4
@@ -2706,7 +2975,7 @@ cb_getshipinfo:
 	mulu	#11,d0
 	add.w	d4,d0
 	mulu	#SHIPREC,d0
-	lea	cb_shipsdta,a0
+	move.l	cb_shipsdta,a0
 	add.l	d0,a0
 	move.w	#SHIPREC/2-1,d0
 .c:	move.w	(a0)+,(a3)+

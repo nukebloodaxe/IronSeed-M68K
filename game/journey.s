@@ -1478,7 +1478,7 @@ jy_processkey:
 	bne.s	.bq
 	bra	u3_panic
 .bq:	cmp.b	#'`',d0
-	beq	notported		; bossmode
+	beq	bossmode
 .kx:	rts
 
 ; journey.pas findmouse (the parts of the bridge that are ported)

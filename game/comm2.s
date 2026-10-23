@@ -214,8 +214,12 @@ c2_processkey:
 	beq.s	.q
 	cmp.b	#'/',d0
 	beq.s	.q
-	cmp.b	#27,d0
-	bne.s	.x			; ('`' bossmode, #10 heap stats: not on the ST)
+	cmp.b	#'`',d0			; bossmode
+	bne.s	.nb
+	bsr	bossmode
+	bra.s	.x
+.nb:	cmp.b	#27,d0
+	bne.s	.x			; (#10 heap stats: not on the ST)
 	st	c2_done
 	bra.s	.x
 .q:	bsr	c2_toggle
