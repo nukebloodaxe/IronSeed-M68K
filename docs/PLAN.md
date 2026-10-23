@@ -94,7 +94,7 @@ TOS + basepages ~150 KB · program code (one of the four executables at a time) 
 | **0. Spikes (go/no-go)** | Toolchain and the risky numbers | ✅ vasm + Hatari + TOS 1.62 headless · ✅ `SPLIT.PRG` 64 colours · ✅ c2p benchmark (§7) · ✅ split timing under load: 4 500/4 500 on time (§7) · ✅ mixer cost measured: 39 % naive (§7) · ✅ Linux oracle harness: deterministic state dumps + scripted input (§7) · ☐ `SPLIT.PRG` on real STE (David) |
 | **1. Kernel (HAL)** — done except the SFX voice | Hardware layer in asm | Video (double buffer, split manager, planar primitives, dirty c2p), sound (optimised mixer ≤ 20 %, MOD replay, SFX voice), IKBD mouse/keys, timing, file I/O, memory, `.cpr`/planar picture loader, font; written register ABI; test PRG shows a converted picture with 4 bands, fades it, plays a MOD, moves the cursor |
 | **2. Data pipeline** | Host tools | Converter for typed `.dta` files; offline palette quantiser + LUT generator for `.cpr`; `.SAM` sign conversion; packed `IRONSEED` folder for Hatari |
-| **3. Launcher + intro** — 2a done (credits, title, menu); 2b scenes next | First real code | `IS.PRG` → `INTRO.PRG` via `Pexec`, intro sequence runs with music |
+| **3. Launcher + intro** — ✅ done (2a credits/title/menu, 2b all story scenes) | First real code | `IS.PRG` → `INTRO.PRG` via `Pexec`, intro sequence runs with music |
 | **4. Crew generation** | First playable program | `CREWGEN.PRG` complete; save data read back correctly by the Linux build after reverse conversion (cross-check of the converter) |
 | **5. Main game** | `MAIN.PRG` runs | Star map, travel, planet scan, comms, cargo, combat, save/load all work; game finishable (slowly) |
 | **6. Speed** | Playable at 8 MHz | Profiled hot spots fixed (§3.7); targets: UI response < 100 ms, combat ≥ 10 fps |
@@ -156,3 +156,17 @@ Silent channels cost nothing (skipped), so real songs often sit below these numb
 - Sound defaults to 6 258 Hz (David's choice). Two sound-effect slots (`snd_sfx_load` / `snd_sfx_play`, the original `soundeffect`), optional headroom per screen (`snd_sfx_room`); music + effect output bit-exact with `tools/modref.py --sfx`.
 - IS.PRG launcher and INTRO.PRG: credits (pixel-exact with Linux on the shared lines), title screen (cloud scrolling under the logo, ~11 fps with the 8-channel title music), menu by mouse and keys, Introduction replays the intro, Quit returns to the desktop. The story scenes are Phase 2b.
 - Kernel: triple buffering (`vid_flip` no longer waits a second VBL), cursor redrawn only when it moves (saved 10 % CPU), timed fades, music region (`mod_load`), palette-only files, selectable font, scripted input for tests (`scr.s`).
+
+### Phase 2b (14 Oct 2026): the whole intro
+Every scene of `runintro` now plays, in order, with INTRO1.MOD: credits, Channel 7 logo, 'Destiny: Virtual', Mars, planet #1.4, charcom, battle, ship1 orders, shrink into the alien screen, is2 (bars, blast to red), final planet, then intro5 and the title. A key skips to the title from any scene (the original only checks between scenes, and its long waits cannot be skipped). `run_tests.sh` plays the whole intro and checks it reaches the title.
+
+How each scene was fitted to 4 bands × 16 colours, and what the ST does at run time:
+
+| Scene | Host tool → file | On the ST |
+|---|---|---|
+| Planets (#1.4, battle, final; is2's small one) | `mkplanets.py` → `PLANET.DAT` (colour table, land as height×4 words, 3 geometry sets as index×2 bytes), `PLN1-3.ISP` (bands chosen over the background, the text and the planet at every rotation), `PLN2.PAL` | `planet.s`: per pixel index → height → +alt×1024 → long of plane bits, shifted into a cell, 8 pixels → `movep`. Cells where the lighting is clamped skip the alt lookup. **136 ms per frame** without music (was 314), pixel-exact with `planetref.py`. With INTRO1 playing ≈ 3.8 fps; the rotation steps follow the clock (one per 75 ms, like the original's delay) so the planet turns at the original speed, in bigger steps |
+| charcom | `mkcharcom.py` → `CHARCOM.ISP` + palette + 16 pre-rendered static frames (rows 40-109, 48 bytes per row, picture pixels baked in) + the lights | static drawn by copying a random frame of the right phase at the VBL instead of palette flicker (32 static colours would not fit a band); bars by `gfx_pset`; text by `txt_print`; `fadecharcom` exact |
+| ship1 → alien | `mkalien.py` → `SHRINK.DAT` (ship1 bands chosen over all 24 shrink frames; each frame's rectangle pre-scaled, 300 KB) and `ALIENS.DAT` (alien picture with the shrunk box pasted, dot and circle tables) | the ST copies the rectangles (scale_img is done on the host); temppal, fade-in of colours 32-239, moving dots, circles (c_utils.c's algorithm, offsets precomputed) |
+| is2 | `mkis2.py` → `IS2.DAT` (main3 over the cloud, bars lit, + the unlit bar rows) | `gfx_copy_rect` (new kernel primitive) puts bar columns back; `blast` with symmetric banker's rounding |
+
+Ideas for later: compress `SHRINK.DAT` (mostly black); a full-volume mixer fast path would help the planet scenes most (the mixer is ~37 % of the CPU there).

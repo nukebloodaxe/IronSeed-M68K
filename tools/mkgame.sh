@@ -19,5 +19,9 @@ python3 -I "$R/tools/mkc7.py" "$S/data" "$OUT/DATA/C7.ISP" > /dev/null
 python3 -I "$R/tools/mkpal.py" "$S/data/main.pal" "$OUT/DATA/CREDITS.ISL" --use 0,10-22 > /dev/null
 python3 -I "$R/tools/mkpal.py" "$S/data/main.pal" "$OUT/DATA/MAINPAL.ISL" --use 0-31 --own 31 > /dev/null
 python3 -I "$R/tools/mkmars.py" "$S/data" "$OUT/DATA/MARS.DAT" > /dev/null
+python3 -I "$R/tools/mkplanets.py" "$S/data" "$OUT/DATA" > /dev/null
+python3 -I "$R/tools/mkcharcom.py" "$S/data" "$OUT/DATA/CHARCOM.ISP" > /dev/null
+python3 -I "$R/tools/mkalien.py" "$S/data" "$OUT/DATA" > /dev/null
+python3 -I "$R/tools/mkis2.py" "$S/data" "$OUT/DATA/IS2.DAT" > /dev/null
 cp "$S"/sound/*.MOD "$S"/sound/*.SAM "$OUT/SOUND/"
 echo "game folder: $OUT ($(du -sh "$OUT" | cut -f1))"

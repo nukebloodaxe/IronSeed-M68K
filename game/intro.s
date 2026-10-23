@@ -2,11 +2,10 @@
 ; "/showseed /done" (straight to the title). Exit codes as the original: 1 new game,
 ; 2 continue game, 4 quit.
 ;
-; Done: credits screen, Channel 7 logo, title screen (scrolling cloud under the logo,
-; music, menu with mouse and keys, "Introduction" replays the intro).
-; Not yet (Phase 2b): the later story scenes (Destiny: Virtual, Mars, planets, charcom,
-; battle, alien screens); after the logo the intro jumps to the title, as the original does
-; when a key is pressed.
+; The whole intro: credits, Channel 7 logo, 'Destiny: Virtual', Mars, planet, charcom,
+; battle, ship1, shrink into the alien screen, is2, final planet, then intro5 and the title
+; (scrolling cloud under the logo, music, menu with mouse and keys, "Introduction" replays
+; the intro). A key skips to the title. Scene data comes from tools/mk*.py (mkgame.sh).
 	include	"hw.i"
 	include	"kmac.i"
 	include	"layout.i"
@@ -87,7 +86,9 @@ runintro:
 	bsr	tim_delay
 	bsr	anykey
 	bne	.cont
-	; (generateplanet: with the planet scenes)
+	bsr	generateplanet
+	bsr	mem_mark		; the scenes' memory, released at .cont
+	move.l	d0,scene_mark
 	lea	fn_intro1,a0
 	bsr	mod_load
 	moveq	#88-87,d0		; mouse.setmousecursor(1)
@@ -117,10 +118,29 @@ runintro:
 	bsr	fading
 	bsr	anykey
 	bne	.cont
-	; --- Phase 2b: #1.4 planets, charcom, battle, ship, alien screens ... go here ---
+	bsr	planet1			; #1.4
+	bsr	charcom
+	bsr	anykey
+	bne	.cont
+	bsr	battle
+	bsr	ship1
+	bsr	anykey
+	bne	.cont
+	bsr	alienscreen
+	bsr	anykey
+	bne	.cont
+	bsr	is2
+	bsr	anykey
+	bne	.cont
+	bsr	planet3
 .cont:
 	; continue: (intro.pas 1660) stopmod; flush keys; intro5 + fadein
 	bsr	mod_stop
+	move.l	scene_mark,d0
+	beq.s	.nm
+	bsr	mem_release
+	clr.l	scene_mark
+.nm:
 .fl:	bsr	kbd_keypressed
 	tst.b	d0
 	beq.s	.fe
@@ -1196,13 +1216,1028 @@ showmars:
 	bne.s	.ramp
 .out:	movem.l	(sp)+,d3-d7/a3-a5
 	rts
+; ---------------------------------------------------------------
+; planet scenes (intro.pas makeplanet; renderer in planet.s)
+
+; generateplanet (intro.pas 929): land as loaded, c = 0, ecl = 180
+generateplanet:
+	bsr	plan_load
+	bcs	fatal
+	bsr	plan_reset
+	clr.w	pl_c
+	move.w	#180,pl_ecl
+	rts
+
+; planet_scene: a0 = picture name. Loads it hidden (palette black) into all three screens.
+planet_scene:
+	move.l	a0,-(sp)
+	moveq	#0,d0
+	bsr	vid_set_fade
+	move.l	(sp)+,a0
+	move.l	vid_phys,a1
+	bsr	pic_load
+	bcs	fatal
+	move.l	vid_phys,a0
+	move.l	vid_log,a1
+	bsr	copy_screen
+	move.l	vid_phys,a0
+	move.l	vid_spare,a1
+	bsr	copy_screen
+	bsr	black256		; black, then the fade level back to full
+	moveq	#16,d0
+	bra	vid_set_fade
+
+; makeplanet (intro.pas 955): d0.w = t seconds, d1.w = eclipse flag. Frames until t seconds
+; have passed (the original compares wall-clock seconds, so t = 0 is up to a second of
+; frames - spent while the palette is black: one frame here; t > 0 runs t + 0.5 s).
+; The original turns one step per frame + delay(tslice*3); here the steps follow the time
+; (one per 75 ms) so the planet turns at the original speed whatever a frame costs.
+; A key press ends it early (the original waits).
+makeplanet:
+	movem.l	d3-d7,-(sp)
+	move.w	d0,d6
+	move.w	d1,d7
+	bsr	tim_ms
+	move.l	d0,d5			; start
+	move.l	d0,d4
+	sub.l	#3*TSLICE,d4		; time of the last step: the first frame steps once
+	mulu	#1000,d6
+	add.l	#500,d6			; t > 0: run until t + 0.5 s
+.frame:	bsr	tim_ms
+	move.l	d0,d3
+	sub.l	d4,d0
+	cmp.l	#3*TSLICE,d0
+	bhs.s	.go
+	sub.w	#3*TSLICE,d0		; faster than the original: wait out the rest
+	neg.w	d0
+	bsr	tim_delay
+	bra.s	.frame
+.go:	divu	#3*TSLICE,d0		; steps due
+	move.w	d0,d1
+	mulu	#3*TSLICE,d0
+	add.l	d0,d4
+	subq.w	#1,d1
+.st:	move.w	pl_c,d0			; inc(c); eclipse: inc(ecl) on even c
+	addq.w	#1,d0
+	cmp.w	#240,d0
+	bls.s	.c
+	sub.w	#240,d0
+.c:	move.w	d0,pl_c
+	tst.w	d7
+	beq.s	.ne
+	btst	#0,d0
+	bne.s	.ne
+	move.w	pl_ecl,d0
+	addq.w	#1,d0
+	cmp.w	#340,d0
+	bls.s	.e
+	sub.w	#340,d0
+.e:	move.w	d0,pl_ecl
+.ne:	dbf	d1,.st
+	move.l	vid_log,a0
+	bsr	gfx_set_target
+	move.w	pl_c,d0
+	move.w	pl_ecl,d1
+	bsr	plan_frame
+	bsr	vid_flip
+	bsr	anykey
+	bne.s	.x
+	cmp.l	#500,d6			; t = 0: one frame
+	beq.s	.x
+	bsr	tim_ms
+	sub.l	d5,d0
+	cmp.l	d6,d0
+	blo	.frame
+.x:	movem.l	(sp)+,d3-d7
+	rts
+
+; bigtext: a0 = (y.w, Pascal string, even) records ending with -1: bigprintxy(0, y, s)
+; into all three screens (the original draws once, on its single screen)
+bigtext:
+	movem.l	d3/a3-a4,-(sp)
+	move.l	a0,a4
+	lea	vid_spare,a3		; vid_spare, vid_phys, vid_log (consecutive longs)
+	moveq	#3-1,d3
+.buf:	move.l	(a3)+,a0
+	bsr	gfx_set_target
+	move.l	a4,a0
+.l:	move.w	(a0)+,d1
+	bmi.s	.n
+	moveq	#0,d0
+	move.l	a0,-(sp)
+	bsr	bigprintxy
+	move.l	(sp)+,a0
+	moveq	#0,d0
+	move.b	(a0),d0
+	lea	2(a0,d0.w),a0
+	move.l	a0,d0
+	and.w	#$fffe,d0
+	move.l	d0,a0
+	bra.s	.l
+.n:	dbf	d3,.buf
+	move.l	vid_log,a0
+	bsr	gfx_set_target
+	movem.l	(sp)+,d3/a3-a4
+	rts
+
+; bigprintxy (intro.pas 381): d0 = x1, d1 = y1, a0 = Pascal string. 8x8 glyphs, colour
+; tcolor down by one per row, transparent (bkcolor 255)
+bigprintxy:
+	movem.l	d3-d7/a3-a5,-(sp)
+	move.w	d0,d6
+	move.w	d1,d7
+	moveq	#0,d0
+	move.b	(a0)+,d0
+	move.l	a0,a3
+	move.w	d0,bp_n
+	beq	.x
+.ch:	moveq	#0,d0
+	move.b	(a3)+,d0
+	moveq	#1,d1			; letter (1-based)
+	cmp.b	#'a',d0
+	blo.s	.l1
+	cmp.b	#'z',d0
+	bhi.s	.l1
+	sub.w	#40,d0
+	bra.s	.lt
+.l1:	cmp.b	#'A',d0
+	blo.s	.l2
+	cmp.b	#'Z',d0
+	bhi.s	.l2
+	sub.w	#36,d0
+	bra.s	.lt
+.l2:	cmp.b	#' ',d0
+	blo.s	.l3
+	cmp.b	#'"',d0
+	bhi.s	.l3
+	sub.w	#31,d0
+	bra.s	.lt
+.l3:	cmp.b	#39,d0
+	blo.s	.l4
+	cmp.b	#'?',d0
+	bhi.s	.l4
+	sub.w	#35,d0
+	bra.s	.lt
+.l4:	cmp.b	#'%',d0
+	bne.s	.l5
+	moveq	#55,d0
+	bra.s	.lt
+.l5:	moveq	#1,d0
+.lt:	subq.w	#1,d0
+	lsl.w	#3,d0
+	lea	txt_bigfont,a4
+	add.w	d0,a4
+	move.w	GS_TCOLOR(a6),d4
+	move.w	d7,d5			; y
+	move.w	#8-1,a5
+.row:	addq.w	#1,d5
+	move.b	(a4)+,d3
+	moveq	#7,d0			; column
+.px:	add.b	d3,d3
+	bcc.s	.np
+	movem.w	d0,-(sp)
+	neg.w	d0
+	addq.w	#8,d0
+	add.w	d6,d0			; x1 + 1 + (7 - a)
+	move.w	d5,d1
+	move.w	d4,d2
+	bsr	gfx_pset
+	movem.w	(sp)+,d0
+.np:	dbf	d0,.px
+	subq.w	#1,d4
+	subq.w	#1,a5
+	move.w	a5,d0
+	bpl.s	.row
+	addq.w	#8,d6
+	subq.w	#1,bp_n
+	bne	.ch
+.x:	movem.l	(sp)+,d3-d7/a3-a5
+	rts
+
+; ---------------------------------------------------------------
+; charcom (intro.pas 1540): the encode transfer screen. tools/mkcharcom.py made
+; CHARCOM.ISP: picture, palette, pre-rendered static frames of the box, the lights.
+CC_PAL		equ	ISP2_FULL
+CC_NFR		equ	CC_PAL+768
+CC_FRAMES	equ	CC_NFR+2
+CC_FSIZE	equ	70*48
+charcom:
+	movem.l	d3-d7/a3-a5,-(sp)
+	bsr	mem_mark
+	move.l	d0,-(sp)
+	lea	fn_charcom,a0
+	bsr	fil_size
+	bcs	fatal
+	move.l	d0,d3
+	bsr	mem_alloc
+	bcs	fatal
+	move.l	a0,cc_data
+	move.l	a0,a1
+	lea	fn_charcom,a0
+	move.l	d3,d0
+	bsr	fil_load
+	bcs	fatal
+	move.l	cc_data,a0		; lights table: after the frames
+	add.l	#CC_NFR,a0
+	move.w	(a0),d0
+	sub.l	#CC_NFR,a0
+	move.w	d0,cc_nfr
+	mulu	#CC_FSIZE,d0
+	add.l	#CC_FRAMES,d0
+	add.l	a0,d0
+	move.l	d0,cc_lights
+	moveq	#0,d0			; loadscreen_data (hidden: the palette is black)
+	bsr	vid_set_fade
+	move.l	cc_data,a0
+	move.l	vid_phys,a1
+	bsr	pic_show
+	bsr	black256
+	moveq	#16,d0
+	bsr	vid_set_fade
+	move.l	cc_data,a0		; colors := charcom's palette
+	add.l	#CC_PAL,a0
+	lea	GS_COLORS(a6),a1
+	move.w	#768/4-1,d0
+.p:	move.l	(a0)+,(a1)+
+	dbf	d0,.p
+	move.l	vid_phys,a0
+	bsr	gfx_set_target
+	bsr	fadein
+	moveq	#0,d0			; readyencode
+	bsr	cc_static
+	move.w	#191,GS_TCOLOR(a6)
+	move.w	#255,GS_BKCOLOR(a6)
+	lea	cc_text,a3		; (x, y, string) lines, each followed by charcomstuff(1);
+	moveq	#0,d7			; powerupencodes after the third
+.tl:	move.w	(a3)+,d0
+	bmi.s	.td
+	move.w	(a3)+,d1
+	move.l	a3,a0
+	bsr	txt_print
+	moveq	#0,d0
+	move.b	(a3),d0
+	lea	2(a3,d0.w),a3
+	move.l	a3,d0
+	and.w	#$fffe,d0
+	move.l	d0,a3
+	addq.w	#1,d7
+	cmp.w	#3,d7
+	bne.s	.ns
+	bsr	powerupencodes
+.ns:	bsr	charcomstuff
+	bra.s	.tl
+.td:	bsr	fadecharcom
+	move.l	(sp)+,d0
+	bsr	mem_release
+	movem.l	(sp)+,d3-d7/a3-a5
+	rts
+
+; black256: show the current bands' reps at black (colors untouched)
+black256:
+	lea	f_temp,a0
+	move.w	#768/4-1,d0
+.z:	clr.l	(a0)+
+	dbf	d0,.z
+	lea	f_temp,a0
+	bra	vid_set256
+
+; cc_static: d0.w = phase (0: even rows lit, 1: odd rows). At the next VBL, draws a random
+; frame of that phase into the static box of vid_phys.
+cc_static:
+	movem.l	d3-d5,-(sp)
+	move.w	d0,d3
+	move.w	cc_nfr,d0
+	lsr.w	#1,d0
+	bsr	rnd
+	add.w	d0,d0
+	add.w	d3,d0
+	mulu	#CC_FSIZE,d0
+	move.l	cc_data,a0
+	add.l	#CC_FRAMES,a0
+	add.l	d0,a0
+	bsr	vid_vsync
+	move.l	vid_phys,a2
+	lea	40*SCR_BPL+56(a2),a2
+	moveq	#70-1,d3
+.r:	movem.l	(a0)+,d0-d2/d4-d5/a1
+	movem.l	d0-d2/d4-d5/a1,(a2)
+	movem.l	(a0)+,d0-d2/d4-d5/a1
+	movem.l	d0-d2/d4-d5/a1,24(a2)
+	lea	SCR_BPL(a2),a2
+	dbf	d3,.r
+	movem.l	(sp)+,d3-d5
+	rts
+
+; charcomstuff(1) (intro.pas 1039): flicker for t = 1 s by the wall clock (1-2 s; 1.5 s
+; here): phase A, tslice/2, phase B, tslice/2 + tslice/5. A key press ends it early.
+charcomstuff:
+	movem.l	d3-d4,-(sp)
+	bsr	tim_ms
+	move.l	d0,d4
+.l:	moveq	#0,d0
+	bsr	cc_static
+	moveq	#TSLICE/2,d0
+	bsr	tim_delay
+	moveq	#1,d0
+	bsr	cc_static
+	moveq	#TSLICE/2,d0
+	bsr	tim_delay
+	moveq	#TSLICE/5,d0
+	bsr	tim_delay
+	bsr	anykey
+	bne.s	.x
+	bsr	tim_ms
+	sub.l	d4,d0
+	cmp.l	#1500,d0
+	blo.s	.l
+.x:	movem.l	(sp)+,d3-d4
+	rts
+
+; powerupencodes (intro.pas 882): six bars grow, 37 steps each (colour 64+round(b*31/36),
+; two rows), with the bar's light switched on. Per step phase A, tslice; phase B is set
+; and replaced at once in the original (never on screen), so it is skipped.
+powerupencodes:
+	movem.l	d3-d7/a3,-(sp)
+	moveq	#0,d6			; a
+.a:	move.l	d6,d0			; lights of bar a
+	divu	#3,d0
+	move.w	d0,d5			; a div 3
+	swap	d0
+	mulu	#30,d0
+	add.w	#48,d0
+	move.w	d0,d4			; row (a mod 3)*30+48
+	mulu	#258,d5
+	add.w	#13,d5			; x (a div 3)*258+13
+	moveq	#0,d7			; b
+.b:	bsr	tim_ms			; step start (the VBL wait below counts in tslice)
+	move.l	d0,pu_t0
+	move.l	d7,d0
+	mulu	#31,d0
+	moveq	#36,d1
+	bsr	pas_round
+	add.w	#64,d0
+	move.w	d0,d3
+	move.w	d5,d0
+	add.w	d7,d0
+	move.w	d4,d1
+	move.w	d3,d2
+	bsr	gfx_pset
+	move.w	d5,d0
+	add.w	d7,d0
+	move.w	d4,d1
+	addq.w	#1,d1
+	move.w	d3,d2
+	bsr	gfx_pset
+	moveq	#0,d0
+	bsr	cc_static
+	bsr	tim_ms
+	sub.l	pu_t0,d0
+	sub.w	#TSLICE,d0
+	bpl.s	.nd
+	neg.w	d0
+	bsr	tim_delay
+.nd:	tst.w	d7
+	bne.s	.nl
+	move.l	cc_lights,a3		; find bar a's list
+	move.w	d6,d0
+	bra.s	.lf
+.ls:	move.w	(a3)+,d1
+	mulu	#6,d1
+	add.w	d1,a3
+.lf:	dbf	d0,.ls
+	move.w	(a3)+,d3
+	bra.s	.le
+.lp:	movem.w	(a3)+,d0-d2
+	bsr	gfx_pset
+.le:	dbf	d3,.lp
+.nl:	addq.w	#1,d7
+	cmp.w	#37,d7
+	bne	.b
+	addq.w	#1,d6
+	cmp.w	#6,d6
+	bne	.a
+	movem.l	(sp)+,d3-d7/a3
+	rts
+
+; fadecharcom (intro.pas 1062): 24 steps colors := round(a*temppal/24), a = 24..1, with
+; the static: phase A, tslice/2, phase B, tslice/2+2
+fadecharcom:
+	movem.l	d3-d7/a3-a4,-(sp)
+	lea	GS_COLORS(a6),a0
+	lea	f_temp,a1
+	move.w	#768/4-1,d0
+.c:	move.l	(a0)+,(a1)+
+	dbf	d0,.c
+	moveq	#24,d7
+.s:	lea	f_temp,a3
+	lea	GS_COLORS(a6),a4
+	move.w	#768-1,d6
+.j:	moveq	#0,d0
+	move.b	(a3)+,d0
+	mulu	d7,d0
+	moveq	#24,d1
+	bsr	pas_round
+	move.b	d0,(a4)+
+	dbf	d6,.j
+	lea	GS_COLORS(a6),a0
+	bsr	vid_set256
+	moveq	#0,d0
+	bsr	cc_static
+	moveq	#TSLICE/2,d0
+	bsr	tim_delay
+	moveq	#1,d0
+	bsr	cc_static
+	moveq	#TSLICE/2+2,d0
+	bsr	tim_delay
+	subq.w	#1,d7
+	bne.s	.s
+	movem.l	(sp)+,d3-d7/a3-a4
+	rts
+
+; load_whole: a0 = file name -> a0 = the whole file in a new block, d0.l = size
+load_whole:
+	move.l	a0,-(sp)
+	bsr	fil_size
+	bcs	fatal
+	move.l	d0,-(sp)
+	bsr	mem_alloc
+	bcs	fatal
+	move.l	(sp)+,d0
+	move.l	(sp)+,a1
+	exg	a0,a1
+	movem.l	d0/a1,-(sp)
+	bsr	fil_load
+	bcs	fatal
+	movem.l	(sp)+,d0/a0
+	rts
+
+; battle (intro.pas 1569): battle1 with its palette, inverted land, the small planet
+battle:
+	lea	fn_pln2,a0
+	bsr	planet_scene
+	lea	fn_pln2pal,a0		; loadscreen_data: colors := battle1's palette
+	lea	GS_COLORS(a6),a1
+	move.l	#768,d0
+	bsr	fil_load
+	bcs	fatal
+	bsr	plan_invert
+	moveq	#1,d0			; radius 2000, c2 1.16
+	bsr	plan_setup
+	moveq	#120,d0
+	bsr	rnd
+	move.w	d0,pl_c
+	move.w	#105,pl_ecl
+	move.w	#22,GS_TCOLOR(a6)
+	move.w	#255,GS_BKCOLOR(a6)
+	lea	text2,a0
+	bsr	bigtext
+	moveq	#0,d0
+	moveq	#0,d1
+	bsr	makeplanet
+	bsr	fadein
+	moveq	#10,d0
+	moveq	#0,d1
+	bra	makeplanet
+
+; ship1 (intro.pas 1585): shown at once (set256colors), then the orders, wait(2) apart.
+; SHRINK.DAT (tools/mkalien.py) stays loaded for alienscreen, which releases it.
+SH_PAL		equ	ISP2_FULL
+SH_FRAMES	equ	SH_PAL+768
+ship1:
+	movem.l	d3/a3,-(sp)
+	bsr	mem_mark
+	move.l	d0,al_mark
+	lea	fn_shrink,a0
+	bsr	load_whole
+	move.l	a0,al_shrink
+	move.l	vid_phys,a1
+	bsr	pic_show
+	move.l	al_shrink,a0
+	add.l	#SH_PAL,a0
+	lea	GS_COLORS(a6),a1
+	move.w	#768/4-1,d0
+.p:	move.l	(a0)+,(a1)+
+	dbf	d0,.p
+	move.l	vid_phys,a0
+	bsr	gfx_set_target
+	move.w	#255,GS_TCOLOR(a6)
+	move.w	#255,GS_BKCOLOR(a6)
+	move.w	#2000,d0
+	bsr	tim_delay
+	lea	orders,a3
+.l:	move.w	(a3)+,d1
+	bmi.s	.x
+	moveq	#50,d0
+	move.l	a3,a0
+	bsr	txt_print
+	moveq	#0,d0
+	move.b	(a3),d0
+	lea	2(a3,d0.w),a3
+	move.l	a3,d0
+	and.w	#$fffe,d0
+	move.l	d0,a3
+	move.w	#2000,d0
+	bsr	tim_delay
+	bsr	anykey
+	beq.s	.l
+.x:	movem.l	(sp)+,d3/a3
+	rts
+
+; alienscreen: shrinkalienscreen, fadeinalienscreen, alienscreenwait, fading
+; (intro.pas 1281-1366, 1608)
+AL_PAL		equ	ISP2_FULL
+AL_DOTS		equ	AL_PAL+768
+AL_CIRC		equ	AL_DOTS+2*8*8
+alienscreen:
+	movem.l	d3-d7/a3-a5,-(sp)
+	lea	f_temp2,a1		; temppal: colours 0-31 and 240-255 of colors, the rest black
+	lea	GS_COLORS(a6),a0
+	move.w	#768-1,d0
+.t:	clr.b	(a1)+
+	dbf	d0,.t
+	lea	f_temp2,a1
+	move.w	#32*3-1,d0
+.t1:	move.b	(a0)+,(a1)+
+	dbf	d0,.t1
+	lea	GS_COLORS+240*3(a6),a0
+	lea	f_temp2+240*3,a1
+	moveq	#16*3-1,d0
+.t2:	move.b	(a0)+,(a1)+
+	dbf	d0,.t2
+	move.l	al_shrink,a3		; the 24 frames: delay(30), then the scaled rectangle
+	add.l	#SH_FRAMES,a3
+	move.w	(a3)+,d7
+	subq.w	#1,d7
+.f:	moveq	#30,d0
+	bsr	tim_delay
+	movem.w	(a3)+,d0-d3		; y0, rows, offset, longs per row
+	move.l	vid_phys,a2
+	mulu	#SCR_BPL,d0
+	add.l	d0,a2
+	add.w	d2,a2
+	subq.w	#1,d1
+	subq.w	#1,d3
+.r:	move.l	a2,a1
+	move.w	d3,d0
+.c:	move.l	(a3)+,(a1)+
+	dbf	d0,.c
+	lea	SCR_BPL(a2),a2
+	dbf	d1,.r
+	dbf	d7,.f
+	lea	f_temp2,a0		; set256colors(temppal)
+	bsr	vid_set256
+	moveq	#0,d0			; loadscreen_data('alien'): the composite with the box
+	bsr	vid_set_fade
+	lea	fn_aliens,a0
+	bsr	load_whole
+	move.l	a0,a5
+	move.l	vid_phys,a1
+	bsr	pic_show
+	lea	f_temp2,a0
+	bsr	vid_set256
+	moveq	#16,d0
+	bsr	vid_set_fade
+	move.l	a5,a0			; colors := alien's palette
+	add.l	#AL_PAL,a0
+	lea	GS_COLORS(a6),a1
+	move.w	#768/4-1,d0
+.p:	move.l	(a0)+,(a1)+
+	dbf	d0,.p
+	move.l	vid_phys,a0
+	bsr	gfx_set_target
+	; fadeinalienscreen: 0-31 / 240-255 at once, 32-239 in 24 steps of tslice
+	moveq	#1,d7
+.fi:	lea	GS_COLORS(a6),a3
+	lea	f_temp2,a4
+	moveq	#0,d6
+.fj:	moveq	#0,d0
+	move.b	(a3)+,d0
+	cmp.w	#32*3,d6
+	blo.s	.fk
+	cmp.w	#240*3,d6
+	bhs.s	.fk
+	mulu	d7,d0
+	moveq	#24,d1
+	bsr	pas_round
+.fk:	move.b	d0,(a4)+
+	addq.w	#1,d6
+	cmp.w	#768,d6
+	bne.s	.fj
+	lea	f_temp2,a0
+	bsr	vid_set256
+	moveq	#TSLICE,d0
+	bsr	tim_delay
+	addq.w	#1,d7
+	cmp.w	#25,d7
+	bne.s	.fi
+	; alienscreenwait: two dots move 7 steps, one per wall-clock second, then circles
+	bsr	tim_ms
+	move.l	d0,d5
+	moveq	#0,d0			; xor at position 0
+	bsr	al_dots
+	moveq	#1,d7
+.dj:	move.w	d7,d0			; restore j-1 ...
+	subq.w	#1,d0
+	bset	#15,d0
+	bsr	al_dots
+	move.w	d7,d0			; ... xor j
+	bsr	al_dots
+	move.w	d7,d0			; until j s have passed (j..j+1 s in the original)
+	mulu	#1000,d0
+	add.l	#500,d0
+	add.l	d5,d0
+	move.l	d0,d4
+.dw:	bsr	anykey
+	bne	.out
+	bsr	tim_ms
+	cmp.l	d4,d0
+	blo.s	.dw
+	addq.w	#1,d7
+	cmp.w	#8,d7
+	bne.s	.dj
+	move.l	a5,a3			; circles
+	add.l	#AL_CIRC,a3		; j = 3, 2, 1: colour 175-2j, radius 3j+1
+	moveq	#3-1,d7
+.ci:	move.w	(a3)+,d6		; colour
+	move.w	(a3)+,d5		; points
+	subq.w	#1,d5
+.cp:	move.b	(a3)+,d3		; dx
+	ext.w	d3
+	move.b	(a3)+,d4		; dy
+	ext.w	d4
+	move.w	#176,d0
+	add.w	d3,d0
+	move.w	#138,d1
+	add.w	d4,d1
+	move.w	d6,d2
+	bsr	gfx_pset
+	moveq	#62,d0
+	add.w	d3,d0
+	move.w	#155,d1
+	add.w	d4,d1
+	move.w	d6,d2
+	bsr	gfx_pset
+	dbf	d5,.cp
+	move.w	#TSLICE*8,d0
+	bsr	tim_delay
+	dbf	d7,.ci
+	bsr	fading
+.out:	move.l	al_mark,d0
+	bsr	mem_release
+	movem.l	(sp)+,d3-d7/a3-a5
+	rts
+
+; al_dots: d0.w = position j (0..7) -> both dots there in their xor colour; bit 15 set:
+; their original colour. a5 = ALIENS.DAT
+al_dots:
+	movem.l	d3-d4/a3,-(sp)
+	moveq	#0,d3
+	bclr	#15,d0
+	sne	d3			; d3 = $ff: original colour
+	lsl.w	#3,d0
+	move.l	a5,a3
+	add.l	#AL_DOTS,a3
+	add.w	d0,a3
+	moveq	#2-1,d4
+.d:	movem.w	(a3),d0-d2		; x, y, colour
+	tst.b	d3
+	bne.s	.o
+	move.w	6(a3),d2		; xor colour
+.o:	bsr	gfx_pset
+	lea	8*8(a3),a3		; dot 2
+	dbf	d4,.d
+	movem.l	(sp)+,d3-d4/a3
+	rts
+
+; is2 (intro.pas 1617): main3 over the cloud, the small planet, four lit bars that is2wait
+; puts out column by column, the text, blast(63,0,0) to red, fading.
+; IS2.DAT (tools/mkis2.py): picture (bars lit), main3's palette, rows 35-105 unlit.
+IS2_PAL		equ	ISP2_FULL
+IS2_BASE	equ	IS2_PAL+768
+is2:
+	movem.l	d3-d7/a3-a5,-(sp)
+	bsr	mem_mark
+	move.l	d0,-(sp)
+	lea	fn_is2,a0
+	bsr	load_whole
+	move.l	a0,a5
+	move.l	a0,-(sp)
+	moveq	#0,d0			; hidden while loading (the palette is black)
+	bsr	vid_set_fade
+	move.l	(sp)+,a0
+	move.l	vid_phys,a1
+	bsr	pic_show
+	bsr	black256
+	moveq	#16,d0
+	bsr	vid_set_fade
+	move.l	a5,a0			; colors := main3's palette
+	add.l	#IS2_PAL,a0
+	lea	GS_COLORS(a6),a1
+	move.w	#768/4-1,d0
+.p:	move.l	(a0)+,(a1)+
+	dbf	d0,.p
+	move.l	vid_phys,a0
+	bsr	gfx_set_target
+	moveq	#2,d0			; radius 400, c2 1.30; c = random(120), ecl = 50;
+	bsr	plan_setup		; makeplanet(0): one frame (c + 1)
+	moveq	#120,d0
+	bsr	rnd
+	addq.w	#1,d0
+	moveq	#50,d1
+	bsr	plan_frame
+	lea	is2_m,a0		; m1..m4
+	move.l	#(291<<16)|201,(a0)+
+	move.l	#(234<<16)|280,(a0)
+	move.l	a5,is2_src
+	add.l	#IS2_BASE-35*SCR_BPL,is2_src
+	bsr	fadein
+	move.w	#26,GS_TCOLOR(a6)
+	move.w	#255,GS_BKCOLOR(a6)
+	lea	is2_text,a3
+	moveq	#13,d0
+	move.w	#160,d1
+	bsr	is2_print
+	move.w	#2000,d0
+	bsr	tim_delay
+	move.w	#167,d1
+	bsr	is2_print
+	lea	is2_alts,a4
+	moveq	#3-1,d7
+.w:	move.l	a4,a0
+	bsr	is2wait
+	addq.l	#8,a4
+	bsr	anykey
+	bne.s	.out
+	move.w	#1000,d0		; wait(1)
+	bsr	tim_delay
+	move.w	#174,d1
+	cmp.w	#1,d7
+	bhi.s	.pr
+	move.w	#182,d1
+	tst.w	d7
+	beq.s	.nb
+.pr:	bsr	is2_print
+.nb:	dbf	d7,.w
+	moveq	#63,d0			; blast(63,0,0)
+	moveq	#0,d1
+	moveq	#0,d2
+	bsr	blast
+	bsr	fading
+.out:	move.l	(sp)+,d0
+	bsr	mem_release
+	movem.l	(sp)+,d3-d7/a3-a5
+	rts
+
+; is2_print: d1.w = y; prints the next is2 line (a3) at x 13
+is2_print:
+	moveq	#13,d0
+	move.l	a3,a0
+	bsr	txt_print
+	moveq	#0,d0
+	move.b	(a3),d0
+	lea	2(a3,d0.w),a3
+	move.l	a3,d0
+	and.w	#$fffe,d0
+	move.l	d0,a3
+	rts
+
+; is2wait (intro.pas 1403): a0 -> alt1..alt4 (words). Every tslice*7 each bar with m > 190
+; loses columns m+alt..m-1 (copied back unlit), until 1 s has passed by the wall clock
+; (2-3 s; 2.5 s here).
+is2wait:
+	movem.l	d3-d7/a3-a4,-(sp)
+	move.l	a0,a4
+	bsr	tim_ms
+	move.l	d0,d7
+.l:	lea	is2_m,a3
+	moveq	#35,d6			; bar top row
+	moveq	#0,d5
+.b:	move.w	(a3),d4			; m
+	cmp.w	#190,d4
+	ble.s	.n
+	move.w	0(a4,d5.w),d0		; alt
+	beq.s	.n
+	add.w	d4,d0			; x1 = m + alt
+	move.w	d0,(a3)
+	move.w	d4,d2
+	subq.w	#1,d2			; x2 = m - 1
+	move.w	d6,d1
+	move.w	d6,d3
+	add.w	#10,d3
+	move.l	is2_src,a0
+	bsr	gfx_copy_rect
+.n:	addq.l	#2,a3
+	add.w	#20,d6
+	addq.w	#2,d5
+	cmp.w	#8,d5
+	bne.s	.b
+	move.w	#TSLICE*7,d0
+	bsr	tim_delay
+	bsr	anykey
+	bne.s	.x
+	bsr	tim_ms
+	sub.l	d7,d0
+	cmp.l	#2500,d0
+	blo.s	.l
+.x:	movem.l	(sp)+,d3-d7/a3-a4
+	rts
+
+; blast (intro.pas 494): d0-d2 = target r, g, b. 31 steps:
+; colors += round(a * (target - colors) / 31), a = 1..31, delay tslice/2
+blast:
+	movem.l	d3-d7/a3,-(sp)
+	movem.w	d0-d2,bl_rgb
+	moveq	#1,d7
+.s:	lea	GS_COLORS(a6),a3
+	move.w	#256-1,d6
+.j:	moveq	#0,d5
+.g:	moveq	#0,d3
+	move.b	(a3),d3
+	lea	bl_rgb,a0
+	move.w	0(a0,d5.w),d0
+	sub.w	d3,d0
+	muls	d7,d0
+	moveq	#31,d1
+	bsr	sround
+	add.b	d0,(a3)+
+	addq.w	#2,d5
+	cmp.w	#6,d5
+	bne.s	.g
+	dbf	d6,.j
+	lea	GS_COLORS(a6),a0
+	bsr	vid_set256
+	moveq	#TSLICE/2,d0
+	bsr	tim_delay
+	addq.w	#1,d7
+	cmp.w	#32,d7
+	bne.s	.s
+	movem.l	(sp)+,d3-d7/a3
+	rts
+
+; sround: d0.w = signed numerator, d1.w = denominator -> d0.w = round(n/d), halves to even
+sround:
+	tst.w	d0
+	bmi.s	.neg
+	ext.l	d0
+	bra	pas_round
+.neg:	neg.w	d0
+	ext.l	d0
+	bsr	pas_round
+	neg.w	d0
+	rts
+
+; final planet (intro.pas 1625): over the cloud again, c = 0, ecl = 190, still inverted
+planet3:
+	bsr	loadmainpalette
+	lea	fn_pln3,a0
+	bsr	planet_scene
+	moveq	#0,d0
+	bsr	plan_setup
+	clr.w	pl_c
+	move.w	#190,pl_ecl
+	moveq	#0,d0
+	moveq	#0,d1
+	bsr	makeplanet
+	move.w	#22,GS_TCOLOR(a6)
+	move.w	#255,GS_BKCOLOR(a6)
+	lea	text3,a0
+	bsr	bigtext
+	bsr	fadein
+	moveq	#12,d0
+	moveq	#0,d1
+	bsr	makeplanet
+	bra	fading
+
+; #1.4 (intro.pas 1517): the planet over the cloud, text, a 12 s eclipse turn
+planet1:
+	bsr	loadmainpalette
+	lea	fn_pln1,a0
+	bsr	planet_scene
+	moveq	#0,d0
+	bsr	plan_setup
+	moveq	#0,d0
+	moveq	#0,d1
+	bsr	makeplanet
+	move.w	#22,GS_TCOLOR(a6)
+	move.w	#255,GS_BKCOLOR(a6)
+	lea	text1,a0
+	bsr	bigtext
+	bsr	fadein
+	moveq	#12,d0
+	moveq	#1,d1
+	bsr	makeplanet
+	bra	fading
 fatal:	moveq	#4,d0
 	bra	sys_exit
 
 	include	"kernel.s"
+	include	"planet.s"
 
 	section	data
 fn_script:	dc.b	"INPUT.INT",0
+fn_is2:		dc.b	"DATA",92,"IS2.DAT",0
+	even
+is2_alts:	dc.w	-1,0,0,-2, -3,0,-1,-1, -1,-1,0,0
+is2_text:
+	dc.b	23,"Enemy Closing Rapidly.."
+	even
+	dc.b	20,"Shields Imploding..."
+	even
+	dc.b	21,"Destruction Imminent."
+	even
+	dc.b	25,"Attempting Crash Landing."
+	even
+text3:
+	dc.w	159
+	dc.b	35,"They threaten to devour all life in"
+	even
+	dc.w	167
+	dc.b	40,"their path...your only hope of defeating"
+	even
+	dc.w	175
+	dc.b	40,"the Scavengers is to reunite the Kendar,"
+	even
+	dc.w	183
+	dc.b	34,"an ancient alliance among the free"
+	even
+	dc.w	191
+	dc.b	7,"worlds."
+	even
+	dc.w	-1
+fn_shrink:	dc.b	"DATA",92,"SHRINK.DAT",0
+fn_aliens:	dc.b	"DATA",92,"ALIENS.DAT",0
+	even
+text2:
+	dc.w	175
+	dc.b	37,"As captain, you awaken along with the"
+	even
+	dc.w	183
+	dc.b	38,"crew some thousand years later and are"
+	even
+	dc.w	191
+	dc.b	31,"confronted by an alien horde..."
+	even
+	dc.w	-1
+orders:
+	dc.w	125
+	dc.b	29,"Orders: Approach and Destroy."
+	even
+	dc.w	135
+	dc.b	22,"Jamming all Emissions."
+	even
+	dc.w	145
+	dc.b	12,"Targeting..."
+	even
+	dc.w	155
+	dc.b	21,"Locked and Loading..."
+	even
+	dc.w	165
+	dc.b	19,"Closing for Fire..."
+	even
+	dc.w	-1
+fn_charcom:	dc.b	"DATA",92,"CHARCOM.ISP",0
+	even
+cc_text:
+	dc.w	20,153
+	dc.b	29,"Ship IRONSEED to Relay Point:"
+	even
+	dc.w	170,153
+	dc.b	17,"Link Established."
+	even
+	dc.w	20,159
+	dc.b	26,"Receiving Encode Variants."
+	even
+	dc.w	20,165
+	dc.b	22,"Wiping Source Encodes."
+	even
+	dc.w	20,171
+	dc.b	25,"Terminating Transmission."
+	even
+	dc.w	20,177
+	dc.b	53,"Control Protocol Transferred to Human Encode ",34,"PRIME",34,"."
+	even
+	dc.w	-1
+fn_pln1:	dc.b	"DATA",92,"PLN1.ISP",0
+fn_pln2:	dc.b	"DATA",92,"PLN2.ISP",0
+fn_pln2pal:	dc.b	"DATA",92,"PLN2.PAL",0
+fn_pln3:	dc.b	"DATA",92,"PLN3.ISP",0
+	even
+text1:	dc.w	159
+	dc.b	35,"Escaping the iron fist of a fanatic"
+	even
+	dc.w	167
+	dc.b	38,"theocracy, the members of the Ironseed"
+	even
+	dc.w	175
+	dc.b	38,"Movement launch into space and are set"
+	even
+	dc.w	183
+	dc.b	33,"adrift after suffering a computer"
+	even
+	dc.w	191
+	dc.b	12,"malfunction."
+	even
+	dc.w	-1
 fn_title:	dc.b	"DATA",92,"TITLE.DAT",0
 fn_credpal:	dc.b	"DATA",92,"CREDITS.ISL",0
 fn_icon:	dc.b	"DATA",92,"WEAPICON.DTA",0
@@ -1269,6 +2304,20 @@ c7_j:		ds.w	1
 mrs_data:	ds.l	1
 mrs_lines:	ds.w	5
 ws_str:		ds.l	3
+pl_c:		ds.w	1
+pl_ecl:		ds.w	1
+bp_n:		ds.w	1
+cc_data:	ds.l	1
+cc_lights:	ds.l	1
+cc_nfr:		ds.w	1
+pu_t0:		ds.l	1
+al_mark:	ds.l	1
+scene_mark:	ds.l	1
+is2_src:	ds.l	1
+is2_m:		ds.w	4
+bl_rgb:		ds.w	3
+al_shrink:	ds.l	1
+f_temp2:	ds.b	768
 ws_j:		ds.w	3
 f_temp:		ds.b	768
 f_px:		ds.b	768

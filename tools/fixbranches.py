@@ -6,7 +6,7 @@ R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 src = os.path.abspath(sys.argv[1])
 for _ in range(50):
     p = subprocess.run(['vasmm68k_mot', '-Ftos', '-m68000', '-nosym', '-quiet', '-I' + R + '/kernel',
-                        '-I' + R + '/spikes', '-I' + R + '/build', '-o', '/dev/null', src],
+                        '-I' + R + '/spikes', '-I' + R + '/build', '-I' + R + '/game', '-o', '/dev/null', src],
                        capture_output=True, text=True, cwd=os.path.dirname(src))
     errs = re.findall(r'error 2029 in line (\d+) of "([^"]+)"', p.stdout + p.stderr)
     if not errs: break

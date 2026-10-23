@@ -21,5 +21,11 @@ if len(sys.argv) > 3:
     L.append('txt_font_intro:\t\t\t; intro.pas font, 84 glyphs (83/84 = the (c) sign)')
     for g in range(84):
         L.append('\tdc.b\t%d,%d,%d' % tuple(inums[g * 3:g * 3 + 3]))
+    m = re.search(r'bigfont:\s*array\[1\.\.82\] of bigfonttype\s*=\s*\((.*?)\);', isrc, re.S)
+    bnums = [int(x) for x in re.findall(r'\d+', m.group(1))]
+    assert len(bnums) == 82 * 8, len(bnums)
+    L.append('txt_bigfont:\t\t\t; intro.pas bigfont, 82 glyphs of 8 rows (bit 7 = left)')
+    for g in range(82):
+        L.append('\tdc.b\t' + ','.join(str(v) for v in bnums[g * 8:g * 8 + 8]))
 open(sys.argv[2], 'w').write('\n'.join(L) + '\n')
 print('font: %d glyphs' % (3 * 82))

@@ -43,4 +43,18 @@ from PIL import Image; import sys
 sys.exit(0 if Image.open('/tmp/intro_end.png').convert('RGB').getpixel((300,200))==(0,255,0) else 1)"; then
   echo "PASS intro title menu (keys select entries, Quit returns to the desktop)"
 else echo "FAIL intro title menu"; fail=1; fi
+# planet renderer: 4 frames pixel-exact against tools/planetref.py
+tools/asm.sh tests/ktplan.s hatari/c/KTPLAN.PRG > /dev/null; rm -f hatari/c/PLAN*.BIN
+tools/run_hatari.sh 2600 /tmp/kp.png --auto 'C:\KTPLAN.PRG' > /dev/null
+python3 tests/check_plan.py hatari/c "$S/data" > /tmp/plan.txt
+if [ "$(grep -c ' 0 pixels differ' /tmp/plan.txt)" = 4 ]; then echo "PASS planet renderer (4 frames pixel-exact, $(tail -1 /tmp/plan.txt | sed 's/.*= //'))"
+else echo "FAIL planet renderer: $(head -4 /tmp/plan.txt | tr '\n' ' ')"; fail=1; fi
+# the whole intro without a key: every scene, then the title (its bands = the title's)
+cp hatari/c/TITLE.SCR /tmp/title_ref.scr 2>/dev/null
+printf 'wait 170000\nshot FULL\nquit\n' | sed 's/$/\r/' > hatari/c/INPUT.INT; rm -f hatari/c/FULL.SCR hatari/c/CRASH.TXT
+tools/run_hatari.sh 14500 /tmp/full.png --auto 'C:\IS.PRG' > /dev/null
+rm -f hatari/c/INPUT.INT
+if [ -s hatari/c/FULL.SCR ] && [ ! -e hatari/c/CRASH.TXT ] && cmp -s <(tail -c +32001 hatari/c/FULL.SCR) <(tail -c +32001 /tmp/title_ref.scr); then
+  echo "PASS intro scenes (whole intro plays through to the title)"
+else echo "FAIL intro scenes"; fail=1; fi
 exit $fail

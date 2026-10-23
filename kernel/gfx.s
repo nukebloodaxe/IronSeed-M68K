@@ -9,6 +9,14 @@
 ; gfx_bar         in: d0.w x1, d1.w y1, d2.w x2, d3.w y2, d4.b colour  (filled)   trashes: d0-d2/a0-a2
 ; gfx_rect        same arguments, outline only (original rectangle)
 ; gfx_line        in: d0.w x1, d1.w y1, d2.w x2, d3.w y2, d4.b colour   trashes: d0-d2/a0-a2
+; gfx_slot_span  in: a0 = slot bytes (0-15, already mapped), d0.w x0, d1.w y, d2.w count (>0)
+;                 writes them as planar pixels at (x0..x0+count-1, y), 8-pixel cells, masked edges
+;                 trashes: d0-d2/a0-a2
+; gfx_slot4_span  same, but a0 = slot*4 bytes (fast path for renderers)
+; gfx_chunky_span  same, but a0 = game colour indices, mapped through the line's LUT
+; gfx_copy_rect  in: a0 = source screen (same layout; only the rectangle is read), d0.w x1,
+;                 d1.w y1, d2.w x2, d3.w y2 (inclusive): copies those pixels to gfx_target
+;                 trashes: d0-d2/a0-a2
 ; No clipping beyond the screen edges: callers stay inside 0-319 / 0-199 like the original.
 
 	section	text
@@ -192,7 +200,174 @@ gfx_line:
 .x:	movem.l	(sp)+,d3-d7
 	rts
 
+; ---------------------------------------------------------------
+gfx_chunky_span:
+	movem.l	d0-d2,-(sp)
+	bsr	vid_lut_y		; a1 = this line's LUT
+	lea	gfx_spanbuf,a2
+	subq.w	#1,d2
+	moveq	#0,d0
+.m:	move.b	(a0)+,d0
+	move.b	0(a1,d0.w),(a2)+
+	dbf	d2,.m
+	movem.l	(sp)+,d0-d2
+	lea	gfx_spanbuf,a0
+	; fall through
+gfx_slot_span:				; slots 0-15 -> slot*4, then the fast writer
+	movem.l	d0-d2,-(sp)
+	lea	gfx_spanbuf,a1
+	subq.w	#1,d2
+.s4:	move.b	(a0)+,d0
+	add.b	d0,d0
+	add.b	d0,d0
+	move.b	d0,(a1)+
+	dbf	d2,.s4
+	movem.l	(sp)+,d0-d2
+	lea	gfx_spanbuf,a0
+	; fall through
+; gfx_slot4_span  as gfx_slot_span, but a0 = slot*4 bytes (0, 4, ... 60)
+gfx_slot4_span:
+	movem.l	d3-d7/a3-a4,-(sp)
+	move.l	gfx_target,a1
+	mulu	#SCR_BPL,d1
+	add.l	d1,a1			; line
+	lea	gfx_ptab+2*64,a3	; shifted tables 0-3 at -128..64(a3)
+	lea	gfx_ptab+6*64,a4	; tables 4-7 at -128..64(a4)
+	move.w	d0,d3
+	lsr.w	#3,d3			; first cell
+	move.w	d2,d6			; pixels left
+	and.w	#7,d0			; skip in the first cell
+	moveq	#0,d2
+.cell:	move.w	d3,d1			; cell address: group (cell>>1)*8 + (cell&1)
+	lsr.w	#1,d1
+	lsl.w	#3,d1
+	btst	#0,d3
+	beq.s	.ev
+	addq.w	#1,d1
+.ev:	lea	0(a1,d1.w),a2
+	tst.w	d0
+	bne.s	.part
+	cmp.w	#8,d6
+	blo.s	.part
+	moveq	#0,d5			; full cell: 8 pixels, no masks
+	move.b	(a0)+,d2
+	or.l	-128(a3,d2.w),d5	; table 0 = shifted left 7 (leftmost pixel)
+	move.b	(a0)+,d2
+	or.l	-64(a3,d2.w),d5
+	move.b	(a0)+,d2
+	or.l	0(a3,d2.w),d5
+	move.b	(a0)+,d2
+	or.l	64(a3,d2.w),d5
+	move.b	(a0)+,d2
+	or.l	-128(a4,d2.w),d5
+	move.b	(a0)+,d2
+	or.l	-64(a4,d2.w),d5
+	move.b	(a0)+,d2
+	or.l	0(a4,d2.w),d5
+	move.b	(a0)+,d2
+	or.l	64(a4,d2.w),d5
+	movep.l	d5,0(a2)
+	subq.w	#8,d6
+	bra.s	.next
+.part:	moveq	#0,d5			; partial cell: position by position, with a mask
+	moveq	#0,d7
+	moveq	#8-1,d1
+.px:	add.l	d5,d5
+	add.b	d7,d7
+	tst.w	d0
+	beq.s	.in
+	subq.w	#1,d0
+	bra.s	.nx
+.in:	tst.w	d6
+	beq.s	.nx
+	subq.w	#1,d6
+	addq.b	#1,d7
+	move.b	(a0)+,d2
+	or.l	64(a4,d2.w),d5		; table 7 = unshifted
+.nx:	dbf	d1,.px
+	move.b	d7,d1			; mask in all four bytes
+	lsl.w	#8,d1
+	move.b	d7,d1
+	move.w	d1,d4
+	swap	d1
+	move.w	d4,d1
+	and.l	d1,d5
+	not.l	d1
+	movep.l	0(a2),d4
+	and.l	d1,d4
+	or.l	d5,d4
+	movep.l	d4,0(a2)
+.next:	addq.w	#1,d3
+	tst.w	d6
+	bne	.cell
+	movem.l	(sp)+,d3-d7/a3-a4
+	rts
+
+gfx_copy_rect:
+	movem.l	d3-d7/a3,-(sp)
+	sub.w	d1,d3			; rows - 1
+	mulu	#SCR_BPL,d1
+	move.l	gfx_target,a1
+	add.l	d1,a1
+	add.l	d1,a0
+	moveq	#15,d6			; left mask: $ffff >> (x1 & 15)
+	and.w	d0,d6
+	moveq	#-1,d7
+	lsr.w	d6,d7
+	moveq	#15,d6			; right mask: top (x2 & 15) + 1 bits
+	and.w	d2,d6
+	move.w	#$8000,d1
+	asr.w	d6,d1
+	lsr.w	#4,d0			; first group
+	lsr.w	#4,d2
+	move.w	d2,d5
+	sub.w	d0,d5			; groups - 1
+	lsl.w	#3,d0
+	add.w	d0,a0
+	add.w	d0,a1
+.row:	move.l	a0,a2
+	move.l	a1,a3
+	moveq	#0,d6
+.grp:	moveq	#-1,d0
+	tst.w	d6
+	bne.s	.nl
+	move.w	d7,d0
+.nl:	cmp.w	d5,d6
+	bne.s	.nr
+	and.w	d1,d0
+.nr:	move.w	d0,d2
+	not.w	d2
+	rept	4
+	move.w	(a2)+,d4
+	and.w	d0,d4
+	and.w	d2,(a3)
+	or.w	d4,(a3)+
+	endr
+	addq.w	#1,d6
+	cmp.w	d5,d6
+	bls.s	.grp
+	lea	SCR_BPL(a0),a0
+	lea	SCR_BPL(a1),a1
+	dbf	d3,.row
+	movem.l	(sp)+,d3-d7/a3
+	rts
+
+	section	data
+gfx_ptab:				; 8 tables x 16 slots: slot s -> plane k bit at bit (7-t) of byte
+					; (3-k) (movep order), table t = pixel position t in the cell
+t	set	0
+	rept	8
+x	set	0
+	rept	16
+	dc.l	(((x&1)<<24)|(((x>>1)&1)<<16)|(((x>>2)&1)<<8)|((x>>3)&1))<<(7-t)
+x	set	x+1
+	endr
+t	set	t+1
+	endr
+
 	section	bss
+gfx_spanbuf:	ds.b	SCR_W
+	even
 gfx_target:	ds.l	1
 gfx_lx2:	ds.w	1
 gfx_ly2:	ds.w	1
