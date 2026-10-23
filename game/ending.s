@@ -27,7 +27,7 @@ endgame:
 	cmp.w	#4,d3
 	ble.s	.s
 	lea	eg_mod_love,a0		; playmod(false, LOVE.MOD)
-	bsr	playmod
+	bsr	playmod1
 	bsr	eg_scrollend5
 	move.w	#3000,d0		; wait(3)
 	bsr	delay

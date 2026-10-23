@@ -399,6 +399,7 @@ vid_vsync:
 	rts
 
 vid_flip:
+	bsr	snd_poll
 	move.l	vid_log,d0
 	move.l	d0,vid_pending
 .w:	tst.l	vid_pending		; taken by the VBL

@@ -117,7 +117,15 @@ sys_init:
 ; ---------------------------------------------------------------
 sys_exit:
 	move.w	d0,sys_exitcode
-	bsr	sys_restore
+	tst.w	scr_test		; test runs: the stream's statistics (tests/check_stream)
+	beq.s	.ns
+	tst.l	st_reads
+	beq.s	.ns
+	lea	st_statfn,a0
+	lea	st_minf,a1
+	moveq	#16,d0
+	bsr	fil_save
+.ns:	bsr	sys_restore
 	move.l	sys_oldssp,-(sp)	; back to user mode
 	GEMDOS	GD_SUPER,6
 	bsr	sys_restore_screen

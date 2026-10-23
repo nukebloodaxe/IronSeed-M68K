@@ -97,6 +97,7 @@ kbd_mouse_move:
 .x:	rts
 
 kbd_keypressed:
+	bsr	snd_poll
 	bsr	scr_poll
 	tst.b	scr_key
 	bne.s	.yes

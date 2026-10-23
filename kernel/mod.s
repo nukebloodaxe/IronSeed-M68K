@@ -10,7 +10,10 @@
 ; mod_tick    one tick of the replay. trashes: d0-d7/a0-a5 (called from snd_fill only)
 ; mod_load    in: a0 = file name. Stops the current song, loads the new one into the music
 ;             region (MOD_REGION bytes, taken from the pool at start-up) and starts it.
-;             carry set on error (the song is then silent).  trashes: d0-d2/a0-a2
+;             If MUSIC\NAME.RAW exists it is streamed instead (snd.s st_open; build with
+;             -DNOSTREAM to always mix). carry set on error (the song is then silent).
+;             trashes: d0-d2/a0-a2
+; mod_load1   the same, d0.w = 1: play once (a streamed song stops after its first pass)
 
 SMP_ADDR	equ	0	; l  mixing copy (data up to the loop end + padding)
 SMP_LEN		equ	4	; l
@@ -189,7 +192,7 @@ mod_start:
 	rts
 mod_stop:
 	clr.w	mod_on
-	rts
+	bra	st_close
 
 ; ---------------------------------------------------------------
 ; trigger: a3 = channel, d0.l = offset. trashes d0-d2/a0
@@ -676,10 +679,25 @@ mod_alloc:
 	rts
 
 mod_load:
+	moveq	#0,d0
+mod_load1:				; d0.w = 1: play once (the stream only; a mixed MOD loops)
 	movem.l	d3/a3,-(sp)
 	move.l	a0,a3
+	move.w	d0,d3
 	bsr	mod_stop
-	clr.l	mod_rlim
+	ifnd	NOSTREAM
+	move.l	a3,a0			; pre-rendered in MUSIC\? stream it
+	move.w	d3,d0
+	bsr	st_open
+	bcs.s	.mix
+	movem.l	(sp)+,d3/a3
+	rts
+	endc
+.mix:	move.w	snd_defrate,d0		; mixing: at the kernel's own rate
+	cmp.w	snd_rate,d0
+	beq.s	.r
+	bsr	snd_set_rate
+.r:	clr.l	mod_rlim
 	tst.l	mod_rbase
 	beq.s	.err
 	move.l	a3,a0

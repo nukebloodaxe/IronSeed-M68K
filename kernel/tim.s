@@ -26,6 +26,7 @@ tim_ms:
 	rts
 
 tim_delay:
+	bsr	snd_poll		; the music stream refills here (changes no registers)
 	and.l	#$ffff,d0
 	tst.w	scr_vtime
 	bne	scr_vdelay		; scripted test in virtual time: no real wait

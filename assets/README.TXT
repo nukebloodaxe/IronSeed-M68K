@@ -19,10 +19,16 @@ Ctrl-ClrHome stands for the PC's Ctrl-End.
 
 Saved games go to SAVE1 ... SAVE8 and SAVEGAME.DIR in this folder.
 
+Music: the MUSIC folder (about 56 MB) holds the songs pre-rendered; they are
+streamed from the disk, which leaves the 68000 free for the game (combat runs
+about 1.8 times faster, the title screen twice as smoothly). Without the
+folder - a small disk, or floppies - the programs mix the MOD files from
+SOUND in real time as before: same music, slower game.
+
 The FINALE slot (if present) is a test position: the ship at the Scavengers'
 gate with the Kendar alliance and the faction quests done, a Temporal Anchor
 and full thrust. The whole armada attacks at once - it cannot be shot down:
 turn on the shields (X), fly away with keypad 7 and keypad - and keep going
 until the last cruiser is out of range. Then the ending plays.
 
-Port notes, tools and tests: the ironseed-ste source tree.
+Port notes, tools and tests: the ironseed-ste source tree (HANDOFF.md).

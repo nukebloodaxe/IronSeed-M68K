@@ -179,7 +179,7 @@ scr_tick:
 	move.w	d0,kbd_my
 	bsr	scr_eol
 	or.b	#1,kbd_mclick
-	bra.s	.out
+	bra	.out
 .press:	st	scr_mouse
 	bsr	scr_num
 	move.w	d0,kbd_mx
@@ -202,6 +202,14 @@ scr_tick:
 	move.b	#'R',(a1)+
 	clr.b	(a1)
 	bsr	scr_eol
+	ifd	PROFILE			; timing builds: log the shot's time (tag 254) - tools/dbgtimes.py
+	move.l	d0,-(sp)
+	bsr	tim_ms
+	and.l	#$ffffff,d0
+	or.l	#254<<24,d0
+	bsr	scr_dbg
+	move.l	(sp)+,d0
+	endif
 	move.l	a0,-(sp)
 	bsr	scr_shot
 	move.l	(sp)+,a0

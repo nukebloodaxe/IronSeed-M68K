@@ -104,6 +104,7 @@ ms_dirty:
 	rts
 
 ms_flush:
+	bsr	snd_poll
 	tst.w	ms_any
 	beq.s	.none
 	movem.l	d3-d4/a3-a4,-(sp)

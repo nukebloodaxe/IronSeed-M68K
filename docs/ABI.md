@@ -59,3 +59,7 @@ Every routine in `kernel/` and in the screen modules follows these rules. A rout
 - `scr_test` = 1 when a script file was found: fixed seed 1994, `orc_dump` writes `C:\Dnnnn.BIN` at every point where the original calls loadscreen. Programs may skip their command-line check in test runs.
 - A screen module that switches band designs must redraw everything visible afterwards (the planar pixels hold slots, not colours).
 - Phase 4c: `mt_random64l` (d0.l) is random(int64) of a long argument; FPC's `randseed` variable is `mt_getseed`/`mt_setseed` (lazy: the generator re-seeds at the next draw when the variable changed), so ports of `randseed := x` / PushRand/PopRand use those, never `mt_seed`.
+
+## Music stream (Phase 6b)
+- `mod_load` streams `MUSIC\NAME.RAW` when it exists. Main code refills the stream: `tim_delay`, `kbd_keypressed`, `vid_flip` and MAIN's `ms_flush` call `snd_poll` (one GEMDOS Fread when the ring has room; changes no registers, flags aside). A new loop that runs longer than ~40 s (the ring holds 84 s at 6258 Hz, 42 s at 12517) without any of those must call `snd_poll` itself. Never from interrupts.
+- The VBL owns `st_rd`, main code `st_wr`; `mod_stop` closes the stream file, `pausemod` (clearing mod_on) only pauses it.

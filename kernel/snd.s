@@ -11,18 +11,38 @@
 ;                the lower channel), the others only move on through their samples (snd_skipv),
 ;                so they come back in step. A CPU budget for 6/8-channel MODs on busy screens.
 ; snd_vbl        called by the VBL handler (vid.s); saves everything it uses
+; snd_poll       main code only: refill the music stream from disk when its ring has room
+;                for a chunk (one GEMDOS Fread). Changes no registers. Called from tim_delay,
+;                kbd_keypressed, vid_flip and MAIN's ms_flush.
+; st_open        in: a0 = MOD path (e.g. SOUND\NAME.MOD), d0.w = 1 to play once (else loop)
+;                opens MUSIC\NAME.RAW (tools/mkmusic.py) and starts streaming it; carry set
+;                if there is none (then the caller mixes the MOD). trashes d0-d2/a0-a2
+; st_close       close the stream (mod_stop does it). trashes d0-d2/a0-a2
+;
+; The stream: the music pre-rendered offline (byte-identical with this mixer), read from disk
+; by main code into a ring in the music region (ST_RING bytes, 84 s at 6258 Hz), copied into
+; the DMA ring by the VBL; sound effects are mixed on top as before. st_rd is only written by
+; the VBL, st_wr only by main code (byte counts; ring offset = count & (ST_RING-1)).
 
 SND_RING	equ	4096		; bytes = 1024 stereo pairs (82 ms at 12517 Hz)
 SND_CHUNK	equ	1024		; most pairs mixed in one go
 SFX_SLOTS	equ	2		; simultaneous sound effects
+	ifnd	ST_RING
+ST_RING		equ	MOD_REGION	; stream ring (power of two): the whole music region
+	endc				; (tests/ktstream.s makes it small to test the wrap)
+ST_CHUNK	equ	16384		; bytes per Fread (ST_RING is a multiple)
+ST_FIRST	equ	4		; chunks read at once when a song starts
 
 	section	text
 snd_init:
 	bsr	mod_region_init
-	moveq	#1,d0			; 6258 Hz: David's choice (warmer than 12517 on the STE)
+	move.w	#1,snd_defrate		; 6258 Hz: David's choice (warmer than 12517 on the STE)
+	moveq	#1,d0
 	bra	snd_set_rate
 
-snd_exit:
+snd_exit:				; (no GEMDOS here: sys_restore also runs from the crash handler)
+	clr.w	mod_on
+	clr.w	st_on
 	clr.w	snd_ready
 	clr.b	SND_CTL.w
 	rts
@@ -206,7 +226,9 @@ snd_fill:
 .loop:	tst.w	snd_need
 	beq	.done
 	tst.w	mod_on
-	beq.s	.nomus
+	beq	.nomus
+	tst.w	st_on
+	bne	.strm
 	tst.w	mod_tickleft
 	bne.s	.mix
 	bsr	mod_tick
@@ -229,18 +251,152 @@ snd_fill:
 	bra.s	.loop
 .nomus:	move.w	snd_need,d0		; no music: chunks of up to SND_CHUNK (SFX only, or silence)
 	cmp.w	#SND_CHUNK,d0
-	bls.s	.s1
+	bls.s	.s0
 	move.w	#SND_CHUNK,d0
+.s0:	bsr	st_quiet		; nothing playing at all: zeros straight into the ring
+	beq.s	.s1
+	move.w	d0,snd_k
+	sub.w	d0,snd_need
+	sub.l	a1,a1
+	bsr	st_copy
+	bra	.loop
 .s1:	sub.w	d0,snd_need
 	move.w	d0,snd_k
 	bsr	snd_mix
 	bsr	snd_out
 	bra	.loop
 .done:	rts
+; --- the stream
+.strm:	move.l	st_wr,d0
+	sub.l	st_rd,d0
+	lsr.l	#1,d0			; pairs in the ring
+	bne.s	.sa
+	tst.w	st_eof
+	beq.s	.under
+	clr.w	mod_on			; a play-once song has ended
+	bra	.loop
+.under:	move.w	snd_need,d0		; disk too slow: silence, counted (never a crash)
+	cmp.w	#SND_CHUNK,d0
+	bls.s	.u1
+	move.w	#SND_CHUNK,d0
+.u1:	moveq	#0,d1
+	move.w	d0,d1
+	add.l	d1,st_under
+	bra.s	.s1
+.sa:	moveq	#0,d1
+	move.w	snd_need,d1
+	cmp.l	d1,d0
+	bls.s	.k1
+	move.l	d1,d0
+.k1:	cmp.l	#SND_CHUNK,d0
+	bls.s	.k2
+	move.l	#SND_CHUNK,d0
+.k2:	move.l	st_rd,d1		; up to the end of the ring
+	and.l	#ST_RING-1,d1
+	move.l	st_buf,a1
+	add.l	d1,a1			; source
+	neg.l	d1
+	add.l	#ST_RING,d1
+	lsr.l	#1,d1
+	cmp.l	d1,d0
+	bls.s	.k3
+	move.l	d1,d0
+.k3:	move.w	d0,snd_k		; k pairs from a1
+	sub.w	d0,snd_need
+	add.l	d0,d0
+	add.l	d0,st_rd
+	move.l	st_wr,d1		; lowest fill level (bytes) - the test log
+	sub.l	st_rd,d1
+	cmp.l	st_minf,d1
+	bhs.s	.k4
+	move.l	d1,st_minf
+.k4:	bsr	st_quiet		; effects or a capture: through the accumulators
+	beq.s	.slow
+	bsr	st_copy
+	bra	.loop
+.slow:	lea	snd_accl,a0		; deinterleave, effects on top, out
+	lea	snd_accr,a2
+	move.w	snd_k,d0
+	subq.w	#1,d0
+.di:	move.b	(a1)+,(a0)+
+	move.b	(a1)+,(a2)+
+	dbf	d0,.di
+	bsr	snd_mixs
+	bsr	snd_out
+	bra	.loop
+
+; st_quiet: Z clear when no effect plays and no capture runs (the plain copy will do).
+; changes only the flags
+st_quiet:
+	move.l	d0,-(sp)
+	move.l	snd_cap,d0
+	cmp.l	snd_capend,d0
+	movem.l	(sp)+,d0		; (keeps the flags)
+	bhs.s	.c			; no capture running (none, or full)
+	cmp.w	d0,d0			; Z set: a capture
+	rts
+.c:	tst.b	snd_sfxch+CH_ON
+	bne.s	.no
+	tst.b	snd_sfxch+CH_SIZE+CH_ON
+	bne.s	.no
+	move	#0,ccr			; Z clear
+	rts
+.no:	move	#4,ccr			; Z
+	rts
+
+; st_copy: snd_k pairs from a1 straight into the DMA ring at snd_wpos (no effects playing);
+; a1 = 0: zeros
+st_copy:
+	lea	snd_ring,a0
+	move.w	snd_wpos,d0
+	add.w	d0,a0
+	move.w	#SND_RING,d1
+	sub.w	d0,d1
+	lsr.w	#1,d1			; pairs before the wrap
+	move.w	snd_k,d2
+	cmp.w	d1,d2
+	bls.s	.one
+	sub.w	d1,d2
+	bsr.s	.cp
+	lea	snd_ring,a0
+.one:	move.w	d2,d1
+	bsr.s	.cp
+	sub.l	#snd_ring,a0
+	cmp.w	#SND_RING,a0
+	bne.s	.w
+	sub.l	a0,a0
+.w:	move.w	a0,snd_wpos
+	moveq	#0,d0
+	move.w	snd_k,d0
+	add.l	d0,snd_pairs
+	rts
+.cp:	cmp.w	#0,a1
+	beq.s	.z
+	lsr.w	#1,d1			; d1 pairs: longs, then an odd pair
+	bcc.s	.c0
+	move.w	(a1)+,(a0)+
+.c0:	subq.w	#1,d1
+	bmi.s	.cx
+.cl:	move.l	(a1)+,(a0)+
+	dbf	d1,.cl
+.cx:	rts
+.z:	moveq	#0,d0
+	lsr.w	#1,d1
+	bcc.s	.z0
+	move.w	d0,(a0)+
+.z0:	subq.w	#1,d1
+	bmi.s	.cx
+.zl:	move.l	d0,(a0)+
+	dbf	d1,.zl
+	rts
 
 ; snd_mix: mix snd_k samples of every active voice into snd_accl / snd_accr
+snd_mixs:				; the stream's pairs are in the accumulators: add effects
+	move.w	#3,snd_wrote
+	bra.s	snd_mixv
 snd_mix:
 	clr.w	snd_wrote		; bit 0 left side written, bit 1 right
+snd_mixv:
 	move.w	mod_ch,d0		; volume table: channels/2 (+1 with SFX headroom)
 	lsr.w	#1,d0
 	add.w	snd_sfxroom,d0
@@ -251,6 +407,8 @@ snd_mix:
 	move.l	a5,snd_vt
 	tst.w	mod_on
 	beq	.sfx
+	tst.w	st_on			; streaming (underrun or effects): no MOD voices
+	bne	.sfx
 	lea	mod_chans,a3
 	move.w	mod_ch,d0
 	subq.w	#1,d0
@@ -604,7 +762,184 @@ snd_out:
 .cx:	move.l	a0,snd_cap
 .x:	rts
 
+; ---------------------------------------------------------------
+; the stream, main-code side
+snd_poll:
+	tst.w	st_on
+	beq.s	.x
+	tst.w	st_eof
+	bne.s	.x
+	move.l	d0,-(sp)
+	move.l	st_wr,d0
+	sub.l	st_rd,d0
+	cmp.l	#ST_RING-ST_CHUNK,d0
+	bhi.s	.n			; no room for a chunk
+	movem.l	d1-d2/a0-a2,-(sp)
+	move.w	sr,-(sp)
+	bsr	st_read
+	move.w	(sp)+,sr
+	movem.l	(sp)+,d1-d2/a0-a2
+.n:	move.l	(sp)+,d0
+.x:	rts
+
+; st_read: one chunk at st_wr (wrapping to the loop point, or ending a play-once song)
+st_read:
+	movem.l	d3-d4/a3,-(sp)
+	addq.l	#1,st_reads
+	move.l	#ST_CHUNK,d3		; bytes still to read
+	move.l	st_wr,d0
+	and.l	#ST_RING-1,d0
+	move.l	st_buf,a3
+	add.l	d0,a3			; destination
+.r:	move.l	st_dend,d4
+	sub.l	st_fpos,d4		; bytes left before the end (or the loop)
+	ble.s	.end
+	cmp.l	d3,d4
+	bls.s	.r1
+	move.l	d3,d4
+.r1:	move.l	a3,-(sp)		; Fread(h, n, buf)
+	move.l	d4,-(sp)
+	move.w	st_h,-(sp)
+	GEMDOS	GD_FREAD,12
+	cmp.l	d4,d0
+	bne.s	.err			; error or short file: stop reading (the ring drains)
+	add.l	d0,a3
+	add.l	d0,st_fpos
+	add.l	d0,st_wr
+	sub.l	d0,d3
+	bne.s	.r
+	bra.s	.x
+.end:	tst.w	st_once
+	bne.s	.eof
+	move.l	st_loop,d0
+	cmp.l	st_dend,d0
+	bhs.s	.eof
+	move.l	d0,st_fpos
+	clr.w	-(sp)			; Fseek(header + loop, h, from start)
+	move.w	st_h,-(sp)
+	moveq	#0,d1
+	move.w	st_hsize,d1
+	add.l	d1,d0
+	move.l	d0,-(sp)
+	GEMDOS	GD_FSEEK,10
+	tst.l	d0
+	bmi.s	.err
+	bra.s	.r
+.err:	addq.w	#1,st_errs
+.eof:	move.w	#1,st_eof
+.x:	movem.l	(sp)+,d3-d4/a3
+	rts
+
+st_open:
+	movem.l	d3/a3,-(sp)
+	move.w	d0,d3
+	tst.l	mod_rbase
+	beq	.no
+	lea	st_name+6,a1		; "MUSIC\" + the MOD's name + ".RAW"
+	move.l	a0,a2
+.f:	move.b	(a0)+,d0		; after the last backslash
+	beq.s	.f1
+	cmp.b	#92,d0
+	bne.s	.f
+	move.l	a0,a2
+	bra.s	.f
+.f1:	moveq	#8-1,d1
+.c:	move.b	(a2)+,d0
+	beq.s	.c1
+	cmp.b	#'.',d0
+	beq.s	.c1
+	move.b	d0,(a1)+
+	dbf	d1,.c
+.c1:	move.b	#'.',(a1)+
+	move.b	#'R',(a1)+
+	move.b	#'A',(a1)+
+	move.b	#'W',(a1)+
+	clr.b	(a1)
+	clr.w	-(sp)			; Fopen(name, read)
+	pea	st_name
+	GEMDOS	GD_FOPEN,8
+	tst.l	d0
+	bmi	.no
+	move.w	d0,st_h
+	pea	st_hdr			; Fread(h, 32, header)
+	pea	32.w
+	move.w	st_h,-(sp)
+	GEMDOS	GD_FREAD,12
+	cmp.l	#32,d0
+	bne	.bad
+	lea	st_hdr,a3
+	cmp.l	#'ISMU',(a3)
+	bne	.bad
+	cmp.w	#1,4(a3)
+	bne	.bad
+	moveq	#1,d0			; rate: 6258 -> 1, 12517 -> 0
+	cmp.w	#6258,6(a3)
+	beq.s	.rt
+	moveq	#0,d0
+	cmp.w	#12517,6(a3)
+	bne	.bad
+.rt:	cmp.w	snd_rate,d0
+	beq.s	.rk
+	bsr	snd_set_rate		; the folder's rate decides
+.rk:	move.w	10(a3),st_hsize
+	move.l	12(a3),d0
+	add.l	d0,d0
+	move.l	d0,st_dend		; total bytes
+	move.l	16(a3),d0
+	add.l	d0,d0
+	move.l	d0,st_loop
+	move.w	d3,st_once
+	beq.s	.lp
+	move.l	20(a3),d0		; play once: up to the first pass's end
+	add.l	d0,d0
+	move.l	d0,st_dend
+.lp:	clr.w	-(sp)			; Fseek(header, h, from start)
+	move.w	st_h,-(sp)
+	moveq	#0,d0
+	move.w	st_hsize,d0
+	move.l	d0,-(sp)
+	GEMDOS	GD_FSEEK,10
+	tst.l	d0
+	bmi.s	.bad
+	move.w	8(a3),mod_ch		; (the effects' volume table)
+	move.l	mod_rbase,st_buf
+	clr.l	st_fpos
+	clr.l	st_rd
+	clr.l	st_wr
+	clr.w	st_eof
+	moveq	#ST_FIRST-1,d3
+.fill:	bsr	st_read
+	tst.w	st_eof
+	dbne	d3,.fill
+	move.w	#1,st_on		; (before mod_on: the VBL looks at mod_on first)
+	bsr	mod_start
+	movem.l	(sp)+,d3/a3
+	and.b	#$fe,ccr
+	rts
+.bad:	move.w	st_h,-(sp)
+	GEMDOS	GD_FCLOSE,4
+.no:	movem.l	(sp)+,d3/a3
+	or.b	#1,ccr
+	rts
+
+st_close:
+	tst.w	st_on
+	beq.s	.x
+	clr.w	mod_on
+	clr.w	st_on
+	move.w	st_h,-(sp)
+	GEMDOS	GD_FCLOSE,4
+.x:	rts
+
 	section	data
+st_name:	dc.b	"MUSIC",92,"12345678.RAW",0
+st_statfn:	dc.b	"C:",92,"STREAM.BIN",0
+	even
+st_minf:	dc.l	$7fffffff	; lowest ring fill level seen (bytes) - these four
+st_under:	dc.l	0		; pairs of silence because the ring was empty  are
+st_reads:	dc.l	0		; chunks read                        C:\STREAM.BIN
+st_errs:	dc.w	0		; read errors                        in test runs
+	dc.w	0
 	ifnd	SND_BUDGET
 SND_BUDGET	equ	0		; ASMDEFS=-DSND_BUDGET=4: mix at most 4 MOD voices (snd_budget)
 	endc
@@ -641,3 +976,16 @@ snd_accl:	ds.b	SND_CHUNK+4
 snd_accr:	ds.b	SND_CHUNK+4
 	even
 snd_ring:	ds.b	SND_RING
+snd_defrate:	ds.w	1		; the rate snd_init chose (the mixer's when no stream)
+st_on:		ds.w	1		; a stream is open and feeds the DMA ring
+st_h:		ds.w	1
+st_once:	ds.w	1
+st_eof:		ds.w	1		; nothing more to read (play-once end, or a read error)
+st_hsize:	ds.w	1
+st_buf:		ds.l	1
+st_rd:		ds.l	1		; bytes consumed (VBL)
+st_wr:		ds.l	1		; bytes read into the ring (main code)
+st_fpos:	ds.l	1		; data bytes read from the file (after the header)
+st_dend:	ds.l	1		; data end: total, or the first pass for play-once
+st_loop:	ds.l	1
+st_hdr:		ds.b	32

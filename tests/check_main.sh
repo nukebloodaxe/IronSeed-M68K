@@ -22,7 +22,7 @@ for S in ${@:-m1 m2 m3 m4 m5 m6 m7 m8 m9 m10 m11 m12 m13 m14 m15 m16 m17 m18 m19
   ISEED=$IS tools/oracle_main.sh oracle/scripts/$S.main $O $H "$SL" > /dev/null
   [ "$PRN" != 0 ] && cp "$(find $O/tmp -name LPT1 | head -1)" $O/LPT1
   python3 tools/st_script.py oracle/scripts/$S.main hatari/c/INPUT.MN
-  rm -rf hatari/c/*.SCR hatari/c/D0*.BIN hatari/c/CRASH.TXT hatari/c/TEMP
+  rm -rf hatari/c/*.SCR hatari/c/D0*.BIN hatari/c/CRASH.TXT hatari/c/TEMP hatari/c/STREAM.BIN
   V=$(awk '/^# *vbls /{print $3}' oracle/scripts/$S.main); tools/run_hatari.sh ${V:-30000} /tmp/main_$S.png --auto 'C:\MAIN.PRG' > /dev/null
   rm -f hatari/c/INPUT.MN
   n=0; bad=0
@@ -31,7 +31,11 @@ for S in ${@:-m1 m2 m3 m4 m5 m6 m7 m8 m9 m10 m11 m12 m13 m14 m15 m16 m17 m18 m19
     out=$(python3 tools/oracle_cmp.py build/layout.json $L hatari/c/D$k.BIN 2>&1 | grep -v '^screen\|^identical')
     [ -n "$out" ] && { bad=$((bad+1)); echo "  $S dump $k: $(echo "$out" | head -2 | tr '\n' ' ')"; }
   done
-  [ $n -gt 0 ] && [ $bad = 0 ] && echo "PASS main $S state ($n dumps identical with Linux)" || { echo "FAIL main $S state ($bad of $n dumps differ)"; fail=1; }
+  ST=""; if [ -f hatari/c/STREAM.BIN ]; then   # music streamed: the ring must never have run dry
+    read sm su sn se <<< $(python3 -I -c "import struct; print('%d %d %d %d' % struct.unpack('>3LH', open('hatari/c/STREAM.BIN','rb').read()[:14]))")
+    ST=", music stream: ring >= $((sm/1024)) KB"; [ "$su" != 0 -o "$se" != 0 ] && { echo "FAIL main $S music stream ($su underrun pairs, $se read errors)"; fail=1; }
+  fi
+  [ $n -gt 0 ] && [ $bad = 0 ] && echo "PASS main $S state ($n dumps identical with Linux$ST)" || { echo "FAIL main $S state ($bad of $n dumps differ)"; fail=1; }
   for D in $O/home/.ironseed/save[0-9]; do      # games saved in the session (slot 3 is the start)
     N=${D##*save}; [ $N = 3 ] && continue
     rm -rf /tmp/st_save; python3 tools/st2dos.py build/layout.json hatari/c/SAVE$N /tmp/st_save > /dev/null

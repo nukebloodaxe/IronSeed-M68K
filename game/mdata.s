@@ -6,7 +6,9 @@
 ; fadefull     in: d0.w step, d1.w slice (ms): data.pas fadefull
 ; fadestopmod  in: d0.w step, d1.w slice: data.pas fadestopmod (fade out, music off)
 ; set256colors in: a0 = 768-byte palette: the bands take it (vid_set256) at full brightness
-; playmod      in: a0 = file name: modplay.pas playmod (nothing when the sound option is off)
+; playmod      in: a0 = file name: modplay.pas playmod(true, ...) (nothing when the sound option is
+;              off): from MUSIC\NAME.RAW when the folder has it (streamed), else the MOD mixed
+; playmod1     the same, playmod(false, ...): the song plays once (streamed only)
 ; stopmod      modplay.pas stopmod: (volume ramp: volume+1 steps of delay(10)) then silence
 ; haltmod      silence
 ; playing      out: d0.w = 1 while music plays (Z clear)
@@ -84,9 +86,11 @@ set256colors:
 	bra	vid_set_fade
 
 playmod:
+	moveq	#0,d0
+playmod1:				; playmod(false, ...): once (when streamed; a mixed MOD loops)
 	tst.b	GS_SHIP+SHIP_OPTIONS+OPT_SOUND-1(a6)
 	beq.s	.x
-	bsr	mod_load
+	bsr	mod_load1
 .x:	rts
 
 stopmod:

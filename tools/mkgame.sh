@@ -1,6 +1,9 @@
 #!/bin/bash
 # mkgame.sh [OUTDIR] : build the game folder (default hatari/c): IS.PRG + ported programs (INTRO, CREWGEN, MAIN),
-# DATA\ (converted data files, pictures, title assets, palettes), SOUND\ (MODs, SAMs).
+# DATA\ (converted data files, pictures, title assets, palettes), SOUND\ (MODs, SAMs), MUSIC\ (the MODs
+# pre-rendered for streaming, tools/mkmusic.py: ~56 MB at 6258 Hz; MUSICRATE=12517 for the other rate,
+# MUSICINTERP=1 for the interpolated render, NOMUSIC=1 leaves the folder out - the programs then mix
+# the MODs in real time as before).
 set -e
 R=$(cd "$(dirname "$0")/.." && pwd); S=${IRONSEED_SRC:-/root/ironseed_fpc}
 OUT=${1:-$R/hatari/c}
@@ -33,5 +36,13 @@ python3 -I "$R/tools/mkalien.py" "$S/data" "$OUT/DATA" > /dev/null
 python3 -I "$R/tools/mknblogo.py" "$R/assets/nblogo.gif" "$S/data/main.pal" "$OUT/DATA/NBLOGO.DAT" > /dev/null
 python3 -I "$R/tools/mkis2.py" "$S/data" "$OUT/DATA/IS2.DAT" > /dev/null
 cp "$S"/sound/*.MOD "$S"/sound/*.SAM "$OUT/SOUND/"
+if [ -z "$NOMUSIC" ]; then
+  M="$R/build/music${MUSICRATE:-6258}${MUSICINTERP:+i}"   # rendered once, again when the renderer changes
+  if [ "$(ls "$M"/*.RAW 2>/dev/null | wc -l)" -lt "$(ls "$S"/sound/*.MOD | wc -l)" ] || \
+     [ -n "$(find "$R/tools/mkmusic.py" "$R/tools/modref.py" -newer "$M/.done" 2>/dev/null)" ] || [ ! -e "$M/.done" ]; then
+    python3 -I "$R/tools/mkmusic.py" "$S/sound" "$M" --rate ${MUSICRATE:-6258} ${MUSICINTERP:+--interp} > "$R/build/mkmusic.log" && touch "$M/.done"
+  fi
+  mkdir -p "$OUT/MUSIC"; cp "$M"/*.RAW "$OUT/MUSIC/"
+else rm -rf "$OUT/MUSIC"; fi
 cp "$R/assets/README.TXT" "$OUT/"
 echo "game folder: $OUT ($(du -sh "$OUT" | cut -f1))"

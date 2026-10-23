@@ -38,6 +38,8 @@ python3 -I tools/modref.py "$S/sound/INTRO1.MOD" /tmp/ref.raw --rate 6258 --seco
 if [ -n "$ST" ] && cmp -s <(head -c 75096 /tmp/ref.raw) <(head -c 75096 hatari/c/SND.RAW); then
   echo "PASS kts+sfx INTRO1 + EXPLODE3 6258 Hz (effect at pair $ST, bit-exact)"
 else echo "FAIL kts+sfx"; fail=1; fi
+# the music stream (snd.s): loop, ring wrap, an effect on top, play-once - byte-exact with the file
+tests/run_stream.sh || fail=1
 # --- the intro (game folder via tools/mkgame.sh): credits vs Linux, scripted menu, quit to desktop
 tools/mkgame.sh > /dev/null
 sed 's/$/\r/' tests/intro_input.txt > hatari/c/INPUT.INT; rm -f hatari/c/*.SCR
@@ -60,12 +62,18 @@ if [ "$(grep -c ' 0 pixels differ' /tmp/plan.txt)" = 4 ]; then echo "PASS planet
 else echo "FAIL planet renderer: $(head -4 /tmp/plan.txt | tr '\n' ' ')"; fail=1; fi
 # the whole intro without a key: every scene, then the title (its bands = the title's)
 cp hatari/c/TITLE.SCR /tmp/title_ref.scr 2>/dev/null
-printf 'wait 170000\nshot FULL\nquit\n' | sed 's/$/\r/' > hatari/c/INPUT.INT; rm -f hatari/c/FULL.SCR hatari/c/CRASH.TXT
+printf 'wait 170000\nshot FULL\nquit\n' | sed 's/$/\r/' > hatari/c/INPUT.INT; rm -f hatari/c/FULL.SCR hatari/c/CRASH.TXT hatari/c/STREAM.BIN
 tools/run_hatari.sh 14500 /tmp/full.png --auto 'C:\IS.PRG' > /dev/null
 rm -f hatari/c/INPUT.INT
 if [ -s hatari/c/FULL.SCR ] && [ ! -e hatari/c/CRASH.TXT ] && cmp -s <(tail -c +32001 hatari/c/FULL.SCR) <(tail -c +32001 /tmp/title_ref.scr); then
   echo "PASS intro scenes (whole intro plays through to the title)"
 else echo "FAIL intro scenes"; fail=1; fi
+if [ -d hatari/c/MUSIC ]; then   # the intro streamed INTRO1/INTRO2 in real time: the ring must never run dry
+  r=$(python3 -I -c "import struct; m,u,n,e=struct.unpack('>3LH', open('hatari/c/STREAM.BIN','rb').read()[:14]); print(m,u,n,e)" 2>/dev/null)
+  read m u n e <<< "$r"
+  [ -n "$r" ] && [ "$u" = 0 ] && [ "$e" = 0 ] && echo "PASS intro music stream ($n chunks read, ring never below $((m/1024)) KB, no underrun)" \
+    || { echo "FAIL intro music stream ($r)"; fail=1; }
+fi
 # software floating point (kernel/fp.s) against Free Pascal's own arithmetic (tools/fp/fpref)
 [ -x tools/fp/fpref ] || fpc -O1 tools/fp/fpref.pas -otools/fp/fpref > /dev/null
 python3 tests/fptest.py 300 14000 > /tmp/fp.txt && echo "PASS fp ($(tail -1 /tmp/fp.txt): SSE/x87 arithmetic, rounding, str, sin/cos/arctan bit-exact with FPC)" || { echo "FAIL fp: $(tail -1 /tmp/fp.txt)"; fail=1; }
