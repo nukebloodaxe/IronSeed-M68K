@@ -4,7 +4,7 @@
 bytes. Label: gx_ + the literal with '.' -> '_' (gx_0_049). Needs fpc."""
 import os, struct, subprocess, sys, tempfile
 LITS = ['0.99879974', '0.048980394', '0.049', '0.0025', '0.02', '0.66', '0.77', '0.0006', '0.0007',
-        '6.28', '0.30', '0.59', '0.11', '0.1', '0.2', '0.3', '0.4', '0.6', '0.7', '0.8', '0.9']
+        '6.28', '0.30', '0.59', '0.11', '0.1', '0.2', '0.3', '0.4', '0.6', '0.7', '0.8', '0.9', '3.6', '0.036', '0.68', '0.67', '0.45']
 d = tempfile.mkdtemp()
 src = ['{$mode tp}', 'program g;', 'var e: extended; f: file;', 'begin', " assign(f, paramstr(1)); rewrite(f, 1);"]
 for l in LITS: src += [' e := %s;' % l, ' blockwrite(f, e, 10);']

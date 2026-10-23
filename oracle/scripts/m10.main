@@ -1,0 +1,55 @@
+vtime
+args /playseed 3
+# m10: psychometry (crew2.pas psyche): the crew by keys and buttons, the stats balanced by the
+# +/- buttons, the graph display opened and closed (key 1, the buttons), the bubbles, the clock
+wait 3000
+key #27
+wait 2000
+key q
+wait 1500
+key w
+wait 3000
+shot P1
+key #80
+wait 1500
+shot P2
+click 295 44
+wait 1500
+click 255 20
+wait 800
+click 255 20
+wait 800
+click 310 28
+wait 800
+click 255 36
+wait 800
+shot P3
+key 1
+wait 3000
+shot P4
+key #72
+wait 1500
+shot P5
+click 270 44
+wait 1500
+click 310 20
+wait 800
+shot P6
+click 190 44
+wait 3000
+shot P7
+click 220 44
+wait 3000
+shot P8
+key 1
+wait 3000
+wait 10000
+shot P9
+click 300 165
+wait 4000
+shot P10
+key #291
+wait 1500
+key y
+wait 3000
+quit

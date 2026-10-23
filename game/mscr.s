@@ -16,7 +16,7 @@
 ;              shadow; a palette after them goes to GS_COLORS, as loadscreen sets colors from a
 ;              .cpr that has one); nothing dirty afterwards. carry set on error
 ;              trashes: d0-d2/a0-a2
-; ms_snap      in: d0.w slot (0-1): keep the whole screen state (shadow, shown planar screen,
+; ms_snap      in: d0.w slot (0-2: current, current2, current3): keep the whole screen state (shadow, shown planar screen,
 ;              bands, LUTs, reps, keep mask, GS_COLORS) - the original's compressfile(current)
 ; ms_unsnap    in: d0.w slot: put it back (loadscreen(current)); the bands come back at the
 ;              current fade level                                         trashes: d0-d2/a0-a2
@@ -44,6 +44,8 @@ ms_init:
 	moveq	#0,d0			; both snapshot buffers now (the pool is a stack)
 	bsr	ms_slot
 	moveq	#1,d0
+	bsr	ms_slot
+	moveq	#2,d0
 	bsr	ms_slot
 	move.l	vid_phys,a0
 	bsr	gfx_set_target
@@ -270,7 +272,6 @@ ms_unsnap:
 	rts
 
 ms_slot:				; d0.w slot -> a0 = its buffer (allocated on first use)
-	and.w	#1,d0
 	lsl.w	#2,d0
 	lea	ms_snaps,a1
 	add.w	d0,a1
@@ -371,7 +372,8 @@ ms_path:	dc.b	"DATA",92,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 
 	section	bss
 ms_buf:		ds.l	1
-ms_snaps:	ds.l	2
+ms_snaps:	ds.l	3
+ms_color:	ds.w	1		; graph.setcolor's colour (rectangle, circle in explore)
 ms_any:		ds.w	1
 ms_x1:		ds.w	MS_H
 ms_x2:		ds.w	MS_H

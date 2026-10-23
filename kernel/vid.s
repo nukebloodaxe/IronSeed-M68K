@@ -28,6 +28,9 @@
 ; vid_set256      in: a0 = 256 x 3 bytes, 6-bit VGA palette (the original set256colors): every
 ;                 slot of every band takes the colour of its rep index; the fade level applies.
 ;                 trashes: d0-d2/a0-a2
+; vid_setrgb      in: d0.w index, d1.w r, d2.w g, d3.w b (0-63): c_utils.c setrgb256: the slots
+;                 whose rep is that index (and not kept) take the colour; the fade level applies.
+;                 trashes: d0-d2/a0-a2
 ; vid_set_keep    in: a0 = 4 x 16 bytes (non-zero: vid_set256 leaves that slot's colour alone,
 ;                 e.g. the quantiser's colours where only some slots are animated), or a0 = 0:
 ;                 none kept (default)                              trashes: d0/a0-a1
@@ -192,6 +195,40 @@ vid_set_keep:
 	rts
 .clr:	clr.l	(a1)+
 	dbf	d0,.clr
+	rts
+
+vid_setrgb:
+	movem.l	d3-d5,-(sp)
+	lea	vid_c6tab,a0
+	moveq	#0,d4
+	move.b	0(a0,d1.w),d4		; the STE word
+	lsl.w	#4,d4
+	or.b	0(a0,d2.w),d4
+	lsl.w	#4,d4
+	or.b	0(a0,d3.w),d4
+	lea	vid_reps,a1
+	lea	vid_keep,a2
+	lea	vid_bands_src,a0
+	move.w	(a0)+,d5
+	subq.w	#1,d5
+	moveq	#0,d3			; any change
+.band:	addq.l	#2,a0
+	moveq	#16-1,d2
+.slot:	tst.b	(a2)+
+	bne.s	.n
+	cmp.b	(a1),d0
+	bne.s	.n
+	move.w	d4,(a0)
+	moveq	#1,d3
+.n:	addq.l	#1,a1
+	addq.l	#2,a0
+	dbf	d2,.slot
+	dbf	d5,.band
+	tst.w	d3
+	beq.s	.x
+	move.w	vid_fade,d0
+	bsr	vid_set_fade
+.x:	movem.l	(sp)+,d3-d5
 	rts
 
 vid_set256:

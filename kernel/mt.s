@@ -2,6 +2,10 @@
 ; sequences match the original's exactly (the oracle runs with randseed 1994). Part of kernel.s.
 ;
 ; mt_seed     in: d0.l = seed (FPC randseed)                       trashes: d0-d2/a0-a1
+; mt_setseed  in: d0.l: the Pascal assignment randseed := d0 (lazy, as FPC: the generator is
+;             seeded from it at the next draw, unless it equals the value the last seeding left in
+;             randseed - which is how PushRand/PopRand restore a sequence)  trashes: nothing
+; mt_getseed  out: d0.l = randseed (FPC's variable: after a seeding it holds not seed)
 ; mt_u32      out: d0.l = next 32-bit number (mtwist_u32rand)       trashes: d1-d2/a0
 ; mt_random   in: d0.w = l (1..65535)  out: d0.l = random(l) = (u32 * l) >> 32   trashes: d1-d2/a0
 ; mt_random64 in: d0.w = l (1..65535)  out: d0.l = FPC's random(int64 l): two draws a, b,
@@ -9,6 +13,8 @@
 ;             whenever the argument is an arithmetic expression (random(a+b), random(n-1), ...;
 ;             a plain variable or a constant takes random(longint)): port each call with the
 ;             overload the original's argument selects.           trashes: d1-d2/a0
+; mt_random64l in: d0.l = l (>= 0): random(int64 l) for any longint l (0 gives 0, after the two
+;             draws, as FPC)                                         trashes: d1-d2/a0
 ;mt_skip      in: d0.l = n: advances the generator as n calls would (fast)   trashes: d0-d2/a0-a1
 ; mt_randomize  seed from the clock (FPC randomize); scripted test runs (scr_test) use 1994,
 ;             like the oracle build.                                trashes: d0-d2/a0-a1
@@ -29,8 +35,19 @@ mt_randomize:
 	addq.l	#2,sp
 	add.l	HZ200.w,d0
 	; fall through
+mt_setseed:
+	move.l	d0,mt_rs
+	rts
+mt_getseed:
+	move.l	mt_rs,d0
+	rts
+
 mt_seed:
 	movem.l	d3-d4,-(sp)
+	move.l	d0,d1			; randseed and oldseed := not seed (FPC, after the seeding)
+	not.l	d1
+	move.l	d1,mt_rs
+	move.l	d1,mt_old
 	lea	mt_state,a0
 	move.l	d0,(a0)+
 	moveq	#1,d3			; i
@@ -104,7 +121,13 @@ mt_update:
 .t0:	rts
 
 mt_u32:
-	move.w	mt_index,d0
+	move.l	mt_rs,d0		; randseed changed since the last seeding: seed from it
+	cmp.l	mt_old,d0
+	beq.s	.same
+	move.l	a1,-(sp)
+	bsr	mt_seed
+	move.l	(sp)+,a1
+.same:	move.w	mt_index,d0
 	cmp.w	#MT_N,d0
 	blo.s	.ok
 	bsr	mt_update
@@ -137,6 +160,10 @@ mt_u32:
 mt_skip:
 	move.l	d3,-(sp)
 	move.l	d0,d3
+	move.l	mt_rs,d0
+	cmp.l	mt_old,d0
+	beq.s	.l
+	bsr	mt_seed
 .l:	tst.l	d3
 	beq.s	.x
 	move.w	mt_index,d0
@@ -198,7 +225,33 @@ mt_random64:
 	and.l	#$ffff,d1
 	rts
 
+mt_random64l:
+	movem.l	d3-d5,-(sp)
+	move.l	d0,d4			; l
+	bsr	mt_u32
+	move.l	d0,d3			; low half
+	bsr	mt_u32
+	bclr	#31,d0			; high half (63 bits)
+	tst.l	d4
+	beq.s	.zero
+	moveq	#0,d1			; r := (r*2 + bit) mod l over the 64 bits
+	moveq	#64-1,d5
+.b:	add.l	d3,d3
+	addx.l	d0,d0
+	addx.l	d1,d1			; (r < l < 2^31: no carry out)
+	cmp.l	d4,d1
+	blo.s	.n
+	sub.l	d4,d1
+.n:	dbf	d5,.b
+	move.l	d1,d0
+	bra.s	.x
+.zero:	moveq	#0,d0
+.x:	movem.l	(sp)+,d3-d5
+	rts
+
 	section	bss
+mt_rs:		ds.l	1		; FPC's randseed variable
+mt_old:		ds.l	1		; and its oldrandseed
 mt_state:	ds.l	MT_N
 mt_index:	ds.w	1
 	even

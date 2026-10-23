@@ -156,14 +156,16 @@ scr_tick:
 	move.b	d0,scr_ext		; scan code; key byte = 0 marker
 	move.b	#$ff,scr_key		; (non-zero = pending)
 .kdone:	bsr	scr_eol
-	bra.s	.out
-.move:	bsr	scr_num
+	bra	.out
+.move:	st	scr_mouse		; (from now on move_mouse leaves the scripted position, as the oracle)
+	bsr	scr_num
 	move.w	d0,kbd_mx
 	bsr	scr_num
 	move.w	d0,kbd_my
 	bsr	scr_eol
 	bra	.line
-.click:	bsr	scr_num
+.click:	st	scr_mouse
+	bsr	scr_num
 	move.w	d0,kbd_mx
 	bsr	scr_num
 	move.w	d0,kbd_my
@@ -339,6 +341,7 @@ scr_vpolls:	ds.w	1
 scr_vclock:	ds.l	1
 scr_key:	ds.b	1
 scr_ext:	ds.b	1
+scr_mouse:	ds.b	1		; the script has placed the mouse (c_utils.c script_mouse)
 	even
 scr_dbgn:	ds.l	1		; (scr_dbgbuf must follow: written together)
 scr_dbgbuf:	ds.l	256

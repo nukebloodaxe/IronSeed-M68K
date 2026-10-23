@@ -1,0 +1,76 @@
+vtime
+args /playseed 3
+# vbls 90000
+# m12: the creation screen (cargtool.pas creation): the device list by keys and mouse, the item
+# info and parts, the filters, the colour code, the cargo view (F2), a part's own recipe and
+# back, building and taking apart (teams), the team's progress, the job finishing in the
+# background (a crew message)
+wait 3000
+key #27
+wait 2000
+key a
+wait 1500
+key f
+wait 4000
+shot K1
+key #80
+wait 600
+key #80
+wait 600
+shot K2
+click 15 60
+wait 800
+shot K3
+click 140 46
+wait 800
+shot K4
+click 250 64
+wait 800
+shot K5
+key 1
+wait 600
+key c
+wait 600
+shot K6
+key 1
+wait 600
+key /
+wait 600
+key #80
+wait 600
+shot K7
+key /
+wait 600
+key q
+wait 1500
+shot K8
+key #283
+wait 1500
+shot K9
+key #80
+wait 600
+key #80
+wait 600
+shot K10
+key w
+wait 1500
+shot K11
+click 180 133
+wait 1500
+shot K12
+wait 30000
+shot K13
+key #13
+wait 2000
+shot K14
+key #282
+wait 1500
+shot K15
+key #27
+wait 4000
+shot K16
+key #291
+wait 1500
+key y
+wait 3000
+quit

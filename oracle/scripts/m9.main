@@ -1,0 +1,41 @@
+vtime
+args /playseed 3
+# m9: the crew status screen (crewinfo.pas crewstats): the six crew members by keys and by the
+# arrow buttons, the colour-cycled graph, back to the bridge
+wait 3000
+key #27
+wait 2000
+key q
+wait 1500
+key x
+wait 3000
+shot C1
+key #80
+wait 1500
+shot C2
+key #80
+wait 1200
+key #80
+wait 1200
+shot C3
+click 288 150
+wait 1500
+shot C4
+click 288 170
+wait 1200
+click 288 170
+wait 1200
+click 288 170
+wait 1200
+shot C5
+key #72
+wait 1500
+shot C6
+click 306 160
+wait 4000
+shot C7
+key #291
+wait 1500
+key y
+wait 3000
+quit

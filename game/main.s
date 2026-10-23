@@ -166,9 +166,11 @@ readybuildtimes:
 	bne.s	.c
 	bra.s	.nj
 .hit:	moveq	#0,d0			; bldcargo[i] := sum of levels
-	lea	CREATION_LEVELS(a3),a0
+	lea	CREATION_LEVELS(a3),a0	; (levels are bytes)
 	moveq	#6-1,d1
-.s:	add.w	(a0)+,d0
+.s:	moveq	#0,d2
+	move.b	(a0)+,d2
+	add.w	d2,d0
 	dbf	d1,.s
 	move.w	d6,d1
 	add.w	d1,d1
@@ -185,10 +187,12 @@ readybuildtimes:
 	mulu	#12,d1
 	lea	GS_LVLCARGO(a6),a0
 	add.w	d1,a0
-	lea	CREATION_LEVELS(a3),a1
-	move.l	(a1)+,(a0)+
-	move.l	(a1)+,(a0)+
-	move.l	(a1)+,(a0)+
+	lea	CREATION_LEVELS(a3),a1	; lvlcargo[i,k] := levels[k] (byte -> integer)
+	moveq	#6-1,d1
+.lv:	moveq	#0,d2
+	move.b	(a1)+,d2
+	move.w	d2,(a0)+
+	dbf	d1,.lv
 .nj:	lea	CREATION_SIZEOF(a3),a3
 	dbf	d7,.j
 	move.l	(sp)+,d0
@@ -319,6 +323,12 @@ screensaver:				; weird.pas screensaver (after 750 idle frames)
 	include	"crewtick.s"
 	include	"usecode2.s"
 	include	"display.s"
+	include	"explore.s"
+	include	"mbox.s"
+	include	"crewinfo.s"
+	include	"crew2.s"
+	include	"cargtool.s"
+	include	"engjobs.s"
 	include	"fp.s"
 
 	section	data
@@ -352,6 +362,7 @@ files:	dc.l	ICONARRAY_SIZEOF,GS_ICONS,0
 	dc.l	22000,0,u2_sphere		; DATA\SPHERE.DAT
 	dc.l	12402,GS_STARMAPSCREEN,0
 	dc.l	400,GS_TEMPICON,0
+	dc.l	30*70*70,0,mb_pics		; DATA\PORTRAIT.DAT (showchar)
 	dc.l	0
 
 	section	bss

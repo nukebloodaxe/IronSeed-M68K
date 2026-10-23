@@ -524,14 +524,22 @@ us_command:
 	add.w	d0,d0
 	move.w	.tab(pc,d0.w),d0
 	jmp	.tab(pc,d0.w)
-.tab:	dc.w	.np-.tab,.c12-.tab,.c12-.tab,.np-.tab,.c45-.tab,.c45-.tab,.np-.tab,.x-.tab	; 0-7
-	dc.w	.np-.tab,.c9-.tab,.c10-.tab,.c11-.tab,.c12s-.tab,.c13-.tab,.np-.tab,.c15-.tab ; 8-15
-	dc.w	.x-.tab,.np-.tab,.c18-.tab,.cex-.tab,.cex-.tab,.c21-.tab,.cex-.tab,.cex-.tab ; 16-23
+.tab:	dc.w	.c0-.tab,.c12-.tab,.c12-.tab,.c0-.tab,.c45-.tab,.c45-.tab,.c6-.tab,.x-.tab	; 0-7
+	dc.w	.np-.tab,.c9-.tab,.c10-.tab,.c11-.tab,.c12s-.tab,.c13-.tab,.c14-.tab,.c15-.tab ; 8-15
+	dc.w	.x-.tab,.c17-.tab,.c18-.tab,.cex-.tab,.cex-.tab,.c21-.tab,.cex-.tab,.cex-.tab ; 16-23
 	dc.w	.c24-.tab,.x-.tab,.c26-.tab,.c27-.tab,.c27-.tab,.c29-.tab,.c30-.tab,.c31-.tab ; 24-31
 	dc.w	.c32-.tab,.c33-.tab,.x-.tab,.c32-.tab,.c36-.tab,.c37-.tab,.c38-.tab,.c39-.tab ; 32-39
 	dc.w	.c40-.tab,.c40-.tab,.c42-.tab,.x-.tab,.c44-.tab,.c45o-.tab,.c46-.tab,.c47-.tab ; 40-47
 	dc.w	.c48-.tab,.np-.tab,.c47-.tab,.c51-.tab,.x-.tab,.c53-.tab			; 48-53
-.np:	bra	notported		; psyche, crewstats, converse, creation, inventory, load
+.np:	bra	notported		; converse, load
+.c14:	bsr	creation
+	bra	.x
+.c17:	bsr	inventory
+	bra	.x
+.c0:	bsr	psyche
+	bra	.x
+.c6:	bsr	crewstats
+	bra	.x
 .c12:	cmp.b	#39,GS_SHIP+SHIP_DAMAGES+DMG_COMM-1(a6)	; 1,2 / 4,5: continuecontact
 	bls	notported
 	bsr	contactfailure
@@ -577,8 +585,7 @@ us_command:
 	bsr	readystarmap
 	bsr	displayshortscan
 	bra	.x
-.cex:	TCOL	94			; 19,20,22,23: exploreplanet
-	tst.b	GS_SHOWPLANET(a6)
+.cex:	tst.b	GS_SHOWPLANET(a6)
 	beq.s	.cex3
 	move.w	GS_CURPLAN(a6),d0
 	bsr	dp_plan
@@ -587,18 +594,25 @@ us_command:
 	move.w	#ID_PROBOT,d0
 	bsr	incargo
 	tst.w	d0
-	bgt	notported		; exploreplanet
+	ble.s	.cex1
+	bsr	exploreplanet
+	bra	.x
+.cex1:	TCOL	94			; 19,20,22,23: exploreplanet
 	PRTLN
 	PRT	"SCIENCE: We have no probots."
 	bra	.x
 .cex2:	move.w	#ID_STARDIVER,d0
 	bsr	incargo
 	tst.w	d0
-	bgt	notported
+	ble.s	.cex4
+	bsr	exploreplanet
+	bra	.x
+.cex4:	TCOL	94
 	PRTLN
 	PRT	"SCIENCE: We have no probots that can withstand a star."
 	bra	.x
-.cex3:	PRTLN
+.cex3:	TCOL	94
+	PRTLN
 	PRT	"SCIENCE: We are not near a planet."
 	bra	.x
 .c21:	cmp.w	#4,GS_VIEWMODE2(a6)

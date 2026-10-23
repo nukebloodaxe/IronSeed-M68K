@@ -1,0 +1,70 @@
+vtime
+args /playseed 3
+# vbls 90000
+# m11: the cargo hold (cargtool.pas inventory): the doors, the list and the info view, the
+# filters by keys and buttons, the cursor by keys and mouse, jettisoning (the request box)
+wait 3000
+key #27
+wait 2000
+key a
+wait 1500
+key v
+wait 9000
+shot I1
+key #80
+wait 600
+key #80
+wait 600
+shot I2
+key /
+wait 1000
+shot I3
+key #72
+wait 600
+shot I4
+key /
+wait 600
+key 1
+wait 600
+shot I5
+key 1
+wait 600
+key 3
+wait 600
+shot I6
+key 3
+wait 600
+click 150 50
+wait 800
+shot I7
+key d
+wait 1500
+shot I8
+key o
+wait 1500
+shot I9
+click 108 118
+wait 1500
+key h
+wait 1500
+shot I10
+click 222 113
+wait 600
+click 222 122
+wait 600
+click 120 113
+wait 600
+shot I11
+click 120 113
+wait 600
+click 210 118
+wait 1000
+shot I12
+key #27
+wait 8000
+shot I13
+key #291
+wait 1500
+key y
+wait 3000
+quit

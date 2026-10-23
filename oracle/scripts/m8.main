@@ -1,0 +1,103 @@
+vtime
+args /playseed 3
+# m8: planet exploration (explore.pas): the probes launched on each scan, the zoom window moved
+# and zoomed, the summary, a crew message box (showchar), the data pages, anomalies retrieved,
+# back to the bridge (event 11). Per Cent Bio on the summary: the original computes it before the
+# map is drawn (from the previous exploration's map; the oracle's first one: heap garbage)
+# vbls 160000
+# mask E5:210,51,250,58
+# mask E6:210,51,250,58
+# mask E7:210,51,250,58
+# mask E8:210,51,250,58
+# mask E9:210,51,250,58
+# mask E10:210,51,250,58
+# mask E11:210,51,250,58
+wait 3000
+key #27
+wait 2000
+key z
+wait 1500
+key e
+wait 6000
+shot E1
+key 1
+wait 3000
+shot E2
+key +
+wait 500
+key #275
+wait 300
+key #274
+wait 300
+key +
+wait 1500
+shot E3
+click 236 150
+wait 1500
+key -
+wait 800
+key 2
+wait 1500
+key 3
+wait 1500
+key 4
+wait 1500
+key 5
+wait 20000
+shot E4
+dump X1
+wait 60000
+shot E5
+dump X2
+wait 60000
+shot E6
+key #13
+wait 2000
+shot E7
+key 1
+wait 1500
+shot E8
+key #281
+wait 800
+key #281
+wait 800
+key #280
+wait 800
+shot E9
+key 2
+wait 1500
+key 3
+wait 1500
+shot E10
+key 4
+wait 1500
+shot E11
+key 5
+wait 2500
+shot E12
+click 40 155
+wait 2500
+shot E13
+key #13
+wait 2500
+shot E14
+click 40 155
+wait 1500
+key -
+wait 800
+key +
+wait 1500
+key #13
+wait 2500
+shot E15
+key q
+wait 8000
+shot E16
+key #27
+wait 4000
+shot E17
+key #291
+wait 1500
+key y
+wait 3000
+quit

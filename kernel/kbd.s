@@ -90,9 +90,11 @@ kbd_mouse_status:
 	rts
 
 kbd_mouse_move:
+	tst.b	scr_mouse		; a script's mouse stays where the script put it (the oracle's
+	bne.s	.x			; mouse_get_x/y return the scripted position after a move/click)
 	move.w	d0,kbd_mx
 	move.w	d1,kbd_my
-	rts
+.x:	rts
 
 kbd_keypressed:
 	bsr	scr_poll

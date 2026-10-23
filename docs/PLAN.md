@@ -222,3 +222,14 @@ How:
 - Integer forms replace reals where they were proven equal on the host (graypal's grey, the gray-step fade, weird.pas's blast).
 - **Integer width**: FPC evaluates integer expressions in native width, so `(x+z)*0.0006` with x, z up to 23 000 does not wrap; on the 68000 such sums must be done in longs before going to the FPU (the long range scan's dots showed it).
 - c_utils.c's `bar` and `rectangle` exclude the far edge/corner; `pmac.i` macros (PXY, PRT, BAR, FADE, LINE, FLDG…) keep each Pascal line about one asm line.
+
+### Phase 4c (16 Oct 2026): MAIN.PRG - exploration, crew screens, cargo and creation
+Ported: explore.pas (exploreplanet: the landing map with its zoom and land colour tables, probes and their launch/retrieval, landsprinkle, the summary with its pie chart, adding finds to the cargo - addcargo2, skillrange, addtime2), utils.pas showchar/printbox (the crew's message boxes with portraits from PORTRAIT.DAT, also for crewtick's background messages and addxp's "Increased knowledge base."), crewinfo.pas crewstats (+ utils2 removedata), crew2.pas psyche (pushrand/poprand), cargtool.pas inventory (the doors, the cargo list, jettison and use requests) and creation (the device and cargo lists by keys and mouse, item info from ITEMINFO.DTA, the part breakdown and stock colours, filters, colour code, building, taking apart and researching with three engineering teams, the progress bar), crewtick's build/decompose/research jobs (engjobs.s). Cube commands now wired: psyche, crewstats, creation, inventory, the planet exploration commands. Still `notported`: converse/comms, the load dialog, sectorinfo, combat, encode/decode crew, the ending, printbigbox/printcargo, the shunt drive, gas giant/asteroid/cloud views, tempinsanity messages.
+
+**Verified against the Linux build**: twelve sessions m1-m12 - 123 state dumps identical, 115 shots pixel-exact. m8 exploration (16 dumps, 17 shots; "Per Cent Bio" masked: the original computes it from stale landcolors), m9 crew status (14/7), m10 psychometry (17/10), m11 inventory (9/13), m12 creation: building, taking apart, the progress bar, the job finishing in the background (10/16).
+
+How:
+- Each screen has its own band design (`tools/mkmain.py`: LAND, CHAR2, PSYCHE, CARGO, TECH1), with own slots for the colours the original animates (psyche's four groups, the cargo screen's 232-239, the crew portrait band); `vid_setrgb` is setrgb256 on those slots.
+- FPC's randseed is lazy: `randseed := x` only takes effect at the next draw (`mt_setseed`), and after `randomize`/seeding the variable reads as `not seed`; psyche's PushRand/PopRand depend on both.
+- Found late: creation.dta's `levels` are bytes; readybuildtimes summed them as words since Phase 4a, so build times and level requirements were wrong until the creation screen's progress bar and part colours showed it.
+- Slow spots measured: the cargo doors (110 flush steps, ~10 s), landsprinkle, vid_set256 every frame of psyche.

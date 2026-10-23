@@ -796,7 +796,7 @@ dp_dmgbars:
 	bne.s	.i
 	addq.w	#1,d3
 	cmp.w	#5,d3
-	bne.s	.j
+	bne	.j
 	FSSE
 	movem.l	(sp)+,d3-d6/a3
 	rts

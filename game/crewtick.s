@@ -2,7 +2,8 @@
 ; engineering teams' repairs, the crew's stress, sanity, skills and experience, the date; and
 ; weird.pas tickpending, utils.pas addxp. Jobs other than repairs (building, installing,
 ; disassembling, research), insanity's messages, the planet bots' day and crew messages in the
-; background (showchar) are not ported yet (notported).
+; background (showchar) are ported; the jobs of builds, disassembly and research are in
+; engjobs.s.
 ;
 ; gametick   in: d0.b background, d1.w ticks                      trashes: d0-d2/a0-a2
 ; addxp      in: d0.w crew 1-6, d1.l amount, d2.w drawmode (1: print the message)
@@ -85,8 +86,14 @@ ct_crew:
 ; CrewMessage(colour d0, crew d1, msg a0)
 ct_message:
 	tst.b	ct_bg
-	bne	notported		; showchar
-	movem.l	d3-d4/a3,-(sp)
+	beq.s	.fg
+	move.w	GS_TCOLOR(a6),-(sp)	; background: showchar(crew, msg) in that colour
+	move.w	d0,GS_TCOLOR(a6)
+	move.w	d1,d0
+	bsr	showchar
+	move.w	(sp)+,GS_TCOLOR(a6)
+	rts
+.fg:	movem.l	d3-d4/a3,-(sp)
 	move.l	a0,a3
 	move.w	d1,d3
 	move.w	GS_TCOLOR(a6),d4
@@ -267,7 +274,18 @@ ct_engtick:
 	beq.s	.rep
 	cmp.w	#JOBTYPE_REMOVE,d0
 	bls	.inst
-	bra	notported		; build, disassemble, research (cargtool: not ported yet)
+	cmp.w	#JOBTYPE_CREATE,d0	; build, take apart, research (engjobs.s)
+	bne.s	.j1
+	bsr	ct_buildjob
+	bra	.next
+.j1:	cmp.w	#JOBTYPE_DECOMPOSE,d0
+	bne.s	.j2
+	bsr	ct_decomposejob
+	bra	.next
+.j2:	cmp.w	#JOBTYPE_RESEARCH,d0
+	bne	.next
+	bsr	ct_researchjob
+	bra	.next
 .rep:
 	move.w	TEAM_JOB(a3),d6
 	cmp.w	#8,d6
@@ -858,13 +876,17 @@ addxp:
 	addq.w	#1,d0
 	bra.s	.lv
 .c:	cmp.w	d4,d0
-	beq.s	.x
+	beq	.x
 	move.b	d0,CREW_LEVEL(a3)
 	move.w	GS_TCOLOR(a6),-(sp)
 	move.w	#31,GS_TCOLOR(a6)
 	cmp.w	#1,d5
-	bne	notported		; showchar
-	bsr	println
+	beq.s	.pr
+	move.w	d3,d0			; showchar(crewnum, 'Increased knowledge base.')
+	lea	ct_s_ikb,a0
+	bsr	showchar
+	bra.s	.inc
+.pr:	bsr	println
 	lea	ct_s,a0
 	move.w	d3,d0
 	mulu	#12,d0
@@ -876,7 +898,7 @@ addxp:
 	bsr	pstr_cat
 	lea	ct_s,a0
 	bsr	print
-	cmp.b	#99,CREW_MEN(a3)
+.inc:	cmp.b	#99,CREW_MEN(a3)
 	bhs.s	.m
 	addq.b	#1,CREW_MEN(a3)
 .m:	cmp.b	#99,CREW_EMO(a3)
@@ -939,6 +961,7 @@ ct_medoff:	dc.b	CREW_SAN,CREW_PERF,CREW_SKILL,0
 ct_levels:	dc.l	1000,3000,4000,7000,11000,18000,29000,47000,76000,123000,200000
 		dc.l	350000,500000,650000,800000,950000,1100000,1250000,1400000,1550000,0
 ct_colon:	dc.b	2,": "
+ct_s_ikb:	dc.b	25,"Increased knowledge base."
 ct_s_kb:	dc.b	27,": Increased knowledge base."
 ct_s_power:	dc.b	50,"Secondary power failure...Shields powering down..."
 ct_s_alien:	dc.b	33,"Alien vessel sighted on scanners!"

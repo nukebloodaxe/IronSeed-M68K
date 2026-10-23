@@ -18,4 +18,21 @@ out.append('\teven\nct_pie:\t\t\t\t; (int)(j*0.9) for j = -100..100, index j+100
 pie = [int(j * E) for j in range(-100, 101)]
 for k in range(0, 201, 16): out.append('\tdc.b\t' + ','.join(str(v) for v in pie[k:k + 16]) + '\n')
 out.append('\teven\n')
+# pieslice(x, y, phi0, phi1, 20) (explore.pas printhighest): per pixel (j, i) = -20..19 (rows of j,
+# then i), the smallest whole phi with phi*pi/180 > f (f = atan2(j, i) in 0..2pi); the pixel is
+# drawn when phi0 < A <= phi1. -1: outside the disc (i*i + j*j > 400).
+import math
+R = 20
+out.append('ct_pie20:\n')
+for j in range(-R, R):
+    row = []
+    for i in range(-R, R):
+        if i * i + j * j > R * R: row.append(-1); continue
+        f = math.atan2(j, i)
+        if f < 0: f += 2 * math.pi
+        a = 0
+        while a * math.pi / 180.0 <= f: a += 1
+        assert all(((p * math.pi / 180.0) <= f) == (p < a) for p in range(0, 362))
+        row.append(a)
+    for k in range(0, 2 * R, 20): out.append('\tdc.w\t' + ','.join(str(v) for v in row[k:k + 20]) + '\n')
 open(sys.argv[1], 'w').write(''.join(out))

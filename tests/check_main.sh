@@ -7,14 +7,14 @@
 R=$(cd "$(dirname "$0")/.." && pwd); cd "$R"
 fail=0
 [ -d build/oracle_s4/home/.ironseed/save3 ] && [ -f hatari/c/SAVE3/SHIP.DTA ] || { echo "FAIL main: no s4 save (run check_crewgen.sh first)"; exit 1; }
-MODES="hatari/c/DATA/LOG.ISP hatari/c/DATA/MAIN.ISP"
+MODES="$(for m in LOG MAIN LAND CHAR2 PSYCHE CARGO TECH1; do printf "hatari/c/DATA/%s.ISP " $m; done)"
 cp hatari/c/SAVEGAME.DIR /tmp/main_sgdir.bak   # sessions that save get their slots compared, then undone
-for S in ${@:-m1 m2 m3 m4 m5 m6 m7}; do
+for S in ${@:-m1 m2 m3 m4 m5 m6 m7 m8 m9 m10 m11 m12}; do
   O=build/oracle_$S
   tools/oracle_main.sh oracle/scripts/$S.main $O build/oracle_s4/home 3 > /dev/null
   python3 tools/st_script.py oracle/scripts/$S.main hatari/c/INPUT.MN
   rm -rf hatari/c/*.SCR hatari/c/D0*.BIN hatari/c/CRASH.TXT hatari/c/TEMP
-  tools/run_hatari.sh 30000 /tmp/main_$S.png --auto 'C:\MAIN.PRG' > /dev/null
+  V=$(awk '/^# *vbls /{print $3}' oracle/scripts/$S.main); tools/run_hatari.sh ${V:-30000} /tmp/main_$S.png --auto 'C:\MAIN.PRG' > /dev/null
   rm -f hatari/c/INPUT.MN
   n=0; bad=0
   for L in $O/main_*.bin; do
