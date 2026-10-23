@@ -82,7 +82,13 @@ ms_dirty_all:				; (keeps d3, as documented)
 	rts
 ms_dirty:
 	move.w	d3,-(sp)
-	and.w	#$fff8,d0		; whole cells: the flush takes its fast path
+	tst.w	d1			; rows clipped to the screen (a bad caller must not make the
+	bpl.s	.y1			; flush walk lines that do not exist)
+	moveq	#0,d1
+.y1:	cmp.w	#MS_H-1,d3
+	ble.s	.y2
+	move.w	#MS_H-1,d3
+.y2:	and.w	#$fff8,d0		; whole cells: the flush takes its fast path
 	or.w	#7,d2
 	lea	ms_x1,a0
 	lea	ms_x2,a1

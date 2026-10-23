@@ -4225,7 +4225,8 @@ targetplanet:
 	add.w	GS_VIEWINDEX(a6),d0
 	move.w	d0,dp_j
 	bsr	mousehide
-	moveq	#1,d1
+	move.w	dp_j,d0			; (mousehide trashes d0: the box went to a garbage planet's
+	moveq	#1,d1			; place - off the screen, David's crash of 24 Oct 2026)
 	bsr	dp_sysplanet
 	bsr	dp_rxy
 	move.w	d0,d3
