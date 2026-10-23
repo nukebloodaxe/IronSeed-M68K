@@ -73,10 +73,16 @@ fadestopmod:
 	ble.s	.x
 	move.w	d3,d0
 	bsr	fadestep
-	move.w	d4,d0			; (setmodvolumeto: no master volume on the ST yet)
+	moveq	#0,d0			; setmodvolumeto((fadelevel * options[OPT_VOLUME]) shr 6):
+	move.b	GS_SHIP+SHIP_OPTIONS+OPT_VOLUME-1(a6),d0	; the LMC1992's master volume
+	mulu	GS_FADELEVEL(a6),d0
+	lsr.l	#6,d0
+	bsr	snd_master
+	move.w	d4,d0
 	bsr	delay
 	bra.s	.l
 .x:	bsr	haltmod
+	bsr	setmodvolume		; (the ST's master volume also carries the effects: back up)
 	movem.l	(sp)+,d3-d4
 	rts
 
@@ -91,16 +97,21 @@ playmod1:				; playmod(false, ...): once (when streamed; a mixed MOD loops)
 	tst.b	GS_SHIP+SHIP_OPTIONS+OPT_SOUND-1(a6)
 	beq.s	.x
 	bsr	mod_load1
+	bra	setmodvolume		; setmodvolumeto(options[OPT_VOLUME])
 .x:	rts
 
-stopmod:
+stopmod:				; for i := options[OPT_VOLUME] downto 0: setmodvolumeto(i), delay(10)
 	move.l	d3,-(sp)
 	moveq	#0,d3
 	move.b	GS_SHIP+SHIP_OPTIONS+OPT_VOLUME-1(a6),d3
-.v:	moveq	#10,d0
+.v:	move.w	d3,d0
+	bsr	snd_master
+	moveq	#10,d0
 	bsr	delay
 	dbf	d3,.v
 	move.l	(sp)+,d3
+	bsr	mod_stop
+	bra	setmodvolume		; (effects: the master volume back up once the music is off)
 haltmod:
 	bra	mod_stop
 

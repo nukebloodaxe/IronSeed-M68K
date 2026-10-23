@@ -117,22 +117,23 @@ displayoptions:
 	bsr	stopmod
 	bra	.draw
 .d9:	cmp.w	#9,d1
-	bne.s	.dd
+	bne.s	.d1
 	cmp.b	#1,OPT_VOLUME(a3)
 	bls.s	.dv
 	subq.b	#1,OPT_VOLUME(a3)
 .dv:	bsr	setmodvolume
 	bra	.draw
+.d1:	cmp.w	#1,d1			; row 1 is the probes option (OPT_PROBES)
+	bne.s	.dd
+	moveq	#OPT_PROBES,d1
 .dd:	tst.b	0(a3,d1.w)
 	beq	.draw
 	subq.b	#1,0(a3,d1.w)
 	bra	.draw
 .inc:	cmp.w	#1,d1			; 2, 7: right
 	bne.s	.i2
-	cmp.b	#1,OPT_SCREENSAVER(a3)
-	bhs	.draw
-	addq.b	#1,OPT_SCREENSAVER(a3)
-	bra	.draw
+	moveq	#OPT_PROBES,d1		; row 1: the probes option, 0 -> 1 below
+	bra	.ie
 .i2:	cmp.w	#2,d1
 	bne.s	.i4
 	cmp.b	#250,OPT_TIMESLICE(a3)
@@ -169,11 +170,11 @@ displayoptions:
 .draw:	TCOL	191
 	bsr	mousehide
 	BKSEL	GS_VIEWINDEX,1
-	tst.b	OPT_SCREENSAVER(a3)
+	tst.b	OPT_PROBES(a3)		; (the original: the screen saver's Off/On)
 	bne.s	.ss
-	PXY	251,37,"Off"
+	PXY	246,37," Std"
 	bra.s	.o2
-.ss:	PXY	251,37," On"
+.ss:	PXY	246,37,"1994"
 .o2:	BKSEL	GS_VIEWINDEX,2
 	moveq	#0,d0
 	move.b	OPT_TIMESLICE(a3),d0
@@ -232,9 +233,12 @@ displayoptions:
 	bra	pstr_cpy
 .px:	rts
 
-; modplay setmodvolume: the music volume option (no master volume on the ST yet)
+; modplay setmodvolume: setmodvolumeto(options[OPT_VOLUME]) - the LMC1992's master volume (on the
+; ST it carries the effects too: they are mixed into the music's DMA stream)
 setmodvolume:
-	rts
+	moveq	#0,d0
+	move.b	GS_SHIP+SHIP_OPTIONS+OPT_VOLUME-1(a6),d0
+	bra	snd_master
 
 ; ---------------------------------------------------------------- damage control (viewmode 5)
 ; the "Engineering Team n" heading (dp_s), its frame lines and column titles

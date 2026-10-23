@@ -1,5 +1,9 @@
 vtime
 args /playseed 3
+# mask P10:165,36,280,44
+# mask P11:165,36,280,44
+# mask P12:165,36,280,44
+# (the options panel's first row is the port's probes option, not the screen saver)
 # m3: the right-hand panels from the cube's keys: engineering (damage control, shields, weapons,
 # configure, bots), science (system view, logs), astrogation (system info, ship info), medical
 # (options), security (shields up, weapons armed, the panic button), then quit

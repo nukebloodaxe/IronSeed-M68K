@@ -1,0 +1,58 @@
+vtime
+args /playseed 3
+# p1 (ST only, no oracle): the 1994 probes option (ship.options[10] = 1). Scans launched by key,
+# each probe gathering its own category; then an anomaly retrieved by a probe that flies to it
+# and back (the item goes into the hold at refuelling).
+# setup ship.options[10]=1
+# vbls 200000
+wait 3000
+key #27
+wait 2000
+key z
+wait 1500
+key e
+wait 6000
+shot C1
+key 1
+wait 3000
+shot C2
+wait 20000
+shot C3
+dump Y1
+wait 60000
+shot C4
+wait 60000
+shot C5
+dump Y2
+wait 60000
+shot C6
+key #13
+wait 2000
+key 1
+wait 1500
+key 5
+wait 2500
+shot C7
+click 40 155
+wait 2500
+key #13
+wait 1500
+shot C8
+wait 6000
+shot C9
+dump Y3
+wait 30000
+shot C10
+dump Y4
+key 5
+wait 2500
+shot C11
+key q
+wait 8000
+shot C12
+dump Y5
+key #291
+wait 1500
+key y
+wait 3000
+quit

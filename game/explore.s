@@ -31,6 +31,17 @@ SETC	macro
 	move.w	#\1,ms_color
 	endm
 
+; Z clear when the 1994 probes are on (options[OPT_PROBES], the options panel's first row).
+; The port's own option, outside the oracle: off, every probe does what explore.pas does.
+; On (David's description of the 1994 release, Oct 2026): a probe gathers only the category it
+; was launched for (togather) and comes home when that category is complete (the que still
+; moves on to the next open one, as explore.pas); Retrieve sends a free probe to the anomaly,
+; it picks the item up, flies back and the item goes into the hold at refuelling (the fit is
+; checked before the launch).
+CLASSIC	macro
+	tst.b	GS_SHIP+SHIP_OPTIONS+OPT_PROBES-1(a6)
+	endm
+
 	section	text
 ; ---------------------------------------------------------------- helpers
 ; a0 = landcolors^[y d1, x d0]   (trashes d1)
@@ -76,6 +87,27 @@ ex_notall:
 	moveq	#0,d0
 	rts
 .y:	moveq	#1,d0
+	rts
+; probe a3 keeps scanning (Z clear): explore.pas while any category is open (ex_notall); with
+; the 1994 probes while its own category (togather) is
+ex_scanopen:
+	CLASSIC
+	beq.s	ex_notall
+	move.w	PR_TOGATHER(a3),d0
+	lsl.w	#2,d0
+	lea	ex_dg-4+2,a0
+	cmp.w	#1000,0(a0,d0.w)
+	blt.s	.y
+	moveq	#0,d0
+	rts
+.y:	moveq	#1,d0
+	rts
+; a0 = ex_pitem[j d7] (1994 probes: the cache index a probe is sent for, 0 = none);
+; 8(a0) = ex_pcarry[j] (the item it carries home, 0 = none)
+ex_pslot:
+	lea	ex_pitem-2,a0
+	add.w	d7,a0
+	add.w	d7,a0
 	rts
 ; rectangle(d0-d3) in the current colour
 ex_rect:
@@ -2737,18 +2769,24 @@ controlprobes:
 	cmp.w	#8,d0
 	beq	.t8
 	bra	.txt
-.s3:	bsr	ex_notall		; moving/gathering
+.s3:	bsr	ex_pslot		; moving/gathering (a probe sent for an anomaly: on to it)
+	tst.w	(a0)
+	bne.s	.s3m
+	bsr	ex_scanopen
 	beq.s	.s3r
-	move.w	d7,d0
+.s3m:	move.w	d7,d0
 	bsr	moveprobe
 	bra	.txt
 .s3r:	bsr	ex_retarget		; return to the craft
 	bra	.txt
 .s4:	subq.w	#1,PR_TIMELEFT(a3)	; analysing
-	bne.s	.s4s
+	bne	.s4s
+	bsr	ex_pslot
+	tst.w	(a0)
+	bne	.s4p			; at the anomaly: pick it up
 	tst.w	PR_FUEL(a3)
 	ble.s	.s4r
-	bsr	ex_notall
+	bsr	ex_scanopen
 	beq.s	.s4r
 	move.w	#3,PR_STATUS(a3)	; to the next place
 	move.w	#200,d0
@@ -2762,9 +2800,45 @@ controlprobes:
 	bra	.txt
 .s4r:	bsr	ex_retarget
 	bra	.txt
-.s4s:	tst.w	ex_que			; perform the scan
+.s4p:	move.w	(a0),d3			; 1994: pick up the anomaly (cache index d3)
+	clr.w	(a0)
+	move.l	a0,a4
+	bsr	ex_plan
+	add.w	d3,d3
+	move.w	PLANET_CACHE-2(a0,d3.w),8(a4)	; carried home: into the hold at refuelling
+	clr.w	PLANET_CACHE-2(a0,d3.w)
+	lea	ex_itemloc-2,a0		; its mark goes as in retrieve: landcolors^ and screen
+	add.w	d3,a0			; [y+12, x+27] := landcolors^[y+11, x+27]
+	moveq	#0,d0
+	move.b	1(a0),d0
+	add.w	#27,d0
+	moveq	#0,d1
+	move.b	(a0),d1
+	add.w	#11,d1
+	movem.w	d0-d1,-(sp)
+	bsr	ex_lcaddr
+	move.b	(a0),d4
+	movem.w	(sp)+,d0-d1
+	addq.w	#1,d1
+	movem.w	d0-d1,-(sp)
+	bsr	ex_lcaddr
+	move.b	d4,(a0)
+	movem.w	(sp)+,d0-d1
+	move.b	d4,d2
+	bsr	ms_pset
+	st	ex_pickup		; the lists and the zoom after mouseshow (as retrieve)
+	bra.s	.s4r
+.s4s:	bsr	ex_pslot		; perform the scan (not by a probe sent for an anomaly)
+	tst.w	(a0)
+	bne	.s4v
+	CLASSIC				; 1994: for its own category, while open
+	bne.s	.s4c
+	tst.w	ex_que
 	beq	.s4v
-	moveq	#1,d0			; i := (SkillRange(True, 3, 5, 10) + 20) * 10 div 100
+	bra.s	.s4k
+.s4c:	bsr	ex_scanopen		; (done by another probe meanwhile: nothing to add)
+	beq	.s4v
+.s4k:	moveq	#1,d0			; i := (SkillRange(True, 3, 5, 10) + 20) * 10 div 100
 	moveq	#3,d1
 	moveq	#5,d2
 	moveq	#10,d3
@@ -2775,7 +2849,10 @@ controlprobes:
 	move.w	ex_que,d1
 	bpl.s	.qa
 	neg.w	d1
-.qa:	lsl.w	#2,d1
+.qa:	CLASSIC				; 1994: into the probe's own category
+	beq.s	.qb
+	move.w	PR_TOGATHER(a3),d1
+.qb:	lsl.w	#2,d1
 	lea	ex_dg-4+2,a0
 	add.w	d0,0(a0,d1.w)
 	cmp.w	#1000,0(a0,d1.w)
@@ -2785,7 +2862,15 @@ controlprobes:
 	move.w	(sp)+,d1
 	lea	ex_dg-4+2,a0
 	move.w	#1000,0(a0,d1.w)
-	tst.w	ex_que
+	CLASSIC				; 1994: the que moves on only if this was its category
+	beq.s	.qc
+	move.w	ex_que,d0
+	bpl.s	.qd
+	neg.w	d0
+.qd:	lsl.w	#2,d0
+	cmp.w	d1,d0
+	bne	.s4d
+.qc:	tst.w	ex_que
 	ble.s	.qn
 	clr.w	ex_que			; the next open scan
 	moveq	#0,d0
@@ -2999,6 +3084,17 @@ controlprobes:
 	add.w	#29,d3
 	moveq	#0,d4
 	bsr	ms_bar
+	bsr	ex_pslot		; 1994: a probe sent for an anomaly heads for it
+	move.w	(a0),d0
+	beq	.txt
+	add.w	d0,d0
+	lea	ex_itemloc-2,a0
+	add.w	d0,a0
+	moveq	#0,d0
+	move.b	1(a0),d0
+	move.w	d0,PR_TARX(a3)
+	move.b	(a0),d0
+	move.w	d0,PR_TARY(a3)
 	bra	.txt
 .t5:	moveq	#3,d0			; returning
 	move.w	d7,d1
@@ -3012,6 +3108,12 @@ controlprobes:
 	move.w	d7,d1
 	bsr	ex_icon
 	st	ex_dirty
+	bsr	ex_pslot		; 1994: an anomaly brought home goes into the hold
+	move.w	8(a0),d0		; (its fit was checked at the launch)
+	beq	.txt
+	clr.w	8(a0)
+	st	d1
+	bsr	addcargo2
 	bra	.txt
 .t8:	clr.w	PR_STATUS(a3)		; cool down
 	st	ex_dirty
@@ -3039,7 +3141,15 @@ controlprobes:
 	bne.s	.x
 	bsr	ex_zoomrect
 .x:	bsr	mouseshow
-	movem.l	(sp)+,d3-d7/a3-a5
+	tst.b	ex_pickup		; 1994: an anomaly was picked up - as retrieve after it
+	beq.s	.xx
+	sf	ex_pickup
+	cmp.w	#5,ex_explorelevel	; (the anomaly list again only if it is shown)
+	bne.s	.xr
+	bsr	readyanoinfo
+.xr:	bsr	redraw
+	bsr	showzoom
+.xx:	movem.l	(sp)+,d3-d7/a3-a5
 	rts
 
 ; probe a3, num d7: screen[tary+12, tarx+27] := landcolors^; icon 4; timeleft 70; status 5
@@ -3609,7 +3719,13 @@ retrieve:
 .n:	addq.w	#1,d3
 	cmp.w	#7,d3
 	ble	.j
-.e:	bsr	mousehide
+.e:	CLASSIC				; 1994 probes: a probe goes for it
+	beq.s	.e0
+	move.w	ex_index,d3
+	ble	.r2
+	bsr	ex_fetch
+	bra.s	.r2
+.e0:	bsr	mousehide
 	move.w	ex_index,d3
 	ble	.r
 	bsr	ex_plan
@@ -3647,10 +3763,91 @@ retrieve:
 	add.w	d0,d0
 	clr.w	PLANET_CACHE-2(a0,d0.w)
 .r:	bsr	mouseshow
-	bsr	readyanoinfo
+.r2:	bsr	readyanoinfo
 	bsr	redraw
 	bsr	showzoom
 	movem.l	(sp)+,d3-d4
+	rts
+
+; 1994 probes (retrieve): send a free probe for the anomaly in cache slot d3. Not twice for one
+; anomaly; "All probes are busy." when none is docked; the fit is checked now (addcargo2 on the
+; hold, its own messages, then the hold put back) - the item goes in at refuelling regardless.
+ex_fetch:
+	movem.l	d3-d7/a3-a4,-(sp)
+	moveq	#1,d7			; one already on its way?
+.a:	bsr	ex_pslot
+	cmp.w	(a0),d3
+	beq	.x
+	addq.w	#1,d7
+	cmp.w	#4,d7
+	ble.s	.a
+	moveq	#1,d7			; a docked probe
+.f:	cmp.w	ex_numprobes,d7
+	bgt.s	.busy
+	move.w	d7,d0
+	bsr	ex_probe
+	tst.w	PR_STATUS(a0)
+	beq.s	.got
+	addq.w	#1,d7
+	bra.s	.f
+.busy:	lea	ex_t_busy,a0
+	bsr	printbox
+	bra	.x
+.got:	move.l	a0,a3
+	bsr	ex_plan
+	move.w	d3,d0
+	add.w	d0,d0
+	move.w	PLANET_CACHE-2(a0,d0.w),d4	; the item
+	lea	GS_SHIP+SHIP_CARGO(a6),a0	; does it fit: cargo[] and numcargo[] kept
+	lea	ex_holdcopy,a1
+	move.w	#1000/4-1,d0
+.c1:	move.l	(a0)+,(a1)+
+	dbf	d0,.c1
+	bsr	mousehide
+	move.w	d4,d0
+	sf	d1
+	bsr	addcargo2
+	bsr	mouseshow
+	lea	GS_SHIP+SHIP_CARGO(a6),a0	; it went in (an artifact even when over weight) if
+	lea	ex_holdcopy,a1		; the hold changed; put it back
+	moveq	#0,d5
+	move.w	#1000/4-1,d0
+.c2:	move.l	(a1)+,d1
+	cmp.l	(a0),d1
+	beq.s	.c3
+	moveq	#1,d5
+.c3:	move.l	d1,(a0)+
+	dbf	d0,.c2
+	tst.w	d5
+	beq	.x
+	bsr	ex_pslot		; launch it (as controlprobes' status 0)
+	move.w	d3,(a0)
+	clr.w	PR_TOGATHER(a3)
+	move.w	#1,PR_STATUS(a3)
+	move.w	#20,PR_TIMELEFT(a3)
+	bsr	mousehide
+	move.w	d7,d0
+	bsr	ex_showplanet
+	cmp.w	#4,ex_techlvl		; destroyed by the natives?
+	blt.s	.l2
+	moveq	#100,d0
+	bsr	mt_random
+	cmp.w	#25,d0
+	blt.s	.lk
+	bra.s	.l3
+.l2:	cmp.w	#3,ex_techlvl
+	bne.s	.l3
+	moveq	#100,d0
+	bsr	mt_random
+	cmp.w	#5,d0
+	bge.s	.l3
+.lk:	move.w	#7,PR_STATUS(a3)
+	move.w	#ID_PROBOT,d0
+	bsr	removecargo
+	bsr	ex_pslot
+	clr.w	(a0)
+.l3:	bsr	mouseshow
+.x:	movem.l	(sp)+,d3-d7/a3-a4
 	rts
 
 ; utils.pas addcargo2(item d0, force d1.b): out d0.w = 1 (Z clear) if it fitted
@@ -4301,6 +4498,12 @@ ex_readydata:
 .ps:	clr.w	(a0)
 	lea	PR_SIZE(a0),a0
 	dbf	d0,.ps
+	lea	ex_pitem,a0		; (1994 probes: none sent for anomalies, none carrying)
+	clr.l	(a0)+
+	clr.l	(a0)+
+	clr.l	(a0)+
+	clr.l	(a0)+
+	sf	ex_pickup
 	bsr	ex_plan			; datagathered from the planet's notes
 	move.b	PLANET_NOTES(a0),d4
 	lea	ex_dg,a1
@@ -4437,6 +4640,16 @@ exploreplanet:
 .go:	bsr	mousehide
 	bsr	ex_readydata
 	bsr	ex_mainloop
+	moveq	#1,d7			; 1994 probes: what is on its way home is kept
+.pc:	bsr	ex_pslot
+	move.w	8(a0),d0
+	beq.s	.pn
+	clr.w	8(a0)
+	st	d1
+	bsr	addcargo2
+.pn:	addq.w	#1,d7
+	cmp.w	#4,d7
+	ble.s	.pc
 	bsr	ex_removedata
 	bsr	mouseshow
 	bsr	ex_plan
@@ -4569,6 +4782,7 @@ ex_t_hydro:	dc.b	16,"Hydrosphere Data"
 ex_t_atmo:	dc.b	15,"Atmosphere Data"
 ex_t_cfull:	dc.b	12,"Cargo full! "
 ex_t_used:	dc.b	6," used."
+ex_t_busy:	dc.b	20,"All probes are busy."
 	even
 
 	section	bss
@@ -4610,6 +4824,11 @@ ex_g2index:	ds.w	1
 ex_zoomoffset:	ds.w	1
 ex_batindex:	ds.w	1
 ex_que:		ds.w	1
+ex_pitem:	ds.w	4		; 1994 probes: the cache index each probe is sent for
+ex_pcarry:	ds.w	4		; (= ex_pitem+8) the item it carries home
+ex_holdcopy:	ds.b	1000		; ship.cargo + numcargo while ex_fetch tries the fit
+ex_pickup:	ds.b	1
+	even
 ex_explorelevel: ds.w	1
 ex_explorecur:	ds.w	1
 ex_numprobes:	ds.w	1

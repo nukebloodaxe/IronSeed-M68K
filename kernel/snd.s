@@ -37,6 +37,8 @@ ST_FIRST	equ	4		; chunks read at once when a song starts
 snd_init:
 	bsr	mod_region_init
 	move.w	#1,snd_defrate		; 6258 Hz: David's choice (warmer than 12517 on the STE)
+	moveq	#64,d0			; master volume 0 dB (a known state: it cannot be read)
+	bsr	snd_master
 	moveq	#1,d0
 	bra	snd_set_rate
 
@@ -45,7 +47,32 @@ snd_exit:				; (no GEMDOS here: sys_restore also runs from the crash handler)
 	clr.w	st_on
 	clr.w	snd_ready
 	clr.b	SND_CTL.w
+	moveq	#64,d0			; the master volume back at 0 dB for the desktop
+	bra	snd_master
+
+; snd_master    in: d0.w = volume 0-64 (SDL's Mix_VolumeMusic / 2, linear): the LMC1992's master
+;               volume over Microwire (0 dB at 64, 2 dB steps, 0 = -80 dB). Covers everything
+;               the DMA plays (music and effects: one stream). trashes d0-d1/a0
+snd_master:
+	cmp.w	#64,d0
+	bls.s	.r
+	moveq	#64,d0
+.r:	lea	snd_lmcvol,a0
+	moveq	#0,d1
+	move.b	0(a0,d0.w),d1
+	or.w	#%10011000000,d1	; address %10, master volume %011, 6 data bits
+	move.w	#2000,d0		; (a transfer takes ~16 us; never wait forever)
+.w:	cmp.w	#$07ff,SND_MWMASK.w
+	beq.s	.go
+	dbf	d0,.w
+.go:	move.w	#$07ff,SND_MWMASK.w
+	move.w	d1,SND_MWDATA.w
 	rts
+snd_lmcvol:				; v -> round(40 + 10*log10(v/64)), clamped at 0
+	dc.b	0,22,25,27,28,29,30,30,31,31,32,32,33,33,33,34,34,34,34,35,35,35,35,36,36,36
+	dc.b	36,36,36,37,37,37,37,37,37,37,38,38,38,38,38,38,38,38,38,38,39,39,39,39,39,39
+	dc.b	39,39,39,39,39,39,40,40,40,40,40,40,40
+	even
 
 snd_set_rate:
 	DI
@@ -314,15 +341,11 @@ snd_fill:
 	beq.s	.slow
 	bsr	st_copy
 	bra	.loop
-.slow:	lea	snd_accl,a0		; deinterleave, effects on top, out
-	lea	snd_accr,a2
-	move.w	snd_k,d0
-	subq.w	#1,d0
-.di:	move.b	(a1)+,(a0)+
-	move.b	(a1)+,(a2)+
-	dbf	d0,.di
-	bsr	snd_mixs
-	bsr	snd_out
+.slow:	move.w	snd_wpos,st_w0		; the pairs into the DMA ring, then each effect added to
+	move.l	snd_pairs,st_p0		; both bytes of every pair there (mixed once, not once per
+	bsr	st_copy			; side), then the capture (tests) copied from the ring
+	bsr	st_sfx
+	bsr	st_cap
 	bra	.loop
 
 ; st_quiet: Z clear when no effect plays and no capture runs (the plain copy will do).
@@ -343,6 +366,136 @@ st_quiet:
 	rts
 .no:	move	#4,ccr			; Z
 	rts
+
+; st_sfx: the effects playing, added onto the snd_k pairs st_copy just put into the DMA ring at
+; st_w0 (two runs around the ring's wrap: an effect has no loop and zero padding, so where a
+; run ends does not change what is mixed). Byte-identical with the old way (deinterleave, mix
+; each effect into both accumulators, interleave): tests/run_stream.sh SFX.
+st_sfx:
+	move.w	mod_ch,d0		; the volume table, as snd_mixv
+	lsr.w	#1,d0
+	add.w	snd_sfxroom,d0
+	subq.w	#2,d0
+	lsl.w	#2,d0
+	lea	snd_vtabs,a5
+	move.l	0(a5,d0.w),snd_vt
+	move.w	snd_k,st_kk
+	lea	snd_sfxch,a3
+	lea	snd_sfxstep,a4
+	moveq	#SFX_SLOTS-1,d0
+.sl:	move.w	d0,snd_vcnt
+	tst.b	CH_ON(a3)
+	beq	.ns
+	tst.l	snd_sfxlog		; first chunk of this effect: log the output pair (tests)
+	bne.s	.lg
+	tst.w	CH_DELAY(a3)
+	bne.s	.lg
+	move.l	st_p0,snd_sfxlog
+.lg:	move.w	#1,CH_DELAY(a3)		; (CH_DELAY = "started" flag for SFX slots)
+	move.l	a4,-(sp)
+	move.w	st_w0,d0		; run 1: up to the ring's end
+	lea	snd_ring,a0
+	add.w	d0,a0
+	move.w	#SND_RING,d1
+	sub.w	d0,d1
+	lsr.w	#1,d1
+	move.w	st_kk,d2
+	cmp.w	d1,d2
+	bls.s	.r1
+	move.w	d1,d2
+.r1:	move.w	d2,snd_k
+	move.w	d2,st_r1
+	move.l	(a4),d4
+	move.l	snd_vt,a5
+	bsr	snd_voice2
+	move.w	st_kk,d2		; run 2: from the ring's start
+	sub.w	st_r1,d2
+	beq.s	.r2x
+	tst.b	CH_ON(a3)
+	beq.s	.r2x
+	move.w	d2,snd_k
+	lea	snd_ring,a0
+	move.l	(sp),a4
+	move.l	(a4),d4
+	move.l	snd_vt,a5
+	bsr	snd_voice2
+.r2x:	move.l	(sp)+,a4
+.ns:	lea	CH_SIZE(a3),a3
+	addq.l	#4,a4
+	move.w	snd_vcnt,d0
+	dbf	d0,.sl
+	move.w	st_kk,snd_k
+	rts
+
+; st_cap: the capture (tests): st_kk pairs of the DMA ring from st_w0 (as snd_out's)
+st_cap:
+	move.l	snd_cap,d0
+	beq.s	.x
+	move.l	d0,a0
+	lea	snd_ring,a1
+	add.w	st_w0,a1
+	lea	snd_ring+SND_RING,a2
+	move.w	st_kk,d1
+	add.w	d1,d1			; bytes
+	subq.w	#1,d1
+.c:	cmp.l	snd_capend,a0
+	bhs.s	.cx
+	move.b	(a1)+,(a0)+
+	cmp.l	a2,a1
+	bne.s	.n
+	lea	snd_ring,a1
+.n:	dbf	d1,.c
+.cx:	move.l	a0,snd_cap
+.x:	rts
+
+; snd_voice2: snd_voice for a sound effect straight into the DMA ring: snd_k samples of the
+; voice, each added to both bytes of a pair at a0 (left and right: effects are centred).
+; in: a0 = ring position, a3 = channel, a5 = volume table, d4.l = step 16.16
+; trashes d0-d7/a0-a2/a4/a6
+snd_voice2:
+	move.w	d4,d3			; frac step
+	swap	d4			; int step
+	move.l	CH_SMP(a3),a4
+	move.l	SMP_ADDR(a4),a1
+	add.l	CH_POS(a3),a1
+	move.w	CH_VOL(a3),d0
+	lsl.w	#8,d0
+	lea	0(a5,d0.w),a2		; volume row
+	move.w	CH_FRAC(a3),d1
+	moveq	#0,d2
+	move.w	snd_k,d7		; Duff's device as snd_voice
+	move.w	d7,d5
+	and.w	#7,d5
+	bne.s	.r
+	moveq	#8,d5
+.r:	sub.w	d5,d7
+	lsr.w	#3,d7
+	neg.w	d5
+	addq.w	#8,d5
+	moveq	#0,d0
+	mulu	#A2BLK,d5
+	lea	.al(pc),a6
+	add.w	d5,a6
+	jmp	(a6)
+.al:
+	rept	8
+	move.b	0(a1,d2.w),d0
+	move.b	0(a2,d0.w),d5
+	add.b	d5,(a0)+
+	add.b	d5,(a0)+
+	add.w	d3,d1
+	addx.w	d4,d2
+	endr
+	dbf	d7,.al
+	move.w	d1,CH_FRAC(a3)
+	ext.l	d2
+	add.l	CH_POS(a3),d2		; new position (no loop: effects have none)
+	cmp.l	SMP_LEN(a4),d2
+	blo.s	.st
+	clr.b	CH_ON(a3)
+.st:	move.l	d2,CH_POS(a3)
+	rts
+A2BLK	equ	16			; bytes per unrolled sample
 
 ; st_copy: snd_k pairs from a1 straight into the DMA ring at snd_wpos (no effects playing);
 ; a1 = 0: zeros
@@ -964,6 +1117,10 @@ snd_sfxroom:	ds.w	1
 snd_sfxnext:	ds.w	1
 snd_vt:		ds.l	1
 snd_pairs:	ds.l	1		; output pairs mixed so far
+st_w0:		ds.w	1		; st_sfx/st_cap: the ring position and pair count of the chunk
+st_kk:		ds.w	1
+st_r1:		ds.w	1
+st_p0:		ds.l	1		; snd_pairs before it
 snd_sfxlog:	ds.l	1		; snd_pairs when the first effect started (tests)
 snd_sfxstep:	ds.l	SFX_SLOTS
 snd_sfxch:	ds.b	SFX_SLOTS*CH_SIZE

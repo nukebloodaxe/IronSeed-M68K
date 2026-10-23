@@ -1,5 +1,8 @@
 vtime
 args /playseed 3
+# mask K6:165,36,280,44
+# mask K7:165,36,280,44
+# (the options panel's first row is the port's probes option, not the screen saver)
 # m7: the panels by mouse: damage control (team 1's job list, a repair picked), the shield
 # sliders, configure (a gun node), the logs list, the options (the font changed with +), quit
 wait 3000

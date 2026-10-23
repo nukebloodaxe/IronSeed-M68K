@@ -186,6 +186,7 @@ vid_set_lines:
 	bra	vid_set_fade
 
 vid_set_reps:
+	sf	vid_rgbok		; vid_setrgb's slot chains are built again when needed
 	lea	vid_reps,a1
 	moveq	#64/4-1,d0
 .c:	move.l	(a0)+,(a1)+
@@ -193,6 +194,7 @@ vid_set_reps:
 	rts
 
 vid_set_keep:
+	sf	vid_rgbok
 	lea	vid_keep,a1
 	moveq	#64/4-1,d0
 	cmp.w	#0,a0
@@ -204,6 +206,10 @@ vid_set_keep:
 	dbf	d0,.clr
 	rts
 
+; vid_setrgb: the slots of an index come from a chain per index (vid_rgbfirst[index] = the
+; first slot's offset in vid_bands_src + 1, vid_rgbnext[slot] the next; built from vid_reps,
+; vid_keep and the band count when one of them has changed). At full fade level the colour also
+; goes straight into the copy the VBL shows (a word write: atomic) - no rebuild.
 vid_setrgb:
 	movem.l	d3-d5,-(sp)
 	lea	vid_c6tab,a0
@@ -213,29 +219,70 @@ vid_setrgb:
 	or.b	0(a0,d2.w),d4
 	lsl.w	#4,d4
 	or.b	0(a0,d3.w),d4
-	lea	vid_reps,a1
-	lea	vid_keep,a2
-	lea	vid_bands_src,a0
-	move.w	(a0)+,d5
-	subq.w	#1,d5
-	moveq	#0,d3			; any change
-.band:	addq.l	#2,a0
-	moveq	#16-1,d2
-.slot:	tst.b	(a2)+
-	bne.s	.n
-	cmp.b	(a1),d0
-	bne.s	.n
-	move.w	d4,(a0)
-	moveq	#1,d3
-.n:	addq.l	#1,a1
-	addq.l	#2,a0
-	dbf	d2,.slot
-	dbf	d5,.band
-	tst.w	d3
+	tst.b	vid_rgbok
+	beq.s	.mk
+	move.w	vid_bands_src,d1
+	cmp.w	vid_rgbbands,d1
+	beq.s	.go
+.mk:	bsr	vid_rgbchains
+.go:	lea	vid_rgbfirst,a0
+	moveq	#0,d1
+	move.b	0(a0,d0.w),d1		; slot offset + 1 (0: no slot shows this index)
 	beq.s	.x
+	lea	vid_bands_src-1,a1
+	move.l	vid_cur,a2
+	subq.l	#1,a2
+	lea	vid_rgbnext,a0
+	cmp.w	#16,vid_fade
+	bne.s	.slow
+.f:	move.w	d4,0(a1,d1.w)		; source and shown copy
+	move.w	d4,0(a2,d1.w)
+	move.b	0(a0,d1.w),d1
+	bne.s	.f
+	bra.s	.x
+.slow:	move.w	d4,0(a1,d1.w)
+	move.b	0(a0,d1.w),d1
+	bne.s	.slow
 	move.w	vid_fade,d0
 	bsr	vid_set_fade
 .x:	movem.l	(sp)+,d3-d5
+	rts
+; the chains (slot offsets in vid_bands_src fit a byte: 2 + 3*34 + 2 + 15*2 = 136)
+vid_rgbchains:
+	movem.l	d0/d3-d5,-(sp)
+	lea	vid_rgbfirst,a0
+	moveq	#256/4-1,d1
+.cl:	clr.l	(a0)+
+	dbf	d1,.cl
+	move.w	vid_bands_src,d5
+	move.w	d5,vid_rgbbands
+	mulu	#16,d5			; slots in use
+	lea	vid_reps,a1
+	lea	vid_keep,a2
+	lea	vid_rgbfirst,a0
+	lea	vid_rgbnext,a1
+	move.w	d5,d3			; backwards, so a chain runs in slot order
+.s:	subq.w	#1,d3
+	bmi.s	.e
+	lea	vid_keep,a2
+	tst.b	0(a2,d3.w)
+	bne.s	.s
+	lea	vid_reps,a2
+	moveq	#0,d1
+	move.b	0(a2,d3.w),d1		; its index
+	move.w	d3,d4			; offset + 1 = 2 + band*34 + 2 + slot*2 + 1
+	lsr.w	#4,d4
+	mulu	#BAND_SIZE,d4
+	move.w	d3,d2
+	and.w	#15,d2
+	add.w	d2,d2
+	add.w	d2,d4
+	addq.w	#5,d4
+	move.b	0(a0,d1.w),0(a1,d4.w)	; next := first[index]
+	move.b	d4,0(a0,d1.w)		; first[index] := this slot
+	bra.s	.s
+.e:	st	vid_rgbok
+	movem.l	(sp)+,d0/d3-d5
 	rts
 
 vid_set256:
@@ -558,6 +605,11 @@ vid_reps:	ds.b	64
 vid_best:	ds.b	1
 	even
 vid_keep:	ds.b	64
+	even
+vid_rgbfirst:	ds.b	256		; vid_setrgb's chains (vid_rgbchains)
+vid_rgbnext:	ds.b	140
+vid_rgbbands:	ds.w	1
+vid_rgbok:	ds.b	1
 	even
 vid_screens:	ds.b	3*SCR_SIZE+256
 

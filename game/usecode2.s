@@ -164,7 +164,7 @@ readyoptions:
 	TCOL	191
 	BKCOL	5
 	PXY	168,27,"General Game Options"
-	PXY	168,37,"Screen Saver"
+	PXY	183,37,"Probes"		; (the original: 'Screen Saver' - see OPT_PROBES)
 	PXY	173,46,"Time Slice"
 	PXY	186,55,"Sound"
 	PXY	173,64,"Difficulty"

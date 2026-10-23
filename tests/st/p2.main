@@ -1,0 +1,29 @@
+vtime
+args /playseed 3
+# p2 (ST only): the options panel's probes row (OPT_PROBES): shown, switched to 1994 and back
+wait 3000
+key #27
+wait 2000
+key b
+wait 1500
+key w
+wait 3000
+shot O1
+key #275
+wait 1500
+shot O2
+key #274
+wait 800
+key #273
+wait 800
+key #276
+wait 1500
+shot O3
+key #275
+wait 1500
+dump Z1
+key #291
+wait 1500
+key y
+wait 3000
+quit

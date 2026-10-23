@@ -753,8 +753,14 @@ cb_firstalive:
 .x:	rts
 
 ; the gun node j's frame: x := ((j-1) mod 5)*23+105, y := ((j-1) div 5)*31+131 (rectangle 20x20)
+; cb_noderect_m: the same between mousehide and mouseshow - only when it is drawn (speed: a
+; frame already in that colour needs neither; the shadow is the same, the flush comes later)
+cb_noderect_m:
+	st	cb_nrm
+	bra.s	cb_nr
 cb_noderect:
-	move.w	d1,-(sp)		; d0 = j, d1 = colour
+	sf	cb_nrm
+cb_nr:	move.w	d1,-(sp)		; d0 = j, d1 = colour
 	subq.w	#1,d0
 	ext.l	d0
 	divu	#5,d0
@@ -778,30 +784,36 @@ cb_noderect:
 	move.w	d2,d0
 	swap	d2
 	move.w	d0,d2
-	bsr.s	.row20
-	bne.s	.draw
+	bsr	.row20
+	bne	.draw
 	lea	20*320(a0),a0
-	bsr.s	.row20
-	bne.s	.draw
-	movem.w	(sp),d0-d1
-	bsr	ms_addr
-	moveq	#20-1,d2
-.cv:	cmp.b	(a0),d4
-	bne.s	.draw
-	cmp.b	20(a0),d4
-	bne.s	.draw
-	lea	320(a0),a0
-	dbf	d2,.cv
+	bsr	.row20
+	bne	.draw
+	sub.w	#20*320,a0		; columns x and x+20, rows y..y+19 (unrolled)
+o	set	0
+	rept	20
+	cmp.b	o(a0),d4
+	bne	.draw
+	cmp.b	o+20(a0),d4
+	bne	.draw
+o	set	o+320
+	endr
 	addq.l	#4,sp
 	move.l	(sp)+,d3
 	rts
-.draw:	movem.w	(sp)+,d0-d1
+.draw:	tst.b	cb_nrm
+	beq.s	.d1
+	bsr	mousehide
+.d1:	movem.w	(sp)+,d0-d1
 	move.w	d0,d2
 	add.w	#20,d2
 	move.w	d1,d3
 	add.w	#20,d3
 	bsr	ms_rect
-	move.l	(sp)+,d3
+	tst.b	cb_nrm
+	beq.s	.d2
+	bsr	mouseshow
+.d2:	move.l	(sp)+,d3
 	rts
 .row20:	move.l	a0,d0			; 20 bytes at a0 = d2 (four copies)? Z set if so
 	btst	#0,d0
@@ -870,6 +882,8 @@ cb_powcol:
 	section	bss
 cb_pctab:	ds.b	101
 cb_pctab_ok:	ds.b	1
+cb_nrm:		ds.b	1		; cb_noderect_m: mousehide/mouseshow around a redraw
+	even
 	section	text
 
 cb_powerup:
@@ -901,13 +915,11 @@ cb_powerup:
 .inc:	tst.w	(a3)
 	ble.s	.dr
 	addq.w	#1,(a3)
-.dr:	bsr	mousehide
-	move.w	(a3),d0
+.dr:	move.w	(a3),d0			; (mousehide/mouseshow: in cb_noderect_m, if it draws)
 	bsr	cb_powcol
 	move.w	d0,d1
 	move.w	d7,d0
-	bsr	cb_noderect
-	bsr	mouseshow
+	bsr	cb_noderect_m
 	bra	.jn
 .full:	bne	.jn			; (= 100: ready)
 	lea	GS_SHIP+SHIP_GUNNODES-1(a6),a0
@@ -930,12 +942,8 @@ cb_powerup:
 	tst.b	d3
 	beq.s	.c
 	moveq	#63,d1
-.c:	move.w	d1,-(sp)
-	bsr	mousehide
-	move.w	(sp)+,d1
-	move.w	d7,d0
-	bsr	cb_noderect
-	bsr	mouseshow
+.c:	move.w	d7,d0
+	bsr	cb_noderect_m
 	tst.b	d3
 	bne.s	.jn
 	tst.b	cb_autofire
@@ -1521,6 +1529,23 @@ cb_tbar:
 	movem.l	d3-d7/a3,-(sp)
 	move.w	d2,d6			; x
 	move.w	d3,d7			; width
+	lea	cb_tmemo,a0		; the same v and max as this column's last bar, which still
+	moveq	#CB_TMEMO-1,d2		; shows: the same b, nothing to do (no cb_b49 either)
+.q:	cmp.w	(a0),d6
+	beq.s	.qf
+	tst.w	(a0)
+	beq.s	.qx
+	addq.l	#TM_SIZE,a0
+	dbf	d2,.q
+	bra.s	.qx
+.qf:	tst.w	TM_B(a0)
+	bmi.s	.qx
+	cmp.w	TM_V(a0),d0
+	bne.s	.qx
+	cmp.w	TM_MAX(a0),d1
+	beq	.done
+.qx:	move.w	d0,d3			; (v, max kept for the memo)
+	move.w	d1,d4
 	bsr	cb_b49
 	move.w	d0,d5
 .got:	tst.w	d5
@@ -1534,14 +1559,16 @@ cb_tbar:
 	beq.s	.mf
 	tst.w	(a0)
 	beq.s	.mn
-	addq.l	#4,a0
+	addq.l	#TM_SIZE,a0
 	dbf	d0,.m
 	bra.s	.mx			; (full: no memo)
 .mn:	move.w	d6,(a0)			; a new column
-	move.w	#-1,2(a0)
-.mf:	cmp.w	2(a0),d5
+	move.w	#-1,TM_B(a0)
+.mf:	move.w	d3,TM_V(a0)		; it will show b for this v and max
+	move.w	d4,TM_MAX(a0)
+	cmp.w	TM_B(a0),d5
 	beq	.done
-	move.w	d5,2(a0)
+	move.w	d5,TM_B(a0)
 .mx:
 	bsr	cb_rtab_init
 	move.w	d5,d0			; a3 = the table's row for b
@@ -1639,10 +1666,14 @@ cb_tbar:
 .n:	rts
 
 CB_TMEMO	equ	12
+TM_B		equ	2		; cb_tmemo entries: column x, the b it shows (-1: unknown),
+TM_V		equ	4		; and the v and max that gave it
+TM_MAX		equ	6
+TM_SIZE		equ	8
 ; forget what the target bars show (the area was drawn by something else)
 cb_tmemo_clr:
 	lea	cb_tmemo,a0
-	moveq	#CB_TMEMO-1,d0
+	moveq	#CB_TMEMO*2-1,d0
 .c:	clr.l	(a0)+
 	dbf	d0,.c
 	rts
@@ -1684,7 +1715,7 @@ cb_rtab_init:
 
 	section	bss
 cb_rtab:	ds.b	50*50
-cb_tmemo:	ds.l	CB_TMEMO	; target bars: column x, the b it shows
+cb_tmemo:	ds.b	CB_TMEMO*TM_SIZE	; target bars: column x, the b it shows, v, max
 cb_rcache:	ds.b	8*22		; relx, rely, relz, r (double), valid (+pad)
 cb_rnext:	ds.w	1
 cb_dskey:	ds.w	4		; displaystats' inputs: hullmax, hull, battery, shieldlevel
@@ -1790,8 +1821,9 @@ cb_displaytargetinfo:
 	beq.s	.bars
 	bsr	cb_displaytargetinfo2
 	bra	.x
-.bars:	bsr	mousehide
-	lea	cb_r,a0			; (r again)
+.bars:	lea	cb_r,a0			; (r again; mousehide: not needed - all of this draws into the
+					; shadow, and the flush hides the cursor while it writes. Speed: the
+					; cursor is not taken off and put back every pass)
 	move.l	a3,a1
 	bsr	cb_range
 	bsr	cb_classline
@@ -1938,8 +1970,7 @@ cb_displaymap:
 	movem.l	d3-d7/a3,-(sp)
 	tst.b	cb_dead
 	bne	.x
-	bsr	mousehide
-	moveq	#1,d7
+	moveq	#1,d7			; (mousehide: not needed, shadow only - see displaytargetinfo)
 .j:	cmp.w	cb_nships,d7
 	bgt	.d
 	move.w	d7,d0

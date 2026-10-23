@@ -19,6 +19,17 @@ Ctrl-ClrHome stands for the PC's Ctrl-End.
 
 Saved games go to SAVE1 ... SAVE8 and SAVEGAME.DIR in this folder.
 
+Options panel (Medical): the first row, "Probes", picks how the planet
+probes behave (saved with the game):
+  Std   as the Free Pascal version: the probes stay out while any scan
+        is incomplete; Retrieve takes an anomaly into the hold at once.
+  1994  as the original release: each probe gathers the scan it was
+        launched for and comes home when that scan is complete; Retrieve
+        sends a free probe to the anomaly and it brings the item back.
+(That row was the screen saver, which the Free Pascal version never had
+working.) Volume sets the music level; on the STE it goes through the
+volume chip, so the sound effects follow it too.
+
 Music: the MUSIC folder holds the songs pre-rendered; they are streamed from
 the disk, which leaves the 68000 free for the game (combat runs about 1.8
 times faster, the title screen twice as smoothly). Two packs, pick one and

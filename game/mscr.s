@@ -67,6 +67,8 @@ ms_clean:
 	move.w	#-1,(a1)+
 	dbf	d0,.c
 	clr.w	ms_any
+	move.w	#MS_H,ms_ymin		; the dirty lines' range: none
+	move.w	#-1,ms_ymax
 	rts
 
 ms_dirty_all:				; (keeps d3, as documented)
@@ -90,6 +92,13 @@ ms_dirty:
 	lsr.w	#1,d1
 	sub.w	d1,d3			; rows - 1
 	bmi.s	.x
+	cmp.w	ms_ymin,d1		; the range of dirty lines (the flush walks only those)
+	bge.s	.ya
+	move.w	d1,ms_ymin
+.ya:	add.w	d3,d1
+	cmp.w	ms_ymax,d1
+	ble.s	.r
+	move.w	d1,ms_ymax
 .r:	cmp.w	(a0),d0
 	bge.s	.n1
 	move.w	d0,(a0)
@@ -106,14 +115,23 @@ ms_dirty:
 ms_flush:
 	bsr	snd_poll
 	tst.w	ms_any
-	beq.s	.none
+	beq	.none
 	movem.l	d3-d4/a3-a4,-(sp)
 	move.w	kbd_cur_on,-(sp)
 	beq.s	.off
-	bsr	kbd_cursor_hide
+	bsr	ms_curhit		; the cursor is only taken off if a dirty span meets it
+	bne.s	.hide
+	clr.w	kbd_cur_on		; (else the VBL only leaves it alone meanwhile: it stays drawn)
+	bra.s	.off
+.hide:	bsr	kbd_cursor_hide
 .off:	lea	ms_x1,a3
 	lea	ms_x2,a4
-	moveq	#0,d3			; y
+	move.w	ms_ymin,d3		; y: the dirty range only
+	add.w	d3,a3
+	add.w	d3,a3
+	add.w	d3,a4
+	add.w	d3,a4
+	move.w	ms_ymax,d4
 .y:	move.w	(a3),d0
 	cmp.w	#$7fff,d0
 	beq.s	.n
@@ -132,14 +150,60 @@ ms_flush:
 .n:	addq.l	#2,a3
 	addq.l	#2,a4
 	addq.w	#1,d3
-	cmp.w	#MS_H,d3
-	bne.s	.y
+	cmp.w	d4,d3
+	ble.s	.y
 	clr.w	ms_any
+	move.w	#MS_H,ms_ymin
+	move.w	#-1,ms_ymax
 	tst.w	(sp)+
 	beq.s	.x
 	bsr	kbd_cursor_show
 .x:	movem.l	(sp)+,d3-d4/a3-a4
 .none:	rts
+
+; ms_curhit: Z clear if the cursor's drawn rectangle (32 pixels from its group, kbd_save_rows
+; lines; on another screen than the flush's target: always) meets a dirty span.
+; trashes d0-d4/a0-a1
+ms_curhit:
+	move.l	kbd_save_at,d0
+	beq.s	.no			; not drawn
+	move.l	kbd_save_scr,d1
+	cmp.l	gfx_target,d1
+	bne.s	.yes
+	sub.l	d1,d0
+	divu	#SCR_BPL,d0		; y0; the remainder: the byte in the line
+	move.l	d0,d3
+	swap	d3
+	lsr.w	#3,d3
+	lsl.w	#4,d3			; x left
+	move.w	d3,d4
+	add.w	#31,d4			; x right
+	move.w	d0,d1			; last line
+	add.w	kbd_save_rows,d1
+	subq.w	#1,d1
+	cmp.w	ms_ymax,d1
+	ble.s	.l1
+	move.w	ms_ymax,d1
+.l1:	cmp.w	ms_ymin,d0
+	bge.s	.l2
+	move.w	ms_ymin,d0
+.l2:	sub.w	d0,d1			; lines - 1
+	bmi.s	.no
+	lea	ms_x1,a0
+	lea	ms_x2,a1
+	add.w	d0,d0
+	add.w	d0,a0
+	add.w	d0,a1
+.y:	cmp.w	(a0)+,d4		; x1 <= right and x2 >= left: it meets
+	blt.s	.n
+	cmp.w	(a1),d3
+	ble.s	.yes
+.n:	addq.l	#2,a1
+	dbf	d1,.y
+.no:	moveq	#0,d0
+	rts
+.yes:	moveq	#1,d0
+	rts
 
 ms_addr:
 	mulu	#MS_W,d1
@@ -493,5 +557,7 @@ ms_buf:		ds.l	1
 ms_snaps:	ds.l	3
 ms_color:	ds.w	1		; graph.setcolor's colour (rectangle, circle in explore)
 ms_any:		ds.w	1
+ms_ymin:	ds.w	1		; first and last line marked dirty since the last flush
+ms_ymax:	ds.w	1
 ms_x1:		ds.w	MS_H
 ms_x2:		ds.w	MS_H

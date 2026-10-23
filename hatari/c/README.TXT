@@ -19,11 +19,14 @@ Ctrl-ClrHome stands for the PC's Ctrl-End.
 
 Saved games go to SAVE1 ... SAVE8 and SAVEGAME.DIR in this folder.
 
-Music: the MUSIC folder (about 56 MB) holds the songs pre-rendered; they are
-streamed from the disk, which leaves the 68000 free for the game (combat runs
-about 1.8 times faster, the title screen twice as smoothly). Without the
-folder - a small disk, or floppies - the programs mix the MOD files from
-SOUND in real time as before: same music, slower game.
+Music: the MUSIC folder holds the songs pre-rendered; they are streamed from
+the disk, which leaves the 68000 free for the game (combat runs about 1.8
+times faster, the title screen twice as smoothly). Two packs, pick one and
+put its MUSIC folder here (the programs follow the rate in the files):
+  6258 Hz   about 56 MB   the ST mixer's own sound, rendered exactly
+  12517 Hz  about 112 MB  interpolated, brighter (twice the disk reads)
+Without the folder - a small disk, or floppies - the programs mix the MOD
+files from SOUND in real time as before: same music, slower game.
 
 The FINALE slot (if present) is a test position: the ship at the Scavengers'
 gate with the Kendar alliance and the faction quests done, a Temporal Anchor
