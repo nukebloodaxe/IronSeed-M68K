@@ -38,6 +38,11 @@ init_everything:
 	lea	GS_COLORS(a6),a1
 	move.l	#768,d0
 	bsr	load_exact
+	lea	mn_song,a0		; defaultsong := 'SECTOR.MOD'
+	lea	GS_DEFAULTSONG(a6),a1
+	moveq	#11-1,d0
+.ds:	move.b	(a0)+,(a1)+
+	dbf	d0,.ds
 	move.b	#64,GS_SHIP+SHIP_OPTIONS+OPT_VOLUME-1(a6)
 	move.b	#1,GS_SHIP+SHIP_OPTIONS+OPT_SOUND-1(a6)
 	clr.w	GS_FADELEVEL(a6)
@@ -370,9 +375,12 @@ screensaver:
 	include	"encode.s"
 	include	"ending.s"
 	include	"print.s"
+	include	"egg.s"
 	include	"fp.s"
 
 	section	data
+mn_song:	dc.b	10,"SECTOR.MOD"
+	even
 fn_script:	dc.b	"INPUT.MN",0
 arg_seed:	dc.b	"/PLAYSEED",0
 arg_kill:	dc.b	"/KILLSEED",0

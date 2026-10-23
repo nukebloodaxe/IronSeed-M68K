@@ -11,6 +11,7 @@
 ;   key C          a key with ASCII C           key #N   ASCII code N (13 = Return, 27 = Esc)
 ;   key ^N         an extended key: readkey gives 0, then scan code N (72 up, 80 down, 75 left, 77 right)
 ;   move X Y       put the mouse at X, Y          click X Y   move there and press the left button
+;   press X Y      a click that does not wait for the program: the next line (a key) comes with it
 ;   shot NAME      write C:\NAME.SCR: 32000 screen bytes + the 4-band table (2+4*34 bytes)
 ;   quit           end the program now (exit code 99)
 ;   dump NAME      a state dump now (orc_dump; the Linux oracle's 'dump' does the same)
@@ -106,6 +107,8 @@ scr_tick:
 	beq	.move
 	cmp.b	#'c',d1
 	beq	.click
+	cmp.b	#'p',d1
+	beq	.press
 	cmp.b	#'s',d1
 	beq	.shot
 	cmp.b	#'q',d1
@@ -174,6 +177,14 @@ scr_tick:
 	bsr	scr_eol
 	or.b	#1,kbd_mclick
 	bra.s	.out
+.press:	st	scr_mouse
+	bsr	scr_num
+	move.w	d0,kbd_mx
+	bsr	scr_num
+	move.w	d0,kbd_my
+	bsr	scr_eol
+	or.b	#1,kbd_mclick
+	bra	.line
 .shot:	lea	scr_name+3,a1		; "C:\" + NAME + ".SCR"
 	moveq	#8-1,d2
 .sn:	move.b	(a0),d0

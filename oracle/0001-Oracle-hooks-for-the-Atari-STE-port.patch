@@ -1,4 +1,4 @@
-From a7f337b6ecfef86c6bd63f65b369ab48d4569f11 Mon Sep 17 00:00:00 2001
+From a92751e20b7fc4056bd84cd646b105eba26d5f01 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Tue, 13 Oct 2026 23:37:49 +1300
 Subject: [PATCH] Oracle hooks for the Atari STE port
@@ -6,7 +6,8 @@ Subject: [PATCH] Oracle hooks for the Atari STE port
 IRONSEED_ORACLE=<dir>: dump shared game state (ship, systems, cargo, events,
 logs, alien, planets, palette, screen) on every loadscreen(), and make
 randomize deterministic. IRONSEED_INPUT=<prefix>: per-program input scripts
-(<prefix>.<program>) with wait/key/move/click/shot/dump/quit commands.
+(<prefix>.<program>) with wait/key/move/click/press/shot/dump/quit commands
+(key @c = Alt-c, key !c / !#code = Ctrl; press = a click that does not wait).
 IRONSEED_VTIME=1: virtual time - delay() advances a virtual clock instead of
 waiting and runs the script, so real-time loops run the same number of times
 as in the Atari port's scripted runs (deterministic sessions).
@@ -14,20 +15,20 @@ as in the Atari port's scripted runs (deterministic sessions).
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01Wq7y6AAQj4Whswyhq2cm2i
 ---
- c_utils.c | 94 ++++++++++++++++++++++++++++++++++++++++++++++++++++++-
- data.pas  | 67 ++++++++++++++++++++++++++++++++++++++-
- 2 files changed, 159 insertions(+), 2 deletions(-)
+ c_utils.c | 99 ++++++++++++++++++++++++++++++++++++++++++++++++++++++-
+ data.pas  | 67 ++++++++++++++++++++++++++++++++++++-
+ 2 files changed, 164 insertions(+), 2 deletions(-)
 
 diff --git a/c_utils.c b/c_utils.c
-index 4519899..5f29af0 100644
+index 4519899..4fceddf 100644
 --- a/c_utils.c
 +++ b/c_utils.c
-@@ -270,9 +270,90 @@ static void DrawPixel(SDL_Surface * screen, int x, int y, Uint8 R, Uint8 G, Uint
+@@ -270,9 +270,95 @@ static void DrawPixel(SDL_Surface * screen, int x, int y, Uint8 R, Uint8 G, Uint
  
  }
  
 +/* --- Atari STE port oracle: scripted input from $IRONSEED_INPUT (one command per line):
-+ *   wait <ms> | waitkey | waitclick | key <char> | key #<code> | key @<char> (Alt) | move <x> <y> | click <x> <y> | quit
++ *   wait <ms> | waitkey | waitclick | key <char> | key #<code> | key @<char> (Alt) | key !<char> | key !#<code> (Ctrl) | move <x> <y> | click <x> <y> | press <x> <y> | quit
 + * Coordinates are game pixels (0-319, 0-199). Used to drive identical sessions on Linux and in Hatari. */
 +static FILE *script = NULL;
 +static int script_opened = 0;
@@ -79,11 +80,16 @@ index 4519899..5f29af0 100644
 +			key_ = (uint16_t) ((arg[0] == '#' && arg[1]) ? atoi(arg + 1) : (unsigned char) arg[0]);
 +			keyutf8_ = key_; keyscan_ = 0; keymod_ = 0; keypressed_ = 1;
 +			if (arg[0] == '@' && arg[1]) { key_ = keyutf8_ = (unsigned char) arg[1]; keymod_ = KMOD_ALT; }	/* key @c: Alt-c */
++			if (arg[0] == '!' && arg[1]) {	/* key !c / key !#code: Ctrl (Ctrl-End = !#279, Ctrl-F10 = !#291) */
++				key_ = (uint16_t) ((arg[1] == '#' && arg[2]) ? atoi(arg + 2) : (unsigned char) arg[1]);
++				keyutf8_ = key_; keymod_ = KMOD_CTRL;
++			}
 +			return;
 +		}
-+		if (sscanf(line, "%15s %d %d", cmd, &a, &b) == 3 && (!strcmp(cmd, "move") || !strcmp(cmd, "click"))) {
++		if (sscanf(line, "%15s %d %d", cmd, &a, &b) == 3 && (!strcmp(cmd, "move") || !strcmp(cmd, "click") || !strcmp(cmd, "press"))) {
 +			script_mouse = 1; script_mx = (uint16_t) a; script_my = (uint16_t) b;
 +			if (!strcmp(cmd, "click")) { mouse_buttons = 0x01; return; }
++			if (!strcmp(cmd, "press")) { mouse_buttons = 0x01; continue; }	/* a click that does not wait: the next line (a key) comes with it */
 +			continue;
 +		}
 +		if (!strcmp(cmd, "shot") && v_buf && getenv("IRONSEED_ORACLE")) {	/* raw 320x200 screen + 256 RGB palette */
@@ -113,7 +119,7 @@ index 4519899..5f29af0 100644
  	t = mouse_buttons;
  	mouse_buttons = 0;
  	//if (t) printf ("mouse buttons=%d, coords=%d,%d\r\n", t, mouse_get_x(), mouse_get_y());
-@@ -283,6 +364,7 @@ fpc_dword_t mouse_get_x(void)
+@@ -283,6 +369,7 @@ fpc_dword_t mouse_get_x(void)
  {
  	uint32_t x;
  	double rx, rx0;
@@ -121,7 +127,7 @@ index 4519899..5f29af0 100644
  	if (resize_x == 0)
  		return 0;
  	rx = (double) (mouse_x) / (double) (resize_x);
-@@ -298,6 +380,7 @@ fpc_dword_t mouse_get_y(void)
+@@ -298,6 +385,7 @@ fpc_dword_t mouse_get_y(void)
  {
  	uint32_t y;
  	double ry, ry0;
@@ -129,7 +135,7 @@ index 4519899..5f29af0 100644
  	if (resize_y == 0)
  		return 0;
  	ry = (double) (mouse_y) / (double) (resize_y);
-@@ -622,6 +705,7 @@ static int event_thread(void *notused)
+@@ -622,6 +710,7 @@ static int event_thread(void *notused)
  			break;			/* some error, probably video/audio failed to initialize or something, abort */
  		if (!handle_events_once())	/* keyboard, mouse, windows resize/close, and more */
  			break;			/* some error like SDL_QUIT, abort */
@@ -137,7 +143,7 @@ index 4519899..5f29af0 100644
  
  		SDL_Delay(10);			/* give up some time to other threads */
  	}
-@@ -749,6 +833,13 @@ void delay(const fpc_word_t ms)
+@@ -749,6 +838,13 @@ void delay(const fpc_word_t ms)
  {
  	static uint64_t err;
  	int64_t us = 1;
@@ -151,7 +157,7 @@ index 4519899..5f29af0 100644
  	delta_usec();
  	us = (int64_t) (ms * 1000 * TIMESCALE) - (int64_t) err;	// we're always small enough so convert to int64 is not a problem
  	if (turbo_mode)
-@@ -827,9 +918,10 @@ void circle(const fpc_word_t x, const fpc_word_t y, const fpc_word_t r)
+@@ -827,9 +923,10 @@ void circle(const fpc_word_t x, const fpc_word_t y, const fpc_word_t r)
  fpc_byte_t key_pressed(void)
  {
  	uint8_t k;

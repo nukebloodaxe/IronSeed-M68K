@@ -297,6 +297,7 @@ cb_displayshieldpic:
 
 cb_displaytargetinfo2:
 	movem.l	d3-d7/a3,-(sp)
+	bsr	cb_tmemo_clr
 	bsr	mousehide
 	move.w	cb_target,d0
 	bsr	cb_ship
@@ -792,8 +793,29 @@ cb_noderect:
 	move.l	(sp)+,d3
 	rts
 ; colour of the powering frame: round(p*0.31): < 16: 80+i, else 32+i
+; d0.w poweredup -> the node's colour: i := round(p*0.31) (x87); i < 16: 80+i, else 32+i.
+; Speed: a table of the FPU's results for p = 0..100, built on first use.
 cb_powcol:
-	FX87
+	cmp.w	#100,d0
+	bhi.s	.fpu
+	tst.b	cb_pctab_ok
+	bne.s	.t
+	movem.l	d0/d3,-(sp)
+	moveq	#0,d3
+.b:	move.w	d3,d0
+	bsr.s	.fpu
+	lea	cb_pctab,a0
+	move.b	d0,0(a0,d3.w)
+	addq.w	#1,d3
+	cmp.w	#100,d3
+	ble.s	.b
+	st	cb_pctab_ok
+	movem.l	(sp)+,d0/d3
+.t:	lea	cb_pctab,a0
+	move.b	0(a0,d0.w),d0
+	and.w	#$ff,d0
+	rts
+.fpu:	FX87
 	bsr	fp_ldw
 	FLDX	gx_0_31
 	bsr	fp_mul
@@ -805,6 +827,10 @@ cb_powcol:
 	rts
 .h:	add.w	#32,d0
 	rts
+	section	bss
+cb_pctab:	ds.b	101
+cb_pctab_ok:	ds.b	1
+	section	text
 
 cb_powerup:
 	movem.l	d3-d7/a3,-(sp)
@@ -849,16 +875,17 @@ cb_powerup:
 	move.b	0(a0,d7.w),d0
 	bsr	cb_weap
 	move.l	WEAPON_RANGE(a0),d0	; part := range; in range: 47, else 63
+	move.l	d0,-(sp)
 	FSSE
 	bsr	fp_ldi
 	lea	cb_part,a0
 	bsr	fp_std
-	lea	cb_part,a0
-	bsr	fp_ldd
-	lea	cb_r,a0
-	bsr	fp_ldd
-	bsr	fp_cmp			; part >= r
-	smi	d3			; (d3 = $ff: out of range)
+	lea	cb_r,a0			; part >= r (exact in integers: cb_r2)
+	bsr	cb_r2
+	move.l	(sp)+,d1
+	add.l	d1,d1
+	cmp.l	d0,d1
+	slt	d3			; (d3 = $ff: out of range)
 	moveq	#47,d1
 	tst.b	d3
 	beq.s	.c
@@ -979,26 +1006,94 @@ cb_powerup:
 .x:	movem.l	(sp)+,d3-d7/a3
 	rts
 
-; d0 := round(d0.l / 100) as FPC's (an integer expression divided by 100: a double, banker's)
+; d0 := round(d0.l / 100) as FPC's (an integer expression divided by 100: a double, banker's).
+; Done in integers: n/100 is never within an ulp of .5 unless it is exactly k.5, so the double's
+; banker's rounding is the exact one. |n| < 6553600.  trashes d1-d2
 cb_rdiv100:
-	FSSE
-	bsr	fp_ldi
-	FLDI	100
-	bsr	fp_div
-	bra	fp_rnd
+	move.l	d0,d1
+	bpl.s	.p
+	neg.l	d0
+.p:	divu	#100,d0
+	move.l	d0,d2
+	swap	d2			; remainder
+	and.l	#$ffff,d0
+	cmp.w	#50,d2
+	blo.s	.s
+	bhi.s	.up
+	btst	#0,d0
+	beq.s	.s
+.up:	addq.l	#1,d0
+.s:	tst.l	d1
+	bpl.s	.x
+	neg.l	d0
+.x:	rts
 
-; compare abs(r) with d0.l: flags as for "abs(r) - d0" (lt/eq/gt)
+; compare abs(r) (cb_r) with d0.l: flags as for "abs(r) - d0" (lt/eq/gt)
+; (2*trunc(|r|)+frac against 2*d0: exact, no FPU)
 cb_rcmp:
 	move.l	d0,-(sp)
-	FSSE
 	lea	cb_r,a0
-	bsr	fp_ldd
-	bsr	fp_abs
-	move.l	(sp)+,d0
-	bsr	fp_ldi
-	bra	fp_cmp
+	bsr.s	cb_r2
+	move.l	(sp)+,d1
+	add.l	d1,d1
+	cmp.l	d1,d0
+	rts
 
-; showweaponicon(x1 d0, y1 d1, weap d2): weapicon.dta record weap-1 as 20 rows (node 4's way)
+; the double at a0 -> d0.l = 2*trunc(|x|) + (1 if |x| has a fraction), $7fffffff when
+; |x| >= 2^30: integer compares with it are exact (x >= k <=> d0 >= 2k).  trashes d1-d2/a0-a1
+cb_r2:
+	move.l	(a0),d1
+	move.l	4(a0),d2
+	and.l	#$7fffffff,d1
+	move.l	d1,d0
+	swap	d0
+	lsr.w	#4,d0
+	sub.w	#1023,d0		; exponent
+	bmi.s	.small
+	cmp.w	#29,d0
+	bgt.s	.huge
+	and.l	#$fffff,d1		; the 53-bit mantissa: d1 (21 bits) : d2
+	bset	#20,d1
+	neg.w	d0
+	add.w	#52-32,d0		; k = 52-e-32: shift right by 32+k
+	bmi.s	.lt
+	move.l	d2,a1			; s >= 32: t = mhi >> k
+	moveq	#1,d2
+	lsl.l	d0,d2
+	subq.l	#1,d2
+	and.l	d1,d2			; the fraction bits in mhi
+	lsr.l	d0,d1
+	add.l	d1,d1
+	move.l	a1,d0
+	or.l	d0,d2			; and lo
+	beq.s	.x0
+	addq.l	#1,d1
+.x0:	move.l	d1,d0
+	rts
+.lt:	neg.w	d0			; c = 32-s (s = 52-e < 32)
+	lsl.l	d0,d1			; mhi << c
+	move.l	d2,a1
+	lsl.l	d0,d2			; the fraction bits of lo
+	sne	d2
+	move.l	d2,a0
+	neg.w	d0
+	add.w	#32,d0			; s
+	move.l	a1,d2
+	lsr.l	d0,d2			; lo >> s
+	or.l	d2,d1
+	add.l	d1,d1
+	move.l	a0,d0
+	tst.b	d0
+	beq.s	.x0
+	addq.l	#1,d1
+	bra.s	.x0
+.small:	or.l	d2,d1
+	sne	d0
+	and.l	#1,d0
+	rts
+.huge:	move.l	#$7fffffff,d0
+	rts
+
 cb_showweaponicon:
 	movem.l	d3-d5,-(sp)
 	move.w	d0,d4
@@ -1087,18 +1182,36 @@ cb_dmgbar:
 	move.w	d2,d7			; x0
 	moveq	#100,d1
 	sub.w	d0,d1
-	move.w	d1,d0
-	FSSE
-	bsr	fp_ldw
-	FLDI	100
-	bsr	fp_div
-	FLDI	49
-	bsr	fp_mul
-	bsr	fp_rnd
+	move.w	d1,d0			; b := round((100-dmg)/100*49)
+	moveq	#100,d1
+	bsr	cb_b49
 	move.w	d0,d5			; b
 	bgt.s	.b
 	moveq	#1,d5
-.b:	FLDI	31			; part := 31/b
+.b:	cmp.w	#49,d5
+	bgt.s	.slow
+	bsr	cb_rtab_init		; rows y, y+1, x0..x0+b: round(j*(31/b)) from the table
+	move.w	d5,d0
+	mulu	#50,d0
+	lea	cb_rtab,a1
+	add.w	d0,a1
+	move.w	d7,d0
+	move.w	d6,d1
+	bsr	ms_addr
+	move.w	d5,d0
+.t:	move.b	(a1),320(a0)
+	move.b	(a1)+,(a0)+
+	dbf	d0,.t
+	move.w	d7,d0			; ms_dirty(x0, y, x0+b, y+1)
+	move.w	d6,d1
+	move.w	d7,d2
+	add.w	d5,d2
+	move.w	d6,d3
+	addq.w	#1,d3
+	bsr	ms_dirty
+	bra.s	.rest
+.slow:	FSSE
+	FLDI	31			; part := 31/b
 	move.w	d5,d0
 	bsr	fp_ldw
 	bsr	fp_div
@@ -1124,6 +1237,7 @@ cb_dmgbar:
 	addq.w	#1,d4
 	cmp.w	d5,d4
 	ble.s	.j
+.rest:
 	cmp.w	#51,d5
 	bge.s	.x
 	moveq	#49,d4			; 49-b bytes from x0+1+b (scr_fillchar with a count <= 0: none)
@@ -1181,6 +1295,10 @@ cb_displaydamage:
 	bsr	fp_ldw
 	bsr	fp_mul
 	bsr	fp_sub
+	lea	cb_part,a0		; (part is the unit's global: moveships reads it after a hit)
+	bsr	fp_std
+	lea	cb_part,a0
+	bsr	fp_ldd
 	bsr	fp_rnd
 	move.w	d0,d4
 	cmp.w	cb_oldshddmg,d4
@@ -1288,8 +1406,26 @@ cb_clampbatt:				; (a0).w into 0..32000
 	move.w	#32000,(a0)
 .x:	rts
 ; d0 := round(d0/100*d1) (SSE)
-cb_e100:
-	move.w	d1,-(sp)
+cb_e100:				; d0 := round(d0.w/100*d1.w): integers unless an exact .5
+	tst.w	d0
+	bmi.s	.fpu
+	tst.w	d1
+	bmi.s	.fpu
+	move.w	d0,d2
+	mulu	d1,d2
+	divu	#100,d2
+	bvs.s	.fpu
+	move.l	d2,a0			; (quotient in the low word)
+	swap	d2			; remainder
+	cmp.w	#50,d2
+	beq.s	.fpu			; a tie: the doubles decide (d0, d1 still the arguments)
+	sgt	d2
+	and.w	#1,d2
+	move.l	a0,d0
+	add.w	d2,d0
+	ext.l	d0
+	rts
+.fpu:	move.w	d1,-(sp)
 	FSSE
 	bsr	fp_ldw
 	FLDI	100
@@ -1303,25 +1439,33 @@ cb_e100:
 ; 138+i for i 0..b in round(i*part), the rest to 49 in 0; at x d2, d3 wide
 ; in: d0 = v, d1 = max. Speed: round(i*(31/b)) comes from cb_rtab (built once by the same FPU
 ; steps, so bit-identical); a row is written and marked dirty only when it changes.
-cb_tbar:
-	movem.l	d3-d7/a3,-(sp)
-	move.w	d2,d6			; x
-	move.w	d3,d7			; width
-	lea	cb_bcache,a0		; b for (v, max): kept (16 entries: v, max, b, valid)
-	moveq	#16-1,d2
-.h:	cmp.w	(a0),d0
-	bne.s	.hn
-	cmp.w	2(a0),d1
-	bne.s	.hn
-	tst.w	6(a0)
-	beq.s	.hn
-	move.w	4(a0),d5
-	FSSE
-	bra.s	.got
-.hn:	addq.l	#8,a0
-	dbf	d2,.h
-	movem.w	d0-d1,-(sp)
-	FSSE
+; d0.w := round(v/max*49) as FPC's SSE doubles, v = d0.w, max = d1.w (> 0). Exact in integers
+; (round half up of v*49/max: checked on the host against the doubles for every max < 32768
+; and 0 <= v <= max) except at an exact .5, where the doubles' rounding errors decide: the FPU.
+; trashes d1-d2/a0-a2
+cb_b49:
+	move.l	d3,-(sp)
+	tst.w	d0
+	bmi.s	.fpu
+	cmp.w	d1,d0
+	bhi.s	.fpu
+	moveq	#0,d2
+	move.w	d0,d2
+	mulu	#98,d2
+	moveq	#0,d3
+	move.w	d1,d3
+	add.l	d3,d2			; v*98 + max
+	add.w	d3,d3			; 2*max
+	divu	d3,d2
+	swap	d2
+	tst.w	d2
+	beq.s	.fpu			; a tie
+	swap	d2
+	moveq	#0,d0
+	move.w	d2,d0
+	move.l	(sp)+,d3
+	rts
+.fpu:	FSSE
 	move.w	d1,-(sp)
 	bsr	fp_ldw
 	move.w	(sp)+,d0
@@ -1330,23 +1474,35 @@ cb_tbar:
 	FLDI	49
 	bsr	fp_mul
 	bsr	fp_rnd
+	move.l	(sp)+,d3
+	rts
+
+cb_tbar:
+	movem.l	d3-d7/a3,-(sp)
+	move.w	d2,d6			; x
+	move.w	d3,d7			; width
+	bsr	cb_b49
 	move.w	d0,d5
-	movem.w	(sp)+,d0-d1
-	move.w	cb_bnext,d2
-	addq.w	#1,cb_bnext
-	and.w	#15,d2
-	lsl.w	#3,d2
-	lea	cb_bcache,a0
-	add.w	d2,a0
-	move.w	d0,(a0)+
-	move.w	d1,(a0)+
-	move.w	d5,(a0)+
-	move.w	#1,(a0)
 .got:	tst.w	d5
 	bgt.s	.b
 	moveq	#1,d5
 .b:	cmp.w	#49,d5			; b > 49 (v > max): the FPU for each row, as the original
 	bgt	.slow
+	lea	cb_tmemo,a0		; the bar at this column already shows b: nothing to do
+	moveq	#CB_TMEMO-1,d0		; (cb_tmemo_clr when anything else draws there)
+.m:	cmp.w	(a0),d6
+	beq.s	.mf
+	tst.w	(a0)
+	beq.s	.mn
+	addq.l	#4,a0
+	dbf	d0,.m
+	bra.s	.mx			; (full: no memo)
+.mn:	move.w	d6,(a0)			; a new column
+	move.w	#-1,2(a0)
+.mf:	cmp.w	2(a0),d5
+	beq	.done
+	move.w	d5,2(a0)
+.mx:
 	bsr	cb_rtab_init
 	move.w	d5,d0			; a3 = the table's row for b
 	mulu	#50,d0
@@ -1388,9 +1544,11 @@ cb_tbar:
 	cmp.w	#49,d4
 	ble.s	.i
 	move.l	(sp)+,a4
-	movem.l	(sp)+,d3-d7/a3
+.done:	movem.l	(sp)+,d3-d7/a3
 	rts
-.slow:	FLDI	31			; part := 31/b; rows 0..b in round(i*part)
+.slow:	bsr	cb_tmemo_clr		; (rows written outside the memo)
+	FSSE
+	FLDI	31			; part := 31/b; rows 0..b in round(i*part)
 	move.w	d5,d0
 	bsr	fp_ldw
 	bsr	fp_div
@@ -1440,6 +1598,15 @@ cb_tbar:
 	move.w	(sp)+,d3
 .n:	rts
 
+CB_TMEMO	equ	12
+; forget what the target bars show (the area was drawn by something else)
+cb_tmemo_clr:
+	lea	cb_tmemo,a0
+	moveq	#CB_TMEMO-1,d0
+.c:	clr.l	(a0)+
+	dbf	d0,.c
+	rts
+
 ; cb_rtab[b*50+i] := round(i*(31/b)) (FPC's SSE doubles, banker's), b 1..49, i 0..b: once
 cb_rtab_init:
 	tst.b	cb_rtab_ok
@@ -1477,10 +1644,9 @@ cb_rtab_init:
 
 	section	bss
 cb_rtab:	ds.b	50*50
+cb_tmemo:	ds.l	CB_TMEMO	; target bars: column x, the b it shows
 cb_rcache:	ds.b	8*22		; relx, rely, relz, r (double), valid (+pad)
 cb_rnext:	ds.w	1
-cb_bcache:	ds.w	16*4
-cb_bnext:	ds.w	1
 cb_dskey:	ds.w	4		; displaystats' inputs: hullmax, hull, battery, shieldlevel
 		ds.l	1		; + stats[1..3] (one long, written as one)
 cb_lct:		ds.w	1
@@ -1628,15 +1794,9 @@ cb_displaytargetinfo:
 cb_mappos:
 	movem.l	d3-d4/a3,-(sp)
 	move.l	a0,a3
-	FSSE
 	move.l	ALIENSHIP_RELX(a3),d0
-	bsr	fp_ldi
-	move.l	cb_range_,d0
-	bsr	fp_ldi
-	bsr	fp_div
-	FLDI	119
-	bsr	fp_mul
-	bsr	fp_rnd
+	moveq	#119,d1
+	bsr	cb_mapc
 	move.w	d0,d3
 	FX87
 	move.l	ALIENSHIP_RELY(a3),d0
@@ -1650,17 +1810,68 @@ cb_mappos:
 	move.w	d0,d4
 	FSSE
 	move.l	ALIENSHIP_RELZ(a3),d0
-	bsr	fp_ldi
-	move.l	cb_range_,d0
-	bsr	fp_ldi
-	bsr	fp_div
-	FLDI	26
-	bsr	fp_mul
-	bsr	fp_rnd
+	moveq	#26,d1
+	bsr	cb_mapc
 	move.w	d0,d2
 	move.w	d3,d0
 	move.w	d4,d1
 	movem.l	(sp)+,d3-d4/a3
+	rts
+
+; d0.w := round(v / range * m) as FPC's SSE doubles, v = d0.l, m = d1.w (119 or 26),
+; range = cb_range_. In integers: floor((2*m*v + range) / (2*range)); the doubles can only
+; differ from it at an exact .5 (v/range*m is otherwise at least 1/(2*range) away from one,
+; far beyond their error), which goes to the FPU.  trashes d1-d2/a0-a1
+cb_mapc:
+	movem.l	d3-d5,-(sp)
+	move.l	d0,d3			; v
+	move.w	d1,d4			; m
+	move.l	d3,d2
+	bpl.s	.a
+	neg.l	d2
+.a:	cmp.l	#4000000,d2		; |v| * 2m must stay in 31 bits
+	bhi.s	.fpu
+	add.w	d1,d1			; 2m
+	move.l	d2,d0			; |v| * 2m
+	swap	d0
+	mulu	d1,d0
+	swap	d0
+	clr.w	d0
+	mulu	d1,d2
+	add.l	d0,d2
+	tst.l	d3
+	bpl.s	.p
+	neg.l	d2
+.p:	move.l	cb_range_,d5
+	add.l	d5,d2			; num = 2m*v + range
+	add.l	d5,d5			; den = 2*range
+	tst.l	d2
+	bmi.s	.neg
+	move.l	d5,d0
+	bsr	ex_ldiv			; d0 = num div den, d1 = remainder
+	tst.l	d1
+	beq.s	.fpu			; a .5
+	bra.s	.x
+.neg:	neg.l	d2			; floor of a negative: -ceil(|num|/den)
+	move.l	d5,d0
+	bsr	ex_ldiv
+	tst.l	d1
+	beq.s	.fpu
+	addq.l	#1,d0
+	neg.l	d0
+.x:	movem.l	(sp)+,d3-d5
+	rts
+.fpu:	FSSE
+	move.l	d3,d0
+	bsr	fp_ldi
+	move.l	cb_range_,d0
+	bsr	fp_ldi
+	bsr	fp_div
+	move.w	d4,d0
+	bsr	fp_ldw
+	bsr	fp_mul
+	bsr	fp_rnd
+	movem.l	(sp)+,d3-d5
 	rts
 
 ; screen[y d1, x d0] := screen xor d2 (marked)
@@ -2111,16 +2322,16 @@ cb_slow:
 	move.w	d0,(a0)
 	rts
 ; rel (long at a1) += round(v/5) (v word at a0)
+; (a1).l += round((a0).w / 5): dx/5 is never within 0.1 of a .5, so the nearest integer,
+; floor((2*dx+5)/10), is the double's banker's rounding (no FPU)
 cb_move:
-	move.l	a1,-(sp)
-	FSSE
 	move.w	(a0),d0
-	bsr	fp_ldw
-	FLDI	5
-	bsr	fp_div
-	bsr	fp_rnd
-	move.l	(sp)+,a1
 	ext.l	d0
+	add.l	d0,d0
+	add.l	#5+70000,d0		; (+70000: positive for divu; dx >= -32768)
+	divu	#10,d0
+	and.l	#$ffff,d0
+	sub.l	#7000,d0
 	add.l	d0,(a1)
 	rts
 
@@ -2209,8 +2420,8 @@ cb_moveships:
 .ch:	lea	ALIENSHIP_CHARGES-1(a3),a0
 	cmp.b	#100,0(a0,d6.w)
 	bne	.cn
-	lea	cb_part,a0		; part >= r
-	bsr	fp_ldd
+	lea	cb_part,a0		; part >= r (part: impact may have changed it on an earlier
+	bsr	fp_ldd			; charge of this loop - a global in the original)
 	lea	cb_rl,a0
 	bsr	fp_ldd
 	bsr	fp_cmp
@@ -2246,14 +2457,9 @@ cb_moveships:
 .cn:	addq.w	#1,d6
 	cmp.w	#20,d6
 	ble	.ch
-.far:	move.l	#1200000,d0		; abs(r) > 1200000: gone
-	move.l	d0,-(sp)
-	lea	cb_rl,a0
-	bsr	fp_ldd
-	bsr	fp_abs
-	move.l	(sp)+,d0
-	bsr	fp_ldi
-	bsr	fp_cmp
+.far:	lea	cb_rl,a0		; abs(r) > 1200000: gone
+	bsr	cb_r2
+	cmp.l	#2*1200000,d0
 	ble.s	.al
 	clr.w	ALIENSHIP_HULLINTEGRITY(a3)
 .al:	tst.w	ALIENSHIP_HULLINTEGRITY(a3)
@@ -2319,6 +2525,7 @@ cb_nexttarget:
 
 cb_switchalienmode:
 	movem.l	d3,-(sp)
+	bsr	cb_tmemo_clr
 	bsr	mousehide
 	BAR	6,125,98,189,0
 	tst.b	cb_picmode
@@ -3129,6 +3336,7 @@ cb_readydata:
 	lea	cb_mode,a0
 	bsr	ms_load
 	bcs	fatal
+	bsr	cb_tmemo_clr
 	bsr	orc_dump		; loadscreen(cloud, backgr)
 	lea	u2_cloud,a0
 	move.l	GS_BACKGR(a6),a1

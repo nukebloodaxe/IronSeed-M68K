@@ -11,6 +11,7 @@ python3 -I "$R/tools/mkmain.py" "$S/data" "$R/build/data" > "$R/build/mkmain.log
 python3 -I "$R/tools/mkcomm.py" "$S/data" "$R/build/data" > "$R/build/mkcomm.log"
 python3 -I "$R/tools/mkload.py" "$S/data" "$R/build/data" > "$R/build/mkload.log"
 python3 -I "$R/tools/mkprbar.py" "$R/build/prbar.i"
+python3 -I "$R/tools/mkegg.py" "$S/data" "$R/build/data" > "$R/build/mkegg.log"
 python3 -I "$R/tools/mkending.py" "$S/data" "$R/build/data" "$S/ending.pas" "$R/build/endtext.i" > "$R/build/mkending.log"
 for p in is intro crewgen main; do
   python3 -I "$R/tools/fixbranches.py" "$R/game/$p.s" > /dev/null

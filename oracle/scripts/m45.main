@@ -1,0 +1,65 @@
+vtime
+args /playseed 3
+# m45: easteregg5 (the status lights clicked bottom to top, each from another panel (Alt-B) as a
+# light only counts while the status panel is not up: add a Dirk twice, a reflective hull,
+# components, materials; the hold limits) and easteregg3 (Ctrl-F10: the song chooser, Aard
+# picked, the button), back to the bridge each time
+# vbls 70000
+wait 3000
+key #27
+wait 2000
+key @b
+wait 600
+click 305 93
+wait 600
+key @b
+wait 600
+click 305 73
+wait 600
+key @b
+wait 600
+click 305 53
+wait 600
+key @b
+wait 600
+click 305 28
+wait 3000
+shot K1
+click 100 88
+wait 300
+click 100 88
+wait 300
+click 100 108
+wait 300
+click 200 88
+wait 300
+click 200 108
+wait 300
+click 200 108
+wait 300
+move 230 155
+wait 400
+shot K2
+click 230 155
+wait 3000
+shot K3
+dump K4
+key !#291
+wait 2000
+shot L1
+click 50 109
+wait 2000
+shot L2
+click 150 30
+wait 500
+move 160 173
+wait 500
+shot L3
+click 160 173
+wait 3000
+shot L4
+key #291
+wait 1500
+key y
+wait 3000
+quit

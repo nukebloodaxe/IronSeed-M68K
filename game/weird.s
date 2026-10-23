@@ -449,7 +449,7 @@ wd_temppal:	ds.b	768
 	section	text
 ; weird.pas bossmode (the FPC build's: the text-mode screens are commented out): music paused,
 ; the palette black, until a key or a click; delay(150); the keys read ('7' with the button held:
-; easteregg6 - not ported); colors back, music on
+; easteregg6, egg.s); colors back, music on
 bossmode:
 	bsr	pausemod
 	lea	wd_black,a0
@@ -471,7 +471,7 @@ bossmode:
 	bsr	kbd_mouse_status
 	tst.b	d0
 	beq.s	.d
-	bra	notported		; (easteregg6)
+	bra	easteregg6
 .e:	lea	GS_COLORS(a6),a0
 	bsr	set256colors
 	bra	continuemod

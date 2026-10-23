@@ -1192,6 +1192,14 @@ mainloop:
 	bsr	jy_processkey
 .nk:	bsr	playing			; if not playing then playmod(defaultsong)
 	bne.s	.pl
+	lea	GS_DEFAULTSONG(a6),a0	; "SOUND\" + defaultsong
+	lea	jy_fn_song+6,a1
+	moveq	#0,d0
+	move.b	(a0)+,d0
+	bra.s	.dse
+.ds:	move.b	(a0)+,(a1)+
+.dse:	dbf	d0,.ds
+	clr.b	(a1)
 	lea	jy_fn_song,a0
 	bsr	playmod
 .pl:	addq.w	#1,GS_IDLETIME(a6)
@@ -1418,12 +1426,12 @@ jy_processkey:
 	bsr	event
 	moveq	#28,d0
 	bra	event
-.k11:	cmp.w	#117,d1			; the eggs (Ctrl-End, Ctrl-PgDn... Alt-7): not ported
-	beq	notported
+.k11:	cmp.w	#117,d1			; the eggs: Ctrl-End, Ctrl-F10, Alt-7 (egg.s)
+	beq	easteregg4
 	cmp.w	#103,d1
-	beq	notported
+	beq	easteregg3
 	cmp.w	#126,d1
-	beq	notported
+	beq	easteregg2
 	rts
 .asc:	cmp.b	#'a',d0			; upcase
 	blo.s	.up
@@ -1704,7 +1712,7 @@ jy_clickcode:
 	cmp.w	#3,d1
 	bne.s	.x
 	clr.w	jy_clickcode_v
-	bra	notported		; easteregg5
+	bra	easteregg5
 .l2:	cmp.w	#2,d0			; 49-58: 2 -> 3 else 0
 	bne.s	.l1
 	moveq	#0,d2
@@ -2353,7 +2361,7 @@ movewandering:
 	section	data
 jy_msg:		dc.w	500		; journey.pas: msg := 500
 jy_mode:	dc.b	"MAIN",0
-jy_fn_song:	dc.b	"SOUND",92,"SECTOR.MOD",0
+jy_fn_song:	dc.b	"SOUND",92,"SECTOR.MOD",0,0,0	; (defaultsong: string[12])
 jy_s_quit:	dc.b	20,"Do you want to quit?"
 jy_s_compromised: dc.b	53,"SECURITY: Shield integrity compromised...needs repair"
 jy_s_unstable:	dc.b	28,"SECURITY: Shield unstable..."

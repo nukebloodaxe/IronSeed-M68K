@@ -1,0 +1,22 @@
+vtime
+args /playseed 3
+# m46: easteregg6 from bossmode (the ` key, then '7' with the button held: intro3 with an
+# explosion per click until a key, then halt(3)). The press and the 7 come together as the
+# first poll of bossmode's wait loop (its key test goes first, so the button stays unread)
+# vbls 40000
+wait 3000
+key #27
+wait 2000
+key `
+press 160 100
+key 7
+wait 3000
+shot Z1
+click 100 100
+wait 500
+click 200 150
+wait 500
+shot Z2
+key x
+wait 3000
+quit

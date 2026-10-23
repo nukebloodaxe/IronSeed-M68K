@@ -1,0 +1,47 @@
+vtime
+args /playseed 3
+# m44: easteregg2 (Alt-7: the Channel 7 noise screen with the portraits, the button's highlight,
+# a click outside, the click on it) and easteregg4 (Ctrl-End: hull, fuel, damages, battery from a
+# damaged ship), back to the bridge each time
+# setup ship.hullintegrity=40 ship.fuel=12 ship.battery=500 ship.damages[2]=30 ship.damages[5]=12
+# vbls 60000
+wait 3000
+key #27
+wait 2000
+key @7
+wait 3000
+shot G1
+move 160 153
+wait 600
+shot G2
+click 300 20
+wait 400
+move 100 30
+wait 400
+shot G3
+click 160 153
+wait 3000
+shot G4
+dump G5
+key !#279
+wait 3000
+shot H1
+click 100 88
+wait 300
+click 100 108
+wait 300
+click 200 88
+wait 300
+click 200 108
+wait 300
+move 120 150
+wait 400
+shot H2
+click 120 150
+wait 3000
+shot H3
+key #291
+wait 1500
+key y
+wait 3000
+quit

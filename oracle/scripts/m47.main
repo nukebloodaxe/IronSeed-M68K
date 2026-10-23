@@ -1,0 +1,30 @@
+vtime
+args /playseed 3
+# m47: the finale's trigger (weird.pas event 10002, the scavenger armada): a game loaded at system
+# 182 (not in orbit) with the events the armada needs (14, 15, 21, 23, 30, 31, 45-48) runs
+# starter.pas's system events at once: startarmada (getspecial 7, attack orders, combat with the
+# whole armada). Ten Wrath of Shiva nodes, the Temporal Anchor, a 30000 hull and auto fire; the
+# armada's psionic hits still take the life support to 100: the death sequence, exit 3
+# setup @system=182 @orbit=0 events[1]=192 events[2]=160 events[3]=192 events[5]=224 events[6]=1 ship.damages[6]=0 ship.gunnodes[1]=56 ship.gunnodes[2]=56 ship.gunnodes[3]=56 ship.gunnodes[4]=56 ship.gunnodes[5]=56 ship.gunnodes[6]=56 ship.gunnodes[7]=56 ship.gunnodes[8]=56 ship.gunnodes[9]=56 ship.gunnodes[10]=56 ship.shield=1513 ship.hullmax=30000 ship.hullintegrity=30000 ship.battery=32000
+# vbls 200000
+wait 3000
+key #27
+wait 3000
+shot A1
+key #284
+wait 500
+key X
+wait 500
+key X
+wait 4000
+shot A2
+wait 8000
+shot A3
+dump A4
+wait 8000
+shot A5
+dump A6
+wait 8000
+shot A7
+wait 60000
+quit

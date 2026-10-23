@@ -129,7 +129,20 @@ kbd_readkey:
 	tst.b	d0
 	bne.s	.x
 	swap	d0			; ASCII 0: extended key, scan code next time
-	move.b	d0,kbd_pending
+	cmp.b	#$77,d0			; Ctrl-ClrHome stands for the PC's Ctrl-End (117; the ST has no End)
+	bne.s	.f10
+	moveq	#117,d0
+.f10:	cmp.b	#$44,d0			; Ctrl-F10 (103): TOS gives F10's own code, so ask for Ctrl
+	bne.s	.pend
+	move.b	d0,-(sp)
+	move.w	#-1,-(sp)
+	BIOS	BI_KBSHIFT,4
+	move.b	d0,d1
+	move.b	(sp)+,d0
+	btst	#2,d1
+	beq.s	.pend
+	moveq	#103,d0
+.pend:	move.b	d0,kbd_pending
 	moveq	#0,d0
 .x:	rts
 

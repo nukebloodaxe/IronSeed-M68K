@@ -19,5 +19,6 @@ wait 60000
 shot E4
 wait 60000
 shot E5
+dump E6
 wait 5000
 quit

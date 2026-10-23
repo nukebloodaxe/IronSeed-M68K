@@ -5,7 +5,7 @@ R=$(cd "$(dirname "$0")/.." && pwd); V0=$1; V1=$2; PRG=$3; shift 3
 T=$(mktemp -d)
 printf 'b VBL = %s :trace :once :file %s/a.ini\nb VBL = %s :file %s/b.ini\n' "$V0" "$T" "$V1" "$T" > "$T/start.ini"
 printf 'symbols prg\nprofile on\n' > "$T/a.ini"
-printf 'profile symbols 30\nprofile addresses\nscreenshot %s/done.png\n' "$T" > "$T/b.ini"
+printf 'profile symbols 30\nprofile callers\nprofile addresses\nscreenshot %s/done.png\n' "$T" > "$T/b.ini"
 SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy hatari --machine ste --memsize 4096 \
   --tos "${ISTE_ROM:-$R/rom/tos162us.img}" --harddrive "$R/hatari/c" --gemdos-drive c --drive-a false --drive-b false \
   --fast-forward on --sound off --statusbar off --confirm-quit false \
