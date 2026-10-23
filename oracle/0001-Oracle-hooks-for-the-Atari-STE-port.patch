@@ -1,0 +1,192 @@
+From fc77729ddbb76c85bcf54e7a70e1b01addd1cf3c Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 13 Oct 2026 23:37:49 +1300
+Subject: [PATCH] Oracle hooks for the Atari STE port
+
+IRONSEED_ORACLE=<dir>: dump shared game state (ship, systems, cargo, events,
+logs, alien, planets, palette, screen) on every loadscreen(), and make
+randomize deterministic. IRONSEED_INPUT=<prefix>: per-program input scripts
+(<prefix>.<program>) with wait/key/move/click/shot/quit commands.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01M2a7JRqsNHyv6L5u751Eow
+---
+ c_utils.c | 57 +++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ data.pas  | 55 ++++++++++++++++++++++++++++++++++++++++++++++++++++-
+ 2 files changed, 111 insertions(+), 1 deletion(-)
+
+diff --git a/c_utils.c b/c_utils.c
+index 4519899..ba35114 100644
+--- a/c_utils.c
++++ b/c_utils.c
+@@ -270,6 +270,60 @@ static void DrawPixel(SDL_Surface * screen, int x, int y, Uint8 R, Uint8 G, Uint
+ 
+ }
+ 
++/* --- Atari STE port oracle: scripted input from $IRONSEED_INPUT (one command per line):
++ *   wait <ms> | waitkey | waitclick | key <char> | key #<code> | move <x> <y> | click <x> <y> | quit
++ * Coordinates are game pixels (0-319, 0-199). Used to drive identical sessions on Linux and in Hatari. */
++static FILE *script = NULL;
++static int script_opened = 0;
++static uint32_t script_resume = 0;
++static int script_mouse = 0;
++static uint16_t script_mx, script_my;
++
++static void script_tick(void)
++{
++	char line[128];
++	if (!script_opened) {
++		const char *fn = getenv("IRONSEED_INPUT");	/* prefix; script = <prefix>.<program name> */
++		script_opened = 1;
++		if (fn) {
++			char comm[64] = "", path[512];
++			FILE *c = fopen("/proc/self/comm", "r");
++			if (c) { if (fgets(comm, sizeof comm, c)) comm[strcspn(comm, "\n")] = 0; fclose(c); }
++			snprintf(path, sizeof path, "%s.%s", fn, comm);
++			script = fopen(path, "r");
++		}
++	}
++	if (!script || SDL_GetTicks() < script_resume) return;
++	if (keypressed_ || mouse_buttons) return;	/* let the game consume the last input first */
++	while (fgets(line, sizeof line, script)) {
++		char cmd[16] = "", arg[32] = "";
++		int a = 0, b = 0;
++		if (line[0] == '#' || line[0] == '\n') continue;
++		sscanf(line, "%15s %31s", cmd, arg);
++		if (!strcmp(cmd, "wait")) { script_resume = SDL_GetTicks() + (uint32_t) atoi(arg); return; }
++		if (!strcmp(cmd, "waitkey") || !strcmp(cmd, "waitclick")) return;	/* checked at top */
++		if (!strcmp(cmd, "key")) {
++			key_ = (uint16_t) ((arg[0] == '#' && arg[1]) ? atoi(arg + 1) : (unsigned char) arg[0]);
++			keyutf8_ = key_; keyscan_ = 0; keymod_ = 0; keypressed_ = 1;
++			return;
++		}
++		if (sscanf(line, "%15s %d %d", cmd, &a, &b) == 3 && (!strcmp(cmd, "move") || !strcmp(cmd, "click"))) {
++			script_mouse = 1; script_mx = (uint16_t) a; script_my = (uint16_t) b;
++			if (!strcmp(cmd, "click")) { mouse_buttons = 0x01; return; }
++			continue;
++		}
++		if (!strcmp(cmd, "shot") && v_buf && getenv("IRONSEED_ORACLE")) {	/* raw 320x200 screen + 256 RGB palette */
++			char fn[512];
++			FILE *o;
++			snprintf(fn, sizeof fn, "%s/shot_%s.raw", getenv("IRONSEED_ORACLE"), arg);
++			if ((o = fopen(fn, "wb"))) { fwrite(v_buf, 1, 64000, o); fwrite(palette, 1, sizeof palette, o); fclose(o); }
++			continue;
++		}
++		if (!strcmp(cmd, "quit")) { fclose(script); script = NULL; exit(0); }
++	}
++	fclose(script); script = NULL;
++}
++
+ fpc_char_t mouse_get_status(void)
+ {
+ 	uint8_t t;
+@@ -283,6 +337,7 @@ fpc_dword_t mouse_get_x(void)
+ {
+ 	uint32_t x;
+ 	double rx, rx0;
++	if (script_mouse) return script_mx;
+ 	if (resize_x == 0)
+ 		return 0;
+ 	rx = (double) (mouse_x) / (double) (resize_x);
+@@ -298,6 +353,7 @@ fpc_dword_t mouse_get_y(void)
+ {
+ 	uint32_t y;
+ 	double ry, ry0;
++	if (script_mouse) return script_my;
+ 	if (resize_y == 0)
+ 		return 0;
+ 	ry = (double) (mouse_y) / (double) (resize_y);
+@@ -622,6 +678,7 @@ static int event_thread(void *notused)
+ 			break;			/* some error, probably video/audio failed to initialize or something, abort */
+ 		if (!handle_events_once())	/* keyboard, mouse, windows resize/close, and more */
+ 			break;			/* some error like SDL_QUIT, abort */
++		script_tick();			/* oracle: scripted input, if $IRONSEED_INPUT is set */
+ 
+ 		SDL_Delay(10);			/* give up some time to other threads */
+ 	}
+diff --git a/data.pas b/data.pas
+index 9714cf3..374e402 100644
+--- a/data.pas
++++ b/data.pas
+@@ -496,6 +496,8 @@ procedure fadestep(step : Integer);
+ procedure fadefull(step, slice : Integer);
+ procedure fadestopmod(step, slice : Integer);
+ procedure loadscreen(s: string; ts:pointer);
++procedure oracledump(tag: string);
++procedure randomize;
+ procedure compressfile(s: string; ts: pscreentype);
+ procedure loadpal(s: string);
+ //procedure fillchar(var src; count: word; databyte: byte);
+@@ -507,7 +509,7 @@ procedure quickloadscreen(s : String; scr : pscreentype; loadpal : Boolean);
+ 
+ implementation
+ 
+-uses modplay, math;
++uses modplay, math, dos;
+ 
+ const                           { compression constants        }
+  CPR_VER4=4;                    {   4 new header               }
+@@ -645,9 +647,60 @@ begin
+  if buffer<>nil then dispose(buffer);
+ end;
+ 
++{ --- Atari STE port oracle: when IRONSEED_ORACLE is set to a directory, dump the
++  shared game state each time a screen image is loaded, and make randomize
++  deterministic, so the asm port can be compared against this build. }
++const oracle_seq: longint = 0;
++
++procedure randomize;
++begin
++ if getenv('IRONSEED_ORACLE')<>'' then randseed:=1994
++ else system.randomize;
++end;
++
++procedure oracledump(tag: string);
++var dir, nm, num: string;
++    f: file;
++    i: integer;
++  procedure blk(name: string; var b; size: longint);
++  var hdr: string[23]; sz: longint;
++  begin
++   hdr:=name;
++   if length(hdr)<sizeof(hdr)-1 then fillchar(hdr[length(hdr)+1],sizeof(hdr)-1-length(hdr),0);
++   blockwrite(f,hdr,sizeof(hdr));
++   sz:=size;
++   blockwrite(f,sz,4);
++   if size>0 then blockwrite(f,b,size);
++  end;
++begin
++ dir:=getenv('IRONSEED_ORACLE');
++ if dir='' then exit;
++ inc(oracle_seq);
++ str(oracle_seq:4,num);
++ for i:=1 to length(num) do if num[i]=' ' then num[i]:='0';
++ for i:=1 to length(tag) do if (tag[i]='/') or (tag[i]='.') then tag[i]:='_';
++ nm:=paramstr(0);
++ while pos('/',nm)>0 do delete(nm,1,pos('/',nm));
++ assign(f,dir+'/'+nm+'_'+num+'_'+tag+'.bin');
++ rewrite(f,1);
++ blk('ship',ship,sizeof(ship));
++ blk('systems',systems,sizeof(systems));
++ blk('cargo',cargo,sizeof(cargo));
++ blk('rescargo',rescargo,sizeof(rescargo));
++ blk('events',events,sizeof(events));
++ blk('logs',logs,sizeof(logs));
++ blk('logpending',logpending,sizeof(logpending));
++ blk('alien',alien,sizeof(alien));
++ if tempplan<>nil then blk('tempplan',tempplan^,sizeof(tempplan^)) else blk('tempplan',f,0);
++ blk('colors',colors,sizeof(colors));
++ blk('screen',screen,sizeof(screen));
++ close(f);
++end;
++
+ procedure loadscreen(s: string; ts: pointer);
+ var ftype: CPR_HEADER;
+ begin
++ oracledump(s);
+  uncompressfile(s+'.cpr',ts,@ftype);
+  if ftype.version=CPR_ERROR then errorhandler(s,5);
+ end;
+-- 
+2.43.0
+

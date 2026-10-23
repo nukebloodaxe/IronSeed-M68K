@@ -1,0 +1,4 @@
+wait 3000
+key #27
+wait 4000
+click 90 158
