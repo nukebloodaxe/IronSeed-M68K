@@ -3328,10 +3328,11 @@ genericplanetinfo:
 .cn:	dbf	d1,.cc
 	move.w	#7,dp_i
 	move.w	d0,dp_j
-	add.b	#'0',d0
 	lea	dp_s,a0
 	lea	dp_t_cache,a1
-	bsr	pstr_cpy
+	bsr	pstr_cpy		; (leaves d0 = -1: reglint, 24 Oct 2026)
+	move.w	dp_j,d0
+	add.b	#'0',d0
 	move.b	d0,dp_s+9		; 'Cache = '+chr(j+48)+'/7'
 	PXYS	167,78,dp_s
 	bra.s	.sc

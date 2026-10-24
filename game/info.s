@@ -1637,7 +1637,7 @@ if_mainloop:
 	bsr	addtime2
 .d:	move.w	GS_TSLICE(a6),d0	; delay(tslice*FADE_TSLICE_MUL_INFO)
 	lsl.w	#3,d0
-	bsr	delay
+	bsr	delayp			; (paced: the frame's work counts)
 	bsr	kbd_keypressed
 	beq.s	.nk
 	bsr	if_processkey

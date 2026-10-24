@@ -1294,9 +1294,9 @@ mainloop:
 	addq.w	#1,GS_GLOWINDEX(a6)
 	bra.s	.dl
 .g1:	move.w	#1,GS_GLOWINDEX(a6)
-.dl:	move.w	GS_TSLICE(a6),d0	; delay(tslice*FADE_TSLICE_MUL_JOURNEY)
+.dl:	move.w	GS_TSLICE(a6),d0	; delay(tslice*FADE_TSLICE_MUL_JOURNEY), paced (delayp)
 	mulu	#FADE_MUL_JOURNEY,d0
-	bsr	delay
+	bsr	delayp
 	tst.b	GS_QUIT(a6)
 	beq	.l
 	bra	stopmod

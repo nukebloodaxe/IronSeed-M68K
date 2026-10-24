@@ -3206,9 +3206,10 @@ cb_mainloop:
 	moveq	#0,d2
 	moveq	#63,d3
 	bsr	vid_setrgb
-	move.w	GS_TSLICE(a6),d0	; delay(tslice*FADE_TSLICE_MUL_COMBAT)
+	PMARK	31			; (PROFILE: one per main-loop pass)
+	move.w	GS_TSLICE(a6),d0	; delay(tslice*FADE_TSLICE_MUL_COMBAT), paced (delayp)
 	mulu	#3,d0
-	bsr	delay
+	bsr	delayp
 .e:	tst.b	cb_done
 	beq	.l
 	tst.b	GS_QUIT(a6)

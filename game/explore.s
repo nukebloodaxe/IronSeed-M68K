@@ -2982,7 +2982,9 @@ controlprobes:
 	bpl.s	.l35
 	neg.w	d0
 .l35:	addq.w	#1,d0
+	move.w	d0,-(sp)		; (ex_plan returns curplan in d0: the bit was curplan's - reglint)
 	bsr	ex_plan
+	move.w	(sp)+,d0
 	bset	d0,PLANET_NOTES(a0)
 .l4:	move.w	ex_que,d0		; if datagathered[abs(que),2] >= 1000
 	bpl.s	.l5
@@ -4317,7 +4319,7 @@ ex_mainloop:
 	bsr	controlprobes
 	move.w	GS_TSLICE(a6),d0	; delay(tslice*FADE_TSLICE_MUL_EXPLORE)
 	add.w	d0,d0
-	bsr	delay
+	bsr	delayp			; (paced: the frame's work counts)
 	tst.b	GS_DONE(a6)
 	beq.s	.l
 	st	GS_ANYCHANGE(a6)

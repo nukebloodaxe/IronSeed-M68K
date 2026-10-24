@@ -74,6 +74,9 @@ if [ -d hatari/c/MUSIC ]; then   # the intro streamed INTRO1/INTRO2 in real time
   [ -n "$r" ] && [ "$u" = 0 ] && [ "$e" = 0 ] && echo "PASS intro music stream ($n chunks read, ring never below $((m/1024)) KB, no underrun)" \
     || { echo "FAIL intro music stream ($r)"; fail=1; }
 fi
+# scratch registers across calls and GEMDOS traps, all four programs (tools/reglint.py: the
+# Phase 6f crash and five more found by it; GEMDOS may trash d0-d2/a0-a2 on real TOS, never in Hatari)
+tools/reglint.sh > /tmp/reglint.txt && echo "PASS reglint (no scratch register used after a call or trap trashed it)" || { echo "FAIL reglint: $(tail -1 /tmp/reglint.txt), see /tmp/reglint.txt"; fail=1; }
 # software floating point (kernel/fp.s) against Free Pascal's own arithmetic (tools/fp/fpref)
 [ -x tools/fp/fpref ] || fpc -O1 tools/fp/fpref.pas -otools/fp/fpref > /dev/null
 python3 tests/fptest.py 300 14000 > /tmp/fp.txt && echo "PASS fp ($(tail -1 /tmp/fp.txt): SSE/x87 arithmetic, rounding, str, sin/cos/arctan bit-exact with FPC)" || { echo "FAIL fp: $(tail -1 /tmp/fp.txt)"; fail=1; }

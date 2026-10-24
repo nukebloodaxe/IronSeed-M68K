@@ -43,7 +43,7 @@ start:	move.l	4(sp),a0		; keep only basepage + program + a small stack
 	cmp.w	#49,d7
 	blo	.bad
 	cmp.w	#56,d7
-	bhi.s	.bad
+	bhi	.bad
 	move.b	d7,tail_slot+12		; "/playseed  n"
 	lea	prg_main,a0
 	lea	tail_slot,a1
@@ -57,10 +57,10 @@ start:	move.l	4(sp),a0		; keep only basepage + program + a small stack
 	movem.l	(sp)+,a0-a1
 	tst.l	d0
 	bmi.s	.missing
-	move.l	a0,-(sp)
+	movem.l	a0-a1,-(sp)		; (GEMDOS may trash a0-a2: the tail too - reglint)
 	move.w	d0,-(sp)
 	GEMDOS	GD_FCLOSE,4
-	move.l	(sp)+,a0
+	movem.l	(sp)+,a0-a1
 .run:	clr.l	-(sp)			; Pexec(0, name, tail, env = parent's)
 	move.l	a1,-(sp)
 	move.l	a0,-(sp)

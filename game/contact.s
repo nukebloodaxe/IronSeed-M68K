@@ -299,7 +299,7 @@ cm_more:
 .a:	bsr	animatealien
 	move.w	GS_TSLICE(a6),d0	; delay(tslice*FADE_TSLICE_MUL_COMM)
 	mulu	#5,d0
-	bsr	delay
+	bsr	delayp			; (paced: the frame's work counts)
 	bsr	kbd_keypressed
 	bne.s	.k
 	bsr	kbd_mouse_status

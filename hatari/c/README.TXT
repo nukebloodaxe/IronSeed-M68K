@@ -19,6 +19,17 @@ Ctrl-ClrHome stands for the PC's Ctrl-End.
 
 Saved games go to SAVE1 ... SAVE8 and SAVEGAME.DIR in this folder.
 
+Options panel (Medical): the first row, "Probes", picks how the planet
+probes behave (saved with the game):
+  Std   as the Free Pascal version: the probes stay out while any scan
+        is incomplete; Retrieve takes an anomaly into the hold at once.
+  1994  as the original release: each probe gathers the scan it was
+        launched for and comes home when that scan is complete; Retrieve
+        sends a free probe to the anomaly and it brings the item back.
+(That row was the screen saver, which the Free Pascal version never had
+working.) Volume sets the music level; on the STE it goes through the
+volume chip, so the sound effects follow it too.
+
 Music: the MUSIC folder holds the songs pre-rendered; they are streamed from
 the disk, which leaves the 68000 free for the game (combat runs about 1.8
 times faster, the title screen twice as smoothly). Two packs, pick one and
@@ -27,6 +38,11 @@ put its MUSIC folder here (the programs follow the rate in the files):
   12517 Hz  about 112 MB  interpolated, brighter (twice the disk reads)
 Without the folder - a small disk, or floppies - the programs mix the MOD
 files from SOUND in real time as before: same music, slower game.
+
+Arriving at a planet or a star: the "Approaching ..." countdown is the
+surface being generated (the original's random walks, exactly). On an 8 MHz
+STE that takes about 6 s for a planet and 16 s for a star; a planet seen
+again takes about 1 s, and the last four stars visited are remembered.
 
 The FINALE slot (if present) is a test position: the ship at the Scavengers'
 gate with the Kendar alliance and the faction quests done, a Temporal Anchor

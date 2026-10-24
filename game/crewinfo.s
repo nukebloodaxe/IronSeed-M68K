@@ -679,7 +679,7 @@ ci_mainloop:
 .lm:	bsr	ci_displaylittlemsgs
 .dl:	move.w	GS_TSLICE(a6),d0	; delay(tslice*FADE_TSLICE_MUL_CREWINFO)
 	mulu	#7,d0
-	bsr	delay
+	bsr	delayp			; (paced: the frame's work counts)
 	tst.b	GS_DONE(a6)
 	beq	.l
 	rts

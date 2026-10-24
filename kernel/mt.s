@@ -77,45 +77,71 @@ mt_seed:
 
 ; regenerate the 624 words (mtwist_update_state): mt[k] = mt[k+M] ^ twist(mt[k], mt[k+1]),
 ; twist(u, v) = (mixbits(u, v) >> 1) ^ (odd(v) ? $9908B0DF : 0)
-mt_update:
-	movem.l	d3-d5/a1,-(sp)
+mt_update:				; (keeps a2: createplanet's walk relies on it)
+	movem.l	d3-d5/a1-a2,-(sp)
 	move.l	#$9908B0DF,d5
 	lea	mt_state,a0		; mt[k]
+	lea	4(a0),a2		; mt[k + 1]
 	lea	MT_M*4(a0),a1		; mt[k + M]
-	move.w	#MT_N-MT_M-1,d4		; k = 0 .. N-M-1
-	bsr.s	.run
+	move.l	(a0),d0			; u = mt[0]
+	move.w	#(MT_N-MT_M)/2-1,d4	; k = 0 .. N-M-1: 113 pairs and one
+	bsr.s	.run2
+	bsr.s	.run1
 	lea	mt_state,a1		; mt[k + M - N]
-	move.w	#MT_M-1-1,d4		; k = N-M .. N-2
-	bsr.s	.run
-	move.l	(a0),d0			; mt[N-1] = mt[M-1] ^ twist(mt[N-1], mt[0])
-	move.l	mt_state,d1
+	move.w	#(MT_M-1)/2-1,d4	; k = N-M .. N-2: 198 pairs
+	bsr.s	.run2
+	move.l	mt_state,d1		; mt[N-1] = mt[M-1] ^ twist(mt[N-1], mt[0])  (d0 = old mt[N-1])
 	bsr.s	.tw
 	move.l	(a1),d0
 	eor.l	d0,d2
 	move.l	d2,(a0)
-	movem.l	(sp)+,d3-d5/a1
+	movem.l	(sp)+,d3-d5/a1-a2
 	rts
-.run:	move.l	(a0)+,d0		; u
-	move.l	(a0),d1			; v
-	move.l	d1,d2			; mixbits(u, v) >> 1: v's low 31 bits under u's top bit
+; mt[k] = mt[k+M] ^ twist(u = mt[k], v = mt[k+1]), v the next u; d0 = u on entry and exit.
+; twist: mixbits(u, v) >> 1 (v's low 31 bits under u's top bit; the last shift's carry is v's
+; bit 0) ^ (odd(v) ? $9908B0DF : 0)
+.run2:	move.l	(a2)+,d1		; v
+	move.l	d1,d2
 	add.l	d2,d2
 	add.l	d0,d0
 	roxr.l	#1,d2
 	lsr.l	#1,d2
-	lsr.b	#1,d1
-	bcc.s	.e
+	bcc.s	.e1
 	eor.l	d5,d2
-.e:	move.l	(a1)+,d0
+.e1:	move.l	(a1)+,d0
 	eor.l	d0,d2
-	move.l	d2,-4(a0)
-	dbf	d4,.run
+	move.l	d2,(a0)+
+	move.l	(a2)+,d0		; the next pair: u = d1, v -> d0
+	move.l	d0,d2
+	add.l	d2,d2
+	add.l	d1,d1
+	roxr.l	#1,d2
+	lsr.l	#1,d2
+	bcc.s	.e2
+	eor.l	d5,d2
+.e2:	move.l	(a1)+,d1
+	eor.l	d1,d2
+	move.l	d2,(a0)+
+	dbf	d4,.run2
+	rts
+.run1:	move.l	(a2)+,d1
+	move.l	d1,d2
+	add.l	d2,d2
+	add.l	d0,d0
+	roxr.l	#1,d2
+	lsr.l	#1,d2
+	bcc.s	.e3
+	eor.l	d5,d2
+.e3:	move.l	(a1)+,d0
+	eor.l	d0,d2
+	move.l	d2,(a0)+
+	move.l	d1,d0
 	rts
 .tw:	move.l	d1,d2			; d2 = twist(d0, d1)
 	add.l	d2,d2
 	add.l	d0,d0
 	roxr.l	#1,d2
 	lsr.l	#1,d2
-	lsr.b	#1,d1
 	bcc.s	.t0
 	eor.l	d5,d2
 .t0:	rts

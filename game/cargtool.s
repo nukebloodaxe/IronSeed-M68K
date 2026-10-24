@@ -1528,7 +1528,7 @@ ct2_mainloop:
 .i:	bsr	ct2_displayinfo
 .dl:	move.w	GS_TSLICE(a6),d0	; delay(tslice*FADE_TSLICE_MUL_CARGTOOL)
 	mulu	#FADE_MUL_CARGTOOL,d0
-	bsr	delay
+	bsr	delayp			; (paced: the frame's work counts)
 	tst.b	GS_DONE(a6)
 	beq.s	.l
 	rts

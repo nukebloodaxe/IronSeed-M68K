@@ -19,6 +19,8 @@ Every routine in `kernel/` and in the screen modules follows these rules. A rout
 - `bsr`/`jsr` and `rts`. Arguments in registers, documented in the routine header in this form:
   `; in: d0.w = colour, a0 = string  out: d0.l = width  trashes: d1-d2/a0-a1`
 - Integer arguments in d0, d1, d2 (then d3+ only when unavoidable, documented); pointers in a0, a1 (then a2).
+- **GEMDOS/BIOS/XBIOS traps trash d0-d2/a0-a2** like any call (d0 = the result). Hatari's and Steem's emulated drives keep them, so the tests never see a register kept across a trap - real TOS on a real disk may not: keep values in d3-d7/a3-a5 or memory (Phase 6g: IS.PRG's Pexec tail, sys_init's return address).
+- `tools/reglint.sh` checks all of this across calls and traps (in run_tests.sh; zero reports expected). Header comments `out: d0.w = ...` (or `out: -`) tell it a routine's results; without one it takes the registers most call sites use.
 - Results: integer in **d0**, pointer in **a0**. Flags: when a routine can fail it returns with **carry set** on failure and `d0` = negative TOS error code, carry clear on success.
 - Sizes: `.w` for the original's `integer`/`word` (16-bit), `.l` for `longint`, `.b` for `byte`/`boolean`/`char`. Booleans are bytes, 0 = false, $FF or 1 = true (test with `tst.b`).
 

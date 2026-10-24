@@ -1862,7 +1862,7 @@ cr_mainloop:
 .dc:	bsr	cr_displaycargo
 .dl:	move.w	GS_TSLICE(a6),d0	; delay(tslice*FADE_TSLICE_MUL_CARGCREAT)
 	mulu	#FADE_MUL_CARGCREAT,d0
-	bsr	delay
+	bsr	delayp			; (paced: the frame's work counts)
 	tst.b	GS_DONE(a6)
 	beq	.l
 	rts

@@ -1,0 +1,45 @@
+vtime
+args /playseed 3
+# m50: the Ship Logs panel (cube Z, V: usecode.pas readylogs, display.pas displaylogs) down its
+# levels by the arrow keys - systems, system info, planets (a planet picked with down), planet
+# info (genericplanetinfo: 'Cache = n/7' printed a wrong digit until Phase 6g, found by
+# tools/reglint.py - no session had opened this panel), back up with left; quit
+wait 3000
+key #27
+wait 2000
+key z
+wait 2500
+key v
+wait 1500
+shot L1
+key #275
+wait 1500
+shot L2
+key #275
+wait 1500
+shot L3
+key #274
+wait 1000
+shot L4
+key #275
+wait 1500
+shot L5
+key #276
+wait 1000
+key #274
+wait 1000
+key #275
+wait 1500
+shot L6
+key #276
+wait 1000
+key #276
+wait 1000
+key #276
+wait 1500
+shot L7
+key #291
+wait 1500
+key y
+wait 3000
+quit

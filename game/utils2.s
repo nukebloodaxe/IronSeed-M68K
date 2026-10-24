@@ -12,6 +12,7 @@
 ; (all trash d0-d2/a0-a2)
 
 LAND_W		equ	120		; landform^[x 1..240, y 1..120]: (x-1)*120 + (y-1)
+U2_SPHW		equ	10600		; words of the largest radius's rows (3025: 10570)
 
 	section	text
 reloadbackground:
@@ -272,11 +273,23 @@ sphere_setup:
 	subq.w	#6,d1
 	lea	GS_PM+5*2(a6),a1	; pm[6..]
 	lea	SPH_ROWS(a0),a0
+	lea	u2_sphw,a2		; and the rows as words for u2_sphere_rows
 .r:	move.w	(a0),(a1)+
-	move.w	2(a0),d2
-	addq.w	#4+1,d2
-	and.w	#$fffe,d2
-	add.w	d2,a0
+	move.w	(a0)+,(a2)+		; pm
+	move.w	(a0)+,d2		; n
+	move.w	d2,(a2)+
+	move.w	d2,d0			; the next row: after n bytes, even
+	addq.w	#1,d0
+	and.w	#$fffe,d0
+	pea	0(a0,d0.w)
+	subq.w	#1,d2
+	bmi.s	.e
+.w:	moveq	#0,d0			; index * 2
+	move.b	(a0)+,d0
+	add.w	d0,d0
+	move.w	d0,(a2)+
+	dbf	d2,.w
+.e:	move.l	(sp)+,a0
 	dbf	d1,.r
 	rts
 
@@ -338,6 +351,7 @@ readyplanet:
 	bsr	u2_approach_text
 	clr.w	u2_index
 	clr.w	u2_i
+	PMARK	20			; (PROFILE builds: the three walks' time, tools/dbgtimes.py)
 	move.w	#200,d0
 	moveq	#90,d1
 	bsr	createplanet
@@ -347,6 +361,10 @@ readyplanet:
 	moveq	#120,d0
 	moveq	#60,d1
 	bsr	createplanet
+	PMARK	21
+	ifd	LANDDUMP
+	bsr	u2_landdump
+	endif
 	bsr	u2_unapproach
 	move.w	#50,GS_WATER(a6)	; water, waterindex, spcindex by state/mode
 	moveq	#0,d0
@@ -565,16 +583,78 @@ u2_unapproach:
 	bra	ms_unsnap
 
 
-; U2_R3 minus,zero,plus: random(3) on the next generator number (a5 into mt_state, a3 its
-; end), branching to one of the three labels. Only the top word of the tempered number is
-; needed (it is y3's: y3 >> 18 stays below it), unless it equals a threshold's ($5555, $AAAA):
-; then u2_lo tempers the low word too. Trashes d0-d2/a0.
-U2_R3	macro
+; ---------------------------------------------------------------
+; The walks of createplanet/createstar (Phase 6g): random(3) = (u32*3) >> 32 is decided by the
+; top byte of the tempered generator number - below $55: 0, $56-$A9: 1, above $AA: 2 - except
+; when it is $55 or $AA (1 in 128): then u2_tie tempers fully. Tempering is linear over GF(2),
+; so the top byte = u2_tha[high word of the state word] ^ u2_tla[low word] (2 x 64 KB, built
+; once by u2_tinit from 16 basis bytes each). A walk only counts visits per cell (u2_cmap, the
+; landform's layout; at most 63 visits for a planet walk, 95 for a star's three, over every seed
+; random(64000) gives: no byte wraps), then u2_apply adds them to the landform in one pass with
+; the original's rule (+7 while below 240, or +1 while below c) - the order of the increments
+; does not matter. readyplanet's three createplanet walks are one walk (same seed) translated on
+; the 240x120 torus: the 2nd and 3rd apply the same map shifted.
+
+; U2_T3 minus,zero,plus: random(3) on the next generator number; a5 into mt_state, a3 its end,
+; a2 = u2_tha, a1 = u2_tla, d1/d2 with clear high words (u2_update/u2_tie keep it so).
+; U2_F3: the same without the end check (the caller knows a number is left). Trashes d0-d2/a0.
+U2_T3	macro
 	cmp.l	a3,a5
 	blo.s	.a\@
+	bsr	u2_update
+.a\@:	U2_F3	\1,\2,\3
+	endm
+U2_F3	macro
+	move.w	(a5)+,d1
+	move.w	(a5)+,d2
+	move.b	0(a2,d1.l),d0
+	move.b	0(a1,d2.l),d1
+	eor.b	d1,d0
+	cmp.b	#$55,d0
+	blo	\1
+	beq.s	.t\@
+	cmp.b	#$aa,d0
+	blo	\2
+	bne	\3
+.t\@:	bsr	u2_tie
+	subq.w	#1,d0
+	bmi	\1
+	beq	\2
+	bra	\3
+	endm
+; one step of the walk (U2_T3 or U2_F3 as \1): d6 = x * 120, d7 = y, a4 = the map - 121
+U2_STEP	macro
+	\1	.xm\@,.x0\@,.xp\@		; x1 := x1 - 1 + random(3), wrapped
+.xm\@:	sub.w	#LAND_W,d6
+	bne.s	.x0\@
+	move.w	#240*LAND_W,d6
+	bra.s	.x0\@
+.xp\@:	add.w	#LAND_W,d6
+	cmp.w	#240*LAND_W,d6
+	bls.s	.x0\@
+	moveq	#LAND_W,d6
+.x0\@:	\1	.ym\@,.y0\@,.yp\@		; y1 := y1 - 1 + random(3), wrapped
+.ym\@:	subq.w	#1,d7
+	bne.s	.y0\@
+	moveq	#120,d7
+	bra.s	.y0\@
+.yp\@:	addq.w	#1,d7
+	cmp.w	#120,d7
+	bls.s	.y0\@
+	moveq	#1,d7
+.y0\@:	lea	0(a4,d6.w),a0		; a visit of [x1,y1]
+	addq.b	#1,0(a0,d7.w)
+	endm
+
+u2_update:
 	bsr	mt_update
 	lea	mt_state,a5
-.a\@:	move.l	(a5)+,d0
+	moveq	#0,d1
+	moveq	#0,d2
+	rts
+
+; d0.w = random(3) of the generator number before a5 (tempered in full)  d1/d2 cleared
+u2_tie:	move.l	-4(a5),d0
 	move.l	d0,d1			; y ^= y >> 11
 	moveq	#11,d2
 	lsr.l	d2,d1
@@ -583,39 +663,71 @@ U2_R3	macro
 	lsl.l	#7,d1
 	and.l	#$9D2C5680,d1
 	eor.l	d1,d0
-	move.l	d0,d2			; (y2)
-	move.l	d0,d1			; top word of y ^= (y << 15) & $EFC60000
-	lsr.l	#1,d1
-	and.w	#$EFC6,d1
-	swap	d0
-	eor.w	d1,d0
-	cmp.w	#$5555,d0
-	blo	\1
-	beq.s	.s\@
-	cmp.w	#$aaaa,d0
-	blo	\2
-	bne	\3
-	bsr	u2_lo
-	cmp.w	#$aaab,d0
-	blo	\2
-	bra	\3
-.s\@:	bsr	u2_lo
-	cmp.w	#$5556,d0
-	blo	\1
-	bra	\2
-	endm
-
-; the low word of the tempered number from y2 (d2) in d0.w  trashes d1
-u2_lo:	move.l	d2,d0
-	move.l	d0,d1
-	lsl.l	#8,d1
-	lsl.l	#7,d1
+	move.l	d0,d1			; y ^= (y << 15) & $EFC60000
+	moveq	#15,d2
+	lsl.l	d2,d1
 	and.l	#$EFC60000,d1
 	eor.l	d1,d0
-	move.l	d0,d1
-	swap	d1
-	lsr.w	#2,d1
-	eor.w	d1,d0
+	move.l	d0,d1			; y ^= y >> 18
+	moveq	#18,d2
+	lsr.l	d2,d1
+	eor.l	d1,d0
+	moveq	#0,d1
+	moveq	#0,d2
+	cmp.l	#$55555556,d0
+	blo.s	.0
+	cmp.l	#$aaaaaaab,d0
+	blo.s	.1
+	moveq	#2,d0
+	rts
+.1:	moveq	#1,d0
+	rts
+.0:	moveq	#0,d0
+	rts
+
+; build the two tempering tables once (~0.2 s)
+u2_tinit:
+	tst.b	u2_tok
+	bne.s	.x
+	movem.l	d3/a3,-(sp)
+	lea	u2_tha,a0
+	lea	u2_bhi,a1
+	bsr.s	.build
+	lea	u2_tla,a0
+	lea	u2_blo,a1
+	bsr.s	.build
+	st	u2_tok
+	movem.l	(sp)+,d3/a3
+.x:	rts
+; a0 = table (65536 bytes), a1 = its 16 basis bytes (bit 0 first): t[2^k + j] = t[j] ^ basis[k]
+.build:	clr.b	(a0)
+	move.b	(a1)+,1(a0)		; bit 0
+	move.b	(a1),d0			; bit 1
+	move.b	d0,2(a0)
+	move.b	1(a0),d1
+	eor.b	d1,d0
+	move.b	d0,3(a0)
+	addq.l	#1,a1
+	moveq	#4,d1			; entries so far
+	moveq	#16-2-1,d2
+.k:	moveq	#0,d0			; the basis byte in all four bytes of a long
+	move.b	(a1)+,d0
+	move.w	d0,d3
+	lsl.w	#8,d3
+	or.w	d3,d0
+	move.w	d0,d3
+	swap	d0
+	move.w	d3,d0
+	move.l	a0,a3			; entries 0..d1-1 -> d1..2*d1-1
+	lea	0(a0,d1.l),a2
+	move.l	d1,d3
+	lsr.l	#2,d3
+	subq.w	#1,d3
+.c:	move.l	(a3)+,(a2)
+	eor.l	d0,(a2)+
+	dbf	d3,.c
+	add.l	d1,d1
+	dbf	d2,.k
 	rts
 
 ; the next run of steps before the countdown: d5 := min(left, 1125 - i) - 1 (dbf); left and
@@ -642,129 +754,311 @@ u2_chunkend:
 .n:	tst.l	u2_left
 	rts
 
-; createplanet(xc d0, yc d1): 75000 steps of a random walk raising the land (+7 below 240),
-; the countdown every 1125 steps; then the technology spots. A walk depends on the seed only:
-; the steps are kept (u2_walk: bit 0/1 x-1/x+1, bit 2/3 y-1/y+1) with the generator after
-; them, and a walk of the same seed (readyplanet's 3 calls, a planet seen again) replays them.
-createplanet:
-	ifd	PROFILE
-	bsr	tim_ms
-	bsr	scr_dbg
-	endif
+; u2_walkc(x d0, y d1): 75000 steps from (x, y) on the generator as it stands (lazy seeding
+; done first), each visit counted in u2_cmap (not cleared here), the countdown every 1125 steps
+; of utils2's i; mt_index follows the numbers used.
+u2_walkc:
 	movem.l	d3-d7/a3-a5,-(sp)
 	mulu	#LAND_W,d0
-	move.w	d0,d6			; x1 * 120
-	move.w	d1,d7			; y1
-	move.l	GS_LANDFORM(a6),a4
-	lea	-LAND_W-1(a4),a4	; [x,y] = a4 + x*120 + y
-	lea	u2_walk,a1
-	move.l	a3,-(sp)
+	move.w	d0,d6			; x * 120
+	move.w	d1,d7			; y
 	move.l	#75000,u2_left
+	moveq	#0,d0			; FPC's lazy re-seeding, as the first random() would
+	bsr	mt_skip
+	bsr	u2_tinit
+	lea	u2_cmap-LAND_W-1,a4	; [x,y] = a4 + x*120 + y
+	lea	u2_tha,a2
+	lea	u2_tla,a1
+	lea	mt_state,a5
+	move.w	mt_index,d0
+	lsl.w	#2,d0
+	add.w	d0,a5
+	lea	mt_state+MT_N*4,a3
+	moveq	#0,d1
+	moveq	#0,d2
+.chunk:	bsr	u2_chunk		; d5 = the chunk's steps - 1
+	addq.w	#1,d5			; steps left in the chunk
+.more:	move.l	a3,d0			; steps the generator's block still has both numbers for
+	sub.l	a5,d0
+	lsr.l	#3,d0
+	beq	.edge
+	cmp.w	d5,d0
+	bls.s	.n
+	move.w	d5,d0
+.n:	sub.w	d0,d5
+	move.w	d0,d4
+	subq.w	#1,d4
+.fast:	U2_STEP	U2_F3
+	dbf	d4,.fast
+	bra	.cend
+.edge:	U2_STEP	U2_T3			; (a step that crosses the block's end)
+	subq.w	#1,d5
+.cend:	tst.w	d5
+	bne	.more
+	movem.l	d1-d2/a1-a2,-(sp)	; (the countdown prints)
+	bsr	u2_chunkend
+	movem.l	(sp)+,d1-d2/a1-a2
+	bne	.chunk
+	move.l	a5,d0			; mt_index
+	sub.l	#mt_state,d0
+	lsr.w	#2,d0
+	move.w	d0,mt_index
+	movem.l	(sp)+,d3-d7/a3-a5
+	rts
+
+	ifd	LANDDUMP
+; debug (ASMDEFS=-DLANDDUMP=1): the landform with its margin and the generator to C:\LANDn.BIN
+u2_landdump:
+	movem.l	d0-d2/a0-a2,-(sp)
+	move.w	u2_ldn,d0
+	addq.w	#1,u2_ldn
+	add.b	#'A',d0
+	move.b	d0,u2_ldname+7
+	move.l	GS_LANDFORM(a6),a0	; landform copy + mt_state + index after it
+	lea	-128(a0),a0
+	lea	u2_ldbuf,a1
+	move.w	#(128+28800)/4-1,d0
+.c:	move.l	(a0)+,(a1)+
+	dbf	d0,.c
+	lea	mt_state,a0
+	move.w	#MT_N-1,d0
+.m:	move.l	(a0)+,(a1)+
+	dbf	d0,.m
+	move.w	mt_index,(a1)+
+	move.l	mt_rs,(a1)+
+	move.l	mt_old,(a1)+
+	lea	u2_ldname,a0
+	lea	u2_ldbuf,a1
+	move.l	#128+28800+MT_N*4+10,d0
+	bsr	fil_save
+	movem.l	(sp)+,d0-d2/a0-a2
+	rts
+	section	data
+u2_ldname:	dc.b	"C:",92,"LANDA.BIN",0
+	even
+	section	bss
+u2_ldn:		ds.w	1
+u2_ldbuf:	ds.b	128+28800+MT_N*4+16
+	section	text
+	endif
+
+; The stars' cache (Phase 6g): readystar's three walks (16 s) depend only on the star's seed and
+; mode, so the landform and the generator after them are kept for the last U2_SN stars.
+U2_SN		equ	4
+U2_SREC		equ	28800+MT_N*4+2+4+4	; landform, mt_state, mt_index, randseed, oldseed
+; u2_sfind(key d0.l) -> a0 = the entry, Z clear if found  trashes d1
+u2_sfind:
+	lea	u2_skey,a0
+	moveq	#0,d1
+.f:	cmp.l	(a0)+,d0
+	beq.s	.y
+	addq.w	#1,d1
+	cmp.w	#U2_SN,d1
+	bne.s	.f
+	moveq	#0,d1			; Z set: not found
+	rts
+.y:	mulu	#U2_SREC,d1
+	lea	u2_sdata,a0
+	add.l	d1,a0
+	moveq	#1,d1			; Z clear
+	rts
+; u2_sload(a0 = entry): landform, generator; the countdown as after the 225000 steps
+u2_sload:
+	move.l	GS_LANDFORM(a6),a1
+	move.w	#28800/4-1,d0
+.l:	move.l	(a0)+,(a1)+
+	dbf	d0,.l
+	lea	mt_state,a1
+	move.w	#MT_N-1,d0
+.m:	move.l	(a0)+,(a1)+
+	dbf	d0,.m
+	move.w	(a0)+,mt_index
+	move.l	(a0)+,mt_rs
+	move.l	(a0)+,mt_old
+	add.w	#200,u2_index
+	bra	u2_count
+; u2_sstore(key d0.l): the landform and generator into the next slot (round robin)
+u2_sstore:
+	move.w	u2_snext,d1
+	lea	u2_skey,a0
+	move.w	d1,d2
+	add.w	d2,d2
+	add.w	d2,d2
+	move.l	d0,0(a0,d2.w)
+	addq.w	#1,u2_snext
+	cmp.w	#U2_SN,u2_snext
+	bne.s	.s
+	clr.w	u2_snext
+.s:	mulu	#U2_SREC,d1
+	lea	u2_sdata,a1
+	add.l	d1,a1
+	move.l	GS_LANDFORM(a6),a0
+	move.w	#28800/4-1,d0
+.l:	move.l	(a0)+,(a1)+
+	dbf	d0,.l
+	lea	mt_state,a0
+	move.w	#MT_N-1,d0
+.m:	move.l	(a0)+,(a1)+
+	dbf	d0,.m
+	move.w	mt_index,(a1)+
+	move.l	mt_rs,(a1)+
+	move.l	mt_old,(a1)+
+	rts
+
+u2_cclear:				; u2_cmap := 0
+	lea	u2_cmap,a0
+	move.w	#28800/4-1,d0
+.c:	clr.l	(a0)+
+	dbf	d0,.c
+	rts
+
+; u2_apply(dx d0, dy d1, c d2): landform[x,y] gets the visits of u2_cmap[x-dx, y-dy] (on the
+; torus): c = 0: +7 per visit while below 240 (createplanet), else +1 while below c (createstar)
+u2_apply:
+	movem.l	d3-d7/a3-a5,-(sp)
+	ext.l	d0			; dx, dy into 0..239 / 0..119
+	divs	#240,d0
+	swap	d0
+	tst.w	d0
+	bpl.s	.dx
+	add.w	#240,d0
+.dx:	ext.l	d1
+	divs	#120,d1
+	swap	d1
+	tst.w	d1
+	bpl.s	.dy
+	add.w	#120,d1
+.dy:	move.w	d1,d7			; dy
+	move.w	d2,d4			; c
+	move.l	GS_LANDFORM(a6),a3	; destination column 0
+	lea	u2_need,a5
+	moveq	#0,d6			; destination column
+	move.w	d0,d5			; dx
+.col:	move.w	d6,d0			; source column (x - dx) mod 240
+	sub.w	d5,d0
+	bpl.s	.sc
+	add.w	#240,d0
+.sc:	mulu	#LAND_W,d0
+	lea	u2_cmap,a4
+	add.l	d0,a4
+	move.l	a3,a1			; rows dy..119 <- source rows 0..119-dy
+	add.w	d7,a1
+	move.l	a4,a0
+	move.w	#LAND_W-1,d3
+	sub.w	d7,d3
+	bsr.s	.run
+	tst.w	d7			; rows 0..dy-1 <- source rows 120-dy..119
+	beq.s	.nc
+	move.l	a3,a1
+	lea	LAND_W(a4),a0
+	sub.w	d7,a0
+	move.w	d7,d3
+	subq.w	#1,d3
+	bsr.s	.run
+.nc:	lea	LAND_W(a3),a3
+	addq.w	#1,d6
+	cmp.w	#240,d6
+	bne.s	.col
+	movem.l	(sp)+,d3-d7/a3-a5
+	rts
+; d3+1 cells: a0 = counts, a1 = landform
+.run:	moveq	#0,d1
+.b:	move.b	(a0)+,d0
+	bne.s	.hit
+	addq.l	#1,a1
+	dbf	d3,.b
+	rts
+.hit:	move.b	(a1),d1
+	tst.w	d4
+	bne.s	.st
+	move.b	0(a5,d1.w),d2		; steps below 240: min(visits, need)
+	cmp.b	d2,d0
+	bls.s	.k
+	move.b	d2,d0
+.k:	and.w	#$ff,d0
+	move.w	d0,d2			; + 7 * k
+	lsl.w	#3,d2
+	sub.w	d0,d2
+	add.b	d2,d1
+	move.b	d1,(a1)+
+	dbf	d3,.b
+	rts
+.st:	cmp.w	d4,d1			; +1 per visit while below c: min(c, v + n) when v < c
+	bhs.s	.sn
+	and.w	#$ff,d0
+	add.w	d0,d1
+	cmp.w	d4,d1
+	bls.s	.sv
+	move.w	d4,d1
+.sv:	move.b	d1,(a1)
+.sn:	addq.l	#1,a1
+	dbf	d3,.b
+	rts
+
+; createplanet(xc d0, yc d1) - a3 = tempplan^[curplan]: 75000 steps of a random walk raising
+; the land (+7 below 240), the countdown every 1125 steps; then the technology spots. The walk
+; depends on the seed only: its visit map is kept with the generator after it, and a walk of
+; the same seed (readyplanet's 2nd and 3rd calls, the planet seen again) applies the map shifted
+; to its start and restores the generator.
+createplanet:
+	movem.l	d3-d7/a3-a5,-(sp)
+	move.w	d0,d6			; xc
+	move.w	d1,d7			; yc
 	moveq	#0,d0
 	move.w	PLANET_SEED(a3),d0
 	cmp.l	u2_wseed,d0
 	beq	.replay
 	moveq	#-1,d1
 	move.l	d1,u2_wseed
+	move.l	a3,-(sp)
 	bsr	mt_seed			; randseed := seed
-	lea	mt_state,a5		; the generator inline (mt_u32)
-	move.w	mt_index,d0
-	lsl.w	#2,d0
-	add.w	d0,a5
-	lea	mt_state+MT_N*4,a3
-.wchunk:
-	bsr	u2_chunk
-.step:	U2_R3	.xm,.x0,.xp		; x1 := x1 - 1 + random(3), wrapped
-.xm:	sub.w	#LAND_W,d6
-	bne.s	.xm1
-	move.w	#240*LAND_W,d6
-.xm1:	move.b	#1,(a1)
-	bra.s	.y
-.x0:	clr.b	(a1)
-	bra.s	.y
-.xp:	add.w	#LAND_W,d6
-	cmp.w	#240*LAND_W,d6
-	bls.s	.xp1
-	moveq	#LAND_W,d6
-.xp1:	move.b	#2,(a1)
-.y:	U2_R3	.ym,.y0,.yp		; y1 := y1 - 1 + random(3), wrapped
-.ym:	subq.w	#1,d7
-	bne.s	.ym1
-	moveq	#120,d7
-.ym1:	addq.b	#4,(a1)+
-	bra.s	.r
-.y0:	addq.l	#1,a1
-	bra.s	.r
-.yp:	addq.w	#1,d7
-	cmp.w	#120,d7
-	bls.s	.yp1
-	moveq	#1,d7
-.yp1:	addq.b	#8,(a1)+
-.r:	lea	0(a4,d6.w),a0		; landform^[x1,y1]
-	cmp.b	#240,0(a0,d7.w)
-	bhs.s	.n
-	addq.b	#7,0(a0,d7.w)
-.n:	dbf	d5,.step
-	bsr	u2_chunkend
-	bne	.wchunk
-	move.l	a5,d0			; mt_index; keep the state after the walk
-	sub.l	#mt_state,d0
-	lsr.w	#2,d0
-	move.w	d0,mt_index
-	lea	mt_state,a0
+	bsr	u2_cclear
+	move.w	d6,d0
+	move.w	d7,d1
+	bsr	u2_walkc
+	lea	mt_state,a0		; keep the generator after the walk
 	lea	u2_wstate,a1
 	move.w	#MT_N/2-1,d0
 .sv:	move.l	(a0)+,(a1)+
 	move.l	(a0)+,(a1)+
 	dbf	d0,.sv
 	move.w	mt_index,u2_wsidx
+	move.w	d6,u2_cx
+	move.w	d7,u2_cy
 	move.l	(sp)+,a3
 	moveq	#0,d0
 	move.w	PLANET_SEED(a3),d0
 	move.l	d0,u2_wseed
-	bra	.tech
-.replay:
-	bsr	u2_chunk
-.rs:	move.b	(a1)+,d0
-	btst	#0,d0
-	bne.s	.rxm
-	btst	#1,d0
-	beq.s	.ry
-	add.w	#LAND_W,d6
-	cmp.w	#240*LAND_W,d6
-	bls.s	.ry
-	moveq	#LAND_W,d6
-	bra.s	.ry
-.rxm:	sub.w	#LAND_W,d6
-	bne.s	.ry
-	move.w	#240*LAND_W,d6
-.ry:	btst	#2,d0
-	bne.s	.rym
-	btst	#3,d0
-	beq.s	.rr
-	addq.w	#1,d7
-	cmp.w	#120,d7
-	bls.s	.rr
-	moveq	#1,d7
-	bra.s	.rr
-.rym:	subq.w	#1,d7
-	bne.s	.rr
-	moveq	#120,d7
-.rr:	lea	0(a4,d6.w),a0
-	cmp.b	#240,0(a0,d7.w)
-	bhs.s	.rn
-	addq.b	#7,0(a0,d7.w)
-.rn:	dbf	d5,.rs
-	bsr	u2_chunkend
-	bne	.replay
-	lea	u2_wstate,a0
+	bra.s	.apply
+.replay:				; the countdown as the 75000 steps would have run it
+	moveq	#0,d0
+	move.w	u2_i,d0
+	add.l	#75000,d0
+	divu	#1125,d0
+	add.w	d0,u2_index
+	swap	d0
+	move.w	d0,u2_i
+	bsr	u2_count
+	lea	u2_wstate,a0		; the generator as after the walk
 	lea	mt_state,a1
 	move.w	#MT_N/2-1,d0
 .rst:	move.l	(a0)+,(a1)+
 	move.l	(a0)+,(a1)+
 	dbf	d0,.rst
 	move.w	u2_wsidx,mt_index
-	move.l	(sp)+,a3
+	moveq	#0,d0			; randseed and oldseed as the seeding left them: not seed
+	move.w	PLANET_SEED(a3),d0
+	not.l	d0
+	move.l	d0,mt_rs
+	move.l	d0,mt_old
+.apply:	move.w	d6,d0			; the map from its walk's start to this one's
+	sub.w	u2_cx,d0
+	move.w	d7,d1
+	sub.w	u2_cy,d1
+	moveq	#0,d2
+	bsr	u2_apply
+	move.l	GS_LANDFORM(a6),a4
+	lea	-LAND_W-1(a4),a4	; [x,y] = a4 + x*120 + y
 .tech:
 	move.w	GS_CURPLAN(a6),d0	; tl := GetTechnologyLevel(curplan)
 	bsr	gettechnologylevel
@@ -850,7 +1144,17 @@ readystar:
 	bsr	u2_approach_text
 	clr.w	u2_index
 	clr.w	u2_i
-	move.w	d3,d0
+	PMARK	22
+	moveq	#0,d4			; the cache key: seed | mode << 16 (the walks depend on them only:
+	move.b	PLANET_MODE(a3),d4	; the generator was seeded just above)
+	swap	d4
+	move.w	PLANET_SEED(a3),d4
+	move.l	d4,d0
+	bsr	u2_sfind
+	beq.s	.walk
+	bsr	u2_sload		; a star seen before: its landform and generator, the countdown at 0
+	bra.s	.walked
+.walk:	move.w	d3,d0
 	move.w	#200,d1
 	moveq	#90,d2
 	bsr	createstar
@@ -862,6 +1166,13 @@ readystar:
 	moveq	#120,d1
 	moveq	#60,d2
 	bsr	createstar
+	move.l	d4,d0
+	bsr	u2_sstore
+.walked:
+	PMARK	23
+	ifd	LANDDUMP
+	bsr	u2_landdump
+	endif
 	bsr	orc_dump		; loadscreen(current): an oracle dump point
 	bsr	u2_unapproach		; (loadscreen(current): the same screen)
 	bsr	showtime
@@ -881,66 +1192,22 @@ readystar:
 .rad:	dc.w	2000,3025,900
 .col:	dc.w	120,83,16
 
-; createstar(c d0, xc d1, yc d2): like createplanet, +1 below c, no technology spots
+; createstar(c d0, xc d1, yc d2): like createplanet, +1 below c, no technology spots; the walks
+; go on with the generator (readystar seeds once for its three)
 createstar:
-	movem.l	d3-d7/a3-a5,-(sp)
-	move.w	d0,d5			; c
+	movem.l	d3/d6-d7,-(sp)
+	move.w	d0,d3
 	move.w	d1,d6
 	move.w	d2,d7
-	move.l	GS_LANDFORM(a6),a4
-	lea	-LAND_W-1(a4),a4
-	move.l	#75000,d2
-	move.l	d2,u2_cnt
-	move.l	#$55555556,d3
-	move.l	#$aaaaaaab,d4
-.step:	bsr	mt_u32
-	cmp.l	d3,d0
-	blo.s	.xm
-	cmp.l	d4,d0
-	blo.s	.x0
-	addq.w	#1,d6
-	bra.s	.x0
-.xm:	subq.w	#1,d6
-.x0:	bsr	mt_u32
-	cmp.l	d3,d0
-	blo.s	.ym
-	cmp.l	d4,d0
-	blo.s	.y0
-	addq.w	#1,d7
-	bra.s	.y0
-.ym:	subq.w	#1,d7
-.y0:	cmp.w	#240,d6
-	ble.s	.w1
-	moveq	#1,d6
-	bra.s	.w2
-.w1:	cmp.w	#1,d6
-	bge.s	.w2
-	move.w	#240,d6
-.w2:	cmp.w	#120,d7
-	ble.s	.w3
-	moveq	#1,d7
-	bra.s	.w4
-.w3:	cmp.w	#1,d7
-	bge.s	.w4
-	moveq	#120,d7
-.w4:	move.w	d6,d0
-	mulu	#LAND_W,d0
-	add.w	d7,d0
-	lea	0(a4,d0.l),a0
+	bsr	u2_cclear
+	move.w	d6,d0
+	move.w	d7,d1
+	bsr	u2_walkc
 	moveq	#0,d0
-	move.b	(a0),d0
-	cmp.w	d5,d0
-	bge.s	.hi
-	addq.b	#1,(a0)
-.hi:	addq.w	#1,u2_i			; (createstar counts in utils2's i)
-	cmp.w	#1125,u2_i
-	bne.s	.nx
-	clr.w	u2_i
-	addq.w	#1,u2_index
-	bsr	u2_count
-.nx:	subq.l	#1,u2_cnt
-	bne	.step
-	movem.l	(sp)+,d3-d7/a3-a5
+	moveq	#0,d1
+	move.w	d3,d2
+	bsr	u2_apply
+	movem.l	(sp)+,d3/d6-d7
 	rts
 
 ; ---------------------------------------------------------------
@@ -962,14 +1229,13 @@ u2_sphere_rows:
 	movem.l	d3-d7/a3-a5,-(sp)
 	move.w	d0,d6			; i
 	move.w	d1,u2_last
-	move.l	u2_sph,a1		; the radius's rows: skip to row d0
-	lea	SPH_ROWS(a1),a1
+	lea	u2_sphw,a1		; the radius's rows (words: pm, n, n x index*2): skip to row d0
 	move.w	d0,d1
 	subq.w	#6,d1
 	bra.s	.sk
 .skl:	move.w	2(a1),d2
-	addq.w	#4+1,d2
-	and.w	#$fffe,d2
+	addq.w	#2,d2
+	add.w	d2,d2
 	add.w	d2,a1
 .sk:	dbf	d1,.skl
 	move.l	a1,u2_rowp
@@ -988,7 +1254,8 @@ u2_sphere_rows:
 	cmp.w	#128,d0
 	bne.s	.co
 	lea	u2_colofs,a5
-	lea	u2_rowtab,a3
+	lea	u2_altw,a3
+	lea	u2_tab,a0
 .row:	cmp.w	u2_last,d6
 	bgt	.x
 	move.w	d6,d0			; ii := 60*i div spherei
@@ -1007,35 +1274,25 @@ u2_sphere_rows:
 	add.w	GS_OFFSET(a6),d0
 	add.w	d0,a2
 	move.w	(a1)+,d7		; n
-	move.w	d7,d0
-	addq.w	#1,d0
-	and.w	#$fffe,d0
-	lea	0(a1,d0.w),a0
-	move.l	a0,u2_rowp		; next row
+	move.w	d7,d2
+	add.w	d2,d2
+	move.l	a1,d0
+	add.l	d2,d0
+	move.l	d0,u2_rowp		; next row
 	subq.w	#1,d7
 	bmi.s	.nr
-	moveq	#0,d3			; the first pixel (j = 1) may light differently
-	move.b	(a1)+,d3
-	add.w	d3,d3
+	move.w	(a1)+,d3		; the first pixel (j = 1) may light differently
 	move.w	0(a5,d3.w),d0
-	moveq	#0,d1
-	move.b	0(a4,d0.w),d1
-	move.l	u2_first,d0
-	bne.s	.f1
-	add.w	d3,d3
-	move.l	0(a3,d3.w),a0
-	bra.s	.f2
-.f1:	move.l	d0,a0
-.f2:	move.b	0(a0,d1.w),(a2)+
+	move.w	u2_first,d1
+	bpl.s	.f1
+	move.w	0(a3,d3.w),d1
+.f1:	move.b	0(a4,d0.w),d1
+	move.b	0(a0,d1.w),(a2)+
 	bra.s	.pn
-.px:	moveq	#0,d3			; the others: colour := rowtab[index][landform^[j2, ii]]
-	move.b	(a1)+,d3
-	add.w	d3,d3
+.px:	move.w	(a1)+,d3		; the others: colour := u2_tab[alt(index)][landform^[j2, ii]]
 	move.w	0(a5,d3.w),d0
-	moveq	#0,d1
+	move.w	0(a3,d3.w),d1
 	move.b	0(a4,d0.w),d1
-	add.w	d3,d3
-	move.l	0(a3,d3.w),a0
 	move.b	0(a0,d1.w),(a2)+
 .pn:	dbf	d7,.px
 .nr:	addq.w	#1,d6
@@ -1044,9 +1301,9 @@ u2_sphere_rows:
 	rts
 
 ; u2_shade: the colour tables of the planet in orbit (after colorlookup, water, spcindex, ecl):
-; u2_tab[a][v] for alt a = 0..31, land value v; u2_rowtab[index] -> the row of alt(index)
+; u2_tab[a][v] for alt a = 0..31, land value v; u2_altw[index] = alt(index) * 256
 ; (journey.pas: ecl > 170: (index-ecl+186) div 2; else index = xw: 10, (ecl-index) div 2;
-; at least 0; Pascal div truncates); u2_first -> the row of alt 10 when ecl > 170 (the first
+; at least 0; Pascal div truncates); u2_first = 10 * 256 when ecl > 170 (the first
 ; pixel of each row), else 0 (the column's own)
 u2_shade:
 	movem.l	d3-d6/a3,-(sp)
@@ -1096,7 +1353,7 @@ u2_shade:
 	addq.w	#1,d3
 	cmp.w	#32,d3
 	bne	.a
-	lea	u2_rowtab,a3		; per column index: the row of its alt
+	lea	u2_altw,a3		; per column index: its alt's row offset in u2_tab (alt * 256)
 	move.w	GS_ECL(a6),d5
 	moveq	#0,d4			; index
 .i:	cmp.w	#170,d5
@@ -1120,17 +1377,14 @@ u2_shade:
 	ble.s	.c
 	moveq	#31,d0
 .c:	lsl.w	#8,d0
-	lea	u2_tab,a0
-	add.w	d0,a0
-	move.l	a0,(a3)+
+	move.w	d0,(a3)+
 	addq.w	#1,d4
 	cmp.w	#128,d4
 	bne.s	.i
-	clr.l	u2_first
+	move.w	#-1,u2_first
 	cmp.w	#170,d5
 	ble.s	.x
-	lea	u2_tab+10*256,a0
-	move.l	a0,u2_first
+	move.w	#10*256,u2_first
 .x:	movem.l	(sp)+,d3-d6/a3
 	rts
 
@@ -1141,24 +1395,55 @@ makesphere3:
 	bsr	scr_dbg
 	endif
 	bsr	mousehide
-	moveq	#28,d0
+	movem.l	d3-d6/a3,-(sp)
+	moveq	#28,d0			; the shadow at (28, 13)
 	moveq	#13,d1
 	bsr	ms_addr
-	move.l	GS_PLANET(a6),a1	; (both even: long copies)
-	moveq	#120-1,d1
-.r:	moveq	#120/4-1,d0
-	move.l	a0,a2
-.c:	move.l	(a1)+,(a2)+
-	dbf	d0,.c
-	lea	MS_W(a0),a0
-	dbf	d1,.r
-	move.l	d3,-(sp)
-	moveq	#28,d0
-	moveq	#13,d1
-	move.w	#147,d2
-	move.w	#132,d3
+	move.l	GS_PLANET(a6),a1
+	moveq	#13,d5			; y
+	moveq	#120-1,d6
+; per row only the span that differs from the shadow is copied and marked (Phase 6g: the flush
+; then converts the turning surface, not the background corners or an unchanged night side)
+.r:	move.l	a0,a2
+	move.l	a1,a3
+	moveq	#30-1,d0
+.l:	cmpm.l	(a3)+,(a2)+		; the first differing long from the left
+	dbne	d0,.l
+	beq.s	.nx			; the row is unchanged
+	moveq	#29,d3
+	sub.w	d0,d3			; its index
+	lea	120(a0),a2		; the last differing long from the right
+	lea	120(a1),a3
+	moveq	#30-1,d4
+.rl:	move.l	-(a3),d1
+	cmp.l	-(a2),d1
+	dbne	d4,.rl
+	movem.l	a0-a1,-(sp)		; copy longs d3..d4
+	move.w	d3,d0
+	lsl.w	#2,d0
+	add.w	d0,a0
+	add.w	d0,a1
+	move.w	d4,d0
+	sub.w	d3,d0
+.cp:	move.l	(a1)+,(a0)+
+	dbf	d0,.cp
+	move.w	d3,d0			; ms_dirty(28 + 4*d3, y, 28 + 4*d4 + 3, y)
+	lsl.w	#2,d0
+	add.w	#28,d0
+	move.w	d4,d2
+	lsl.w	#2,d2
+	add.w	#28+3,d2
+	move.w	d5,d1
+	move.w	d3,-(sp)
+	move.w	d5,d3
 	bsr	ms_dirty
-	move.l	(sp)+,d3
+	move.w	(sp)+,d3
+	movem.l	(sp)+,a0-a1
+.nx:	lea	MS_W(a0),a0
+	lea	120(a1),a1
+	addq.w	#1,d5
+	dbf	d6,.r
+	movem.l	(sp)+,d3-d6/a3
 	bsr	mouseshow
 	addq.w	#1,GS_C(a6)
 	cmp.w	#240,GS_C(a6)
@@ -1235,7 +1520,28 @@ makestar:
 	bra	makesphere3
 
 	section	data
-u2_wseed:	dc.l	-1		; the seed of the walk in u2_walk (-1: none)
+u2_wseed:	dc.l	-1		; the seed of the walk in u2_cmap (-1: none)
+u2_skey:	dcb.l	U2_SN,-1	; the stars' cache: keys (-1: empty)
+u2_bhi:		dc.b	$88,$01,$20,$04,$09,$12,$04,$08,$81,$22,$44,$88,$11,$20,$44,$88
+u2_blo:		dc.b	$00,$00,$01,$02,$00,$08,$00,$20,$00,$01,$02,$04,$08,$01,$22,$40
+; (top byte of the tempered number of bit k alone, high word / low word; tools: see PLAN Phase 6g)
+u2_need:				; steps of +7 until 240: ceil((240 - v) / 7), 0 from 240
+	dc.b	35,35,34,34,34,34,34,34,34,33,33,33,33,33,33,33
+	dc.b	32,32,32,32,32,32,32,31,31,31,31,31,31,31,30,30
+	dc.b	30,30,30,30,30,29,29,29,29,29,29,29,28,28,28,28
+	dc.b	28,28,28,27,27,27,27,27,27,27,26,26,26,26,26,26
+	dc.b	26,25,25,25,25,25,25,25,24,24,24,24,24,24,24,23
+	dc.b	23,23,23,23,23,23,22,22,22,22,22,22,22,21,21,21
+	dc.b	21,21,21,21,20,20,20,20,20,20,20,19,19,19,19,19
+	dc.b	19,19,18,18,18,18,18,18,18,17,17,17,17,17,17,17
+	dc.b	16,16,16,16,16,16,16,15,15,15,15,15,15,15,14,14
+	dc.b	14,14,14,14,14,13,13,13,13,13,13,13,12,12,12,12
+	dc.b	12,12,12,11,11,11,11,11,11,11,10,10,10,10,10,10
+	dc.b	10,9,9,9,9,9,9,9,8,8,8,8,8,8,8,7
+	dc.b	7,7,7,7,7,7,6,6,6,6,6,6,6,5,5,5
+	dc.b	5,5,5,5,4,4,4,4,4,4,4,3,3,3,3,3
+	dc.b	3,3,2,2,2,2,2,2,2,1,1,1,1,1,1,1
+	dc.b	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 u2_main:	dc.b	"MAIN",0
 u2_cloud:	dc.b	"CLOUD",0
 u2_s_planet:	dc.b	21,"Approaching planet..."
@@ -1245,8 +1551,15 @@ u2_s_orbit:	dc.b	17,"Orbit achieved..."
 	even
 
 	section	bss
-u2_walk:	ds.b	75000
+u2_cmap:	ds.b	28800		; visits per landform cell of the last walk(s)
+u2_tha:		ds.b	65536		; top byte of the tempered number: high word's part
+u2_tla:		ds.b	65536		; ... low word's part
+u2_tok:		ds.b	1		; the tables are built
 	even
+u2_snext:	ds.w	1		; the stars' cache: the next slot to fill
+u2_sdata:	ds.b	U2_SN*U2_SREC
+u2_cx:		ds.w	1		; where u2_cmap's walk started
+u2_cy:		ds.w	1
 u2_dbl:		ds.b	640
 	even
 u2_wstate:	ds.l	MT_N		; the generator after the walk
@@ -1255,7 +1568,6 @@ u2_wsidx:	ds.w	1
 u2_left:	ds.l	1
 u2_sphere:	ds.l	1		; DATA\SPHERE.DAT
 u2_sph:		ds.l	1		; the current radius's record
-u2_cnt:		ds.l	1
 u2_index:	ds.w	1		; utils2's index (the countdown)
 u2_i:		ds.w	1
 u2_ii:		ds.w	1
@@ -1263,8 +1575,9 @@ u2_last:	ds.w	1
 u2_num:		ds.b	12
 	even
 u2_rowp:	ds.l	1
-u2_first:	ds.l	1
-u2_rowtab:	ds.l	128		; per column index: its row of u2_tab
+u2_first:	ds.w	1		; alt 10's row offset for each row's first pixel, or -1: its own
+u2_altw:	ds.w	128		; per column index: its alt's row offset in u2_tab (alt * 256)
+u2_sphw:	ds.w	U2_SPHW		; the radius's rows as words: pm, n, n x index * 2 (sphere_setup)
 u2_colofs:	ds.w	128		; per column index: the texture column's offset this frame
 u2_tab:		ds.b	32*256		; [alt 0-31][land value] -> colour
 

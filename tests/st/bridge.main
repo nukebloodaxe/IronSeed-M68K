@@ -1,0 +1,13 @@
+args /playseed 3
+# bridge (timing, real time, PROFILE build: makesphere3's tag-0 marks in DBG.BIN = planet steps):
+# the idle bridge for 20 s, then a fight - none here; quit
+# vbls 5000
+wait 3000
+key #27
+wait 20000
+shot B1
+key #291
+wait 1500
+key y
+wait 3000
+quit

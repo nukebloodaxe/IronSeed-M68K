@@ -27,6 +27,7 @@ endgame:
 	cmp.w	#4,d3
 	ble.s	.s
 	lea	eg_mod_love,a0		; playmod(false, LOVE.MOD)
+	moveq	#1,d0			; once (d0 was whatever eg_scene left - reglint)
 	bsr	playmod1
 	bsr	eg_scrollend5
 	move.w	#3000,d0		; wait(3)

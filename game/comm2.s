@@ -176,7 +176,7 @@ c2_mainloop:
 	bsr	ms_flush		; (mouseshow's flush)
 	move.w	GS_TSLICE(a6),d0	; delay(tslice*FADE_TSLICE_MUL_COMM2)
 	mulu	#6,d0
-	bsr	delay
+	bsr	delayp			; (paced: the frame's work counts)
 	tst.b	c2_done
 	beq.s	.l
 	rts

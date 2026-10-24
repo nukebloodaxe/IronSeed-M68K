@@ -243,7 +243,9 @@ ms_load:
 	bsr	fil_load
 	move.l	(sp)+,a0
 	bcs.s	.err
-	bsr	kbd_cursor_hide		; (the caller shows it again)
+	move.l	a0,-(sp)
+	bsr	kbd_cursor_hide		; (the caller shows it again; trashes a0 when the cursor
+	move.l	(sp)+,a0		; was drawn: pic_show read the screen - reglint)
 	move.l	vid_phys,a1
 	bsr	pic_show
 	move.l	d3,d0
@@ -553,6 +555,11 @@ delay:
 	bsr	ms_flush
 	move.w	(sp)+,d0
 	bra	tim_delay
+delayp:					; delay for a main loop's frame (kernel tim_pace: the frame's
+	move.w	d0,-(sp)		; own work counts against the wait)
+	bsr	ms_flush
+	move.w	(sp)+,d0
+	bra	tim_pace
 
 	section	data
 ms_path:	dc.b	"DATA",92,0,0,0,0,0,0,0,0,0,0,0,0,0,0

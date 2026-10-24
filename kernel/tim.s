@@ -40,8 +40,38 @@ tim_delay:
 	blo.s	.w
 	rts
 
+; tim_pace: as tim_delay, for a main loop's frame: the wait ends d0.w ms after the previous
+; tim_pace's end (a deadline), so the frame's own work counts against it; a late frame does not
+; wait (the next one starts now). The original's loops are work + delay(tslice*n) with work tiny
+; on a 486: pacing keeps the ST's frame rate near the original's instead of adding the delay to
+; seconds of work. Game logic is unchanged (it counts frames); virtual time: exactly tim_delay.
+tim_pace:
+	ifd	NOPACE
+	bra	tim_delay		; (ASMDEFS=-DNOPACE=1: the old behaviour, for comparisons)
+	endif
+	bsr	snd_poll
+	and.l	#$ffff,d0
+	tst.w	scr_vtime
+	bne	scr_vdelay
+	addq.l	#4,d0
+	divu	#5,d0			; ms -> ticks, rounded up
+	and.l	#$ffff,d0
+	add.l	tim_pdead,d0
+	move.l	HZ200.w,d1
+	cmp.l	d1,d0
+	bls.s	.late
+	move.l	d0,tim_pdead
+.w:	bsr	scr_tick
+	move.l	HZ200.w,d1
+	cmp.l	d0,d1
+	blo.s	.w
+	rts
+.late:	move.l	d1,tim_pdead
+	bra	scr_tick
+
 	section	bss
 tim_base:	ds.l	1
+tim_pdead:	ds.l	1		; tim_pace's last deadline (200 Hz ticks)
 
 	section	text
 rnd:

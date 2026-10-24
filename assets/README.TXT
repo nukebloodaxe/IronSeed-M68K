@@ -39,6 +39,11 @@ put its MUSIC folder here (the programs follow the rate in the files):
 Without the folder - a small disk, or floppies - the programs mix the MOD
 files from SOUND in real time as before: same music, slower game.
 
+Arriving at a planet or a star: the "Approaching ..." countdown is the
+surface being generated (the original's random walks, exactly). On an 8 MHz
+STE that takes about 6 s for a planet and 16 s for a star; a planet seen
+again takes about 1 s, and the last four stars visited are remembered.
+
 The FINALE slot (if present) is a test position: the ship at the Scavengers'
 gate with the Kendar alliance and the faction quests done, a Temporal Anchor
 and full thrust. The whole armada attacks at once - it cannot be shot down:

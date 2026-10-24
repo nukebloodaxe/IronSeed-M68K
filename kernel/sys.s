@@ -12,7 +12,8 @@ POOL_KEEP	equ	64*1024		; leave this much to GEMDOS when taking the pool
 
 	section	text
 sys_init:
-	move.l	(sp)+,a2		; our return address (stack is about to change)
+	move.l	(sp)+,sys_initret	; our return address (stack is about to change; in memory:
+					; GEMDOS may trash d0-d2/a0-a2 - tools/reglint.py)
 	move.l	a0,sys_basepage
 	lea	sys_ustack_top,sp	; user-mode stack in our BSS (before Mshrink frees the old one)
 	; Mshrink(0, basepage, needed) - basepage+text+data+bss
@@ -24,7 +25,7 @@ sys_init:
 	move.l	a0,-(sp)
 	clr.w	-(sp)
 	GEMDOS	$4a,12
-	move.l	a2,-(sp)
+	move.l	sys_initret,-(sp)
 
 	; save the screen setup
 	XBIOS	XB_PHYSBASE,2
@@ -247,32 +248,32 @@ sys_fatal_user:
 
 ; write the crash message and registers to C:\CRASH.TXT (for headless runs)
 sys_dumpcrash:
-	movem.l	d0-d2/a0-a2,-(sp)
-	move.l	a0,a2
+	movem.l	d0-d3/a0-a3,-(sp)	; (GEMDOS may trash d0-d2/a0-a2: keep the name and handle in d3/a3)
+	move.l	a0,a3
 	clr.w	-(sp)
 	pea	sys_fn_crash
 	GEMDOS	GD_FCREATE,8
 	tst.w	d0
 	bmi.s	.x
-	move.w	d0,d2
-	move.l	a2,a0
+	move.w	d0,d3
+	move.l	a3,a0
 	moveq	#-1,d1
 .len:	addq.l	#1,d1
 	tst.b	(a0)+
 	bne.s	.len
-	move.l	a2,-(sp)
+	move.l	a3,-(sp)
 	move.l	d1,-(sp)
-	move.w	d2,-(sp)
+	move.w	d3,-(sp)
 	GEMDOS	GD_FWRITE,12
 	move.l	sys_basepage,a0
 	move.l	8(a0),sys_crashtb
 	pea	sys_crashregs
 	pea	64+256+4.w
-	move.w	d2,-(sp)
+	move.w	d3,-(sp)
 	GEMDOS	GD_FWRITE,12
-	move.w	d2,-(sp)
+	move.w	d3,-(sp)
 	GEMDOS	GD_FCLOSE,4
-.x:	movem.l	(sp)+,d0-d2/a0-a2
+.x:	movem.l	(sp)+,d0-d3/a0-a3
 	rts
 
 sys_strcpy:				; a0 -> a1, a1 left after the copy
@@ -304,6 +305,7 @@ sys_fn_crash:	dc.b	"C:\CRASH.TXT",0
 
 	section	bss
 sys_basepage:	ds.l	1
+sys_initret:	ds.l	1
 sys_oldphys:	ds.l	1
 sys_oldlog:	ds.l	1
 sys_oldssp:	ds.l	1
