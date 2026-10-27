@@ -9,9 +9,9 @@
 R=$(cd "$(dirname "$0")/.." && pwd); cd "$R"
 fail=0
 [ -d build/oracle_s4/home/.ironseed/save3 ] && [ -f hatari/c/SAVE3/SHIP.DTA ] || { echo "FAIL main: no s4 save (run check_crewgen.sh first)"; exit 1; }
-MODES="$(for m in LOG MAIN LAND CHAR2 PSYCHE CARGO TECH1 CCOM COMNR COMA1 COMA2 COMA3 COMA4 COMA5 COMA6 COMA7 COMA8 COMA9 COMA10 COMA11 COMG30 COMG31 COMG32 COMG33 SECTOR FIGHT LOADG END1B END2B END3B END4B END5B INTRO2E CRED ENDS EGGN EGG3 EGG6; do printf "hatari/c/DATA/%s.ISP " $m; done)"
+MODES="$(for m in LOG MAIN MAINS1 MAINS2 MAINS3 LAND CHAR2 PSYCHE CARGO TECH1 CCOM COMNR COMA1 COMA2 COMA3 COMA4 COMA5 COMA6 COMA7 COMA8 COMA9 COMA10 COMA11 COMG30 COMG31 COMG32 COMG33 SECTOR FIGHT LOADG END1B END2B END3B END4B END5B INTRO2E CRED ENDS EGGN EGG3 EGG6; do printf "hatari/c/DATA/%s.ISP " $m; done)"
 cp hatari/c/SAVEGAME.DIR /tmp/main_sgdir.bak   # sessions that save get their slots compared, then undone
-for S in ${@:-m1 m2 m3 m4 m5 m6 m7 m8 m9 m10 m11 m12 m13 m14 m15 m16 m17 m18 m19 m20 m21 m22 m23 m24 m25 m26 m27 m28 m29 m30 m31 m32 m33 m34 m35 m36 m37 m38 m39 m40 m41 m42 m43 m44 m45 m46 m47 m48 m49 m50 m51}; do
+for S in ${@:-m1 m2 m3 m4 m5 m6 m7 m8 m9 m10 m11 m12 m13 m14 m15 m16 m17 m18 m19 m20 m21 m22 m23 m24 m25 m26 m27 m28 m29 m30 m31 m32 m33 m34 m35 m36 m37 m38 m39 m40 m41 m42 m43 m44 m45 m46 m47 m48 m49 m50 m51 m52}; do
   O=build/oracle_$S; H=build/oracle_s4/home
   SETUP=$(sed -n 's/^# *setup //p' oracle/scripts/$S.main)   # a test position made from the s4 save
   if [ -n "$SETUP" ]; then
@@ -58,5 +58,6 @@ for S in ${@:-m1 m2 m3 m4 m5 m6 m7 m8 m9 m10 m11 m12 m13 m14 m15 m16 m17 m18 m19
   python3 tests/check_shots.py $O hatari/c "$MODES" $SHOTS > /tmp/main_$S.txt \
     && echo "PASS main $S screens ($(echo $SHOTS | wc -w) shots pixel-exact with Linux through the ST LUTs)" \
     || { echo "FAIL main $S screens:"; grep -v ' 0 pixels' /tmp/main_$S.txt; fail=1; }
+  mkdir -p build/st_shots/$S && cp hatari/c/*.SCR build/st_shots/$S/ 2>/dev/null   # kept (tools/looks.py)
 done
 exit $fail

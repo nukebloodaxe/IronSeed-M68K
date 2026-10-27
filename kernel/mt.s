@@ -20,6 +20,10 @@
 ;             mt_seed), from a cache of the last MT_CN seeds (2.5 KB each). For code that seeds
 ;             with the same few seeds again and again (Phase 6h: the system view's planet icons
 ;             and facts, every pass)                                trashes: d0-d2/a0-a1
+;             (Phase 6i) a hit no longer copies: the draws read the kept state in place
+;             (`mt_cur`), and mt_update - the only writer - copies it to mt_state first.
+; mt_own      makes mt_state the generator's state (copies a kept state mt_seedc lent): call it
+;             before reading or writing mt_state directly (the walks in utils2.s)  trashes: nothing
 ;mt_skip      in: d0.l = n: advances the generator as n calls would (fast)   trashes: d0-d2/a0-a1
 ; mt_randomize  seed from the clock (FPC randomize); scripted test runs (scr_test) use 1994,
 ;             like the oracle build.                                trashes: d0-d2/a0-a1
@@ -49,6 +53,7 @@ mt_getseed:
 
 mt_seed:
 	movem.l	d3-d4,-(sp)
+	move.l	#mt_state,mt_cur	; (overwritten whole: nothing to copy back)
 	move.l	d0,d1			; randseed and oldseed := not seed (FPC, after the seeding)
 	not.l	d1
 	move.l	d1,mt_rs
@@ -113,8 +118,10 @@ mt_seedc:
 	move.l	d0,mt_rs
 	move.l	d0,mt_old
 	clr.w	mt_index
-	addq.l	#8,a2
-	lea	mt_state,a1
+	addq.l	#8,a2			; the draws read the kept state where it is
+	move.l	a2,mt_cur
+	movem.l	(sp)+,d3-d7/a2-a3
+	rts
 .cp:	moveq	#MT_N*4/32-1,d0		; 2496 bytes, 32 at a time
 .c:	movem.l	(a2)+,d1-d7/a3
 	movem.l	d1-d7/a3,(a1)
@@ -123,9 +130,26 @@ mt_seedc:
 	movem.l	(sp)+,d3-d7/a2-a3
 	rts
 
+mt_own:
+	cmp.l	#mt_state,mt_cur
+	bne.s	.cp
+	rts
+.cp:	movem.l	d0-d7/a0-a3,-(sp)
+	move.l	mt_cur,a2
+	lea	mt_state,a1
+	move.l	a1,mt_cur
+	moveq	#MT_N*4/32-1,d0
+.c:	movem.l	(a2)+,d1-d7/a3
+	movem.l	d1-d7/a3,(a1)
+	lea	32(a1),a1
+	dbf	d0,.c
+	movem.l	(sp)+,d0-d7/a0-a3
+	rts
+
 ; regenerate the 624 words (mtwist_update_state): mt[k] = mt[k+M] ^ twist(mt[k], mt[k+1]),
 ; twist(u, v) = (mixbits(u, v) >> 1) ^ (odd(v) ? $9908B0DF : 0)
 mt_update:				; (keeps a2: createplanet's walk relies on it)
+	bsr	mt_own			; a kept state lent by mt_seedc: copied first
 	movem.l	d3-d5/a1-a2,-(sp)
 	move.l	#$9908B0DF,d5
 	lea	mt_state,a0		; mt[k]
@@ -210,7 +234,7 @@ mt_u32:
 	addq.w	#1,d1
 	move.w	d1,mt_index
 	lsl.w	#2,d0
-	lea	mt_state,a0
+	move.l	mt_cur,a0
 	move.l	0(a0,d0.w),d0
 	move.l	d0,d1			; y ^= y >> 11
 	moveq	#11,d2
@@ -328,6 +352,9 @@ mt_rs:		ds.l	1		; FPC's randseed variable
 mt_old:		ds.l	1		; and its oldrandseed
 mt_state:	ds.l	MT_N
 mt_index:	ds.w	1
+	section	data
+mt_cur:		dc.l	mt_state	; the state the draws read: mt_state or a kept one (mt_seedc)
+	section	bss
 MT_CN		equ	10		; mt_seedc's cache: seed.l, valid.w, pad.w, the state after mt_update
 MT_CE		equ	8+MT_N*4
 mt_cnext:	ds.w	1

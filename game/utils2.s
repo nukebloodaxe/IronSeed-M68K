@@ -261,6 +261,8 @@ sphere_find:
 
 ; set r2, offset, maxspherei, spherei, xw, pm[] from the table for radius GS_RADIUS
 sphere_setup:
+	sf	u2_xok			; (u2_sphere_rows and makestar build their pixel tables again)
+	sf	u2_sxok
 	move.w	GS_RADIUS(a6),d0
 	bsr.s	sphere_find
 	move.l	a0,u2_sph
@@ -580,7 +582,75 @@ u2_unapproach:
 	moveq	#0,d0
 	bsr	vid_set_fade
 	moveq	#1,d0
-	bra	ms_unsnap
+	bsr	ms_unsnap
+	; fall through: the band design for the new orbit (still faded out)
+
+; u2_design (Phase 6i): the bridge's band design for the ship's orbit - around a star (orbiting =
+; 0) MAINSn for the star's mode n (tools/mkmain.py star_modes: its seven shades get their own
+; slots; MAIN's fit gives them one, a flat disc), else MAIN. The designs differ only in band 1
+; (the viewscreen): a switch sets the reps, bands and LUTs, recolours from GS_COLORS (vid_set256:
+; the fade level stays) and marks that band's lines dirty. ms_design (mscr.s, kept by the
+; snapshots) says which is in use.
+u2_design:
+	movem.l	d3/a3,-(sp)
+	moveq	#0,d3
+	tst.w	GS_SHIP+SHIP_ORBITING(a6)
+	bne.s	.w
+	bsr	u2_curplan		; a3 = the star
+	move.b	PLANET_MODE(a3),d3
+	cmp.w	#3,d3
+	bls.s	.w
+	moveq	#0,d3
+.w:	cmp.w	ms_design,d3
+	beq	.x
+	lea	u2_dname,a0		; "DATA\MAIN.ISP" / "DATA\MAINSn.ISP"
+	lea	u2_dpath,a1
+.cp:	move.b	(a0)+,(a1)+
+	bne.s	.cp
+	tst.w	d3
+	beq.s	.nm
+	lea	u2_dpath+9,a1		; after "MAIN"
+	move.b	#'S',(a1)+
+	move.b	d3,d0
+	add.b	#'0',d0
+	move.b	d0,(a1)+
+	move.b	#'.',(a1)+
+	move.b	#'I',(a1)+
+	move.b	#'S',(a1)+
+	move.b	#'P',(a1)+
+	clr.b	(a1)
+.nm:	bsr	mem_mark
+	move.l	d0,-(sp)
+	move.l	#ISP_DATA+64,d0
+	bsr	mem_alloc
+	bcs.s	.r
+	move.l	a0,a3
+	lea	u2_dpath,a0
+	move.l	a3,a1
+	move.l	#ISP_DATA+64,d0
+	bsr	fil_load
+	bcs.s	.r			; (no such file: the design stays)
+	lea	ISP_DATA(a3),a0
+	bsr	vid_set_reps
+	lea	ISP_BANDS(a3),a0
+	bsr	vid_set_bands
+	lea	ISP_LUTS(a3),a0
+	bsr	vid_set_luts
+	lea	GS_COLORS(a6),a0
+	bsr	vid_set256
+	moveq	#0,d0			; band 1's lines
+	move.w	ISP_BANDS+2+34(a3),d1
+	move.w	#319,d2
+	move.w	d3,-(sp)
+	move.w	ISP_BANDS+2+2*34(a3),d3
+	subq.w	#1,d3
+	bsr	ms_dirty
+	move.w	(sp)+,d3
+	move.w	d3,ms_design
+.r:	move.l	(sp)+,d0
+	bsr	mem_release
+.x:	movem.l	(sp)+,d3/a3
+	rts
 
 
 ; ---------------------------------------------------------------
@@ -765,6 +835,7 @@ u2_walkc:
 	move.l	#75000,u2_left
 	moveq	#0,d0			; FPC's lazy re-seeding, as the first random() would
 	bsr	mt_skip
+	bsr	mt_own			; (the walk reads mt_state itself)
 	bsr	u2_tinit
 	lea	u2_cmap-LAND_W-1,a4	; [x,y] = a4 + x*120 + y
 	lea	u2_tha,a2
@@ -810,6 +881,7 @@ u2_walkc:
 ; debug (ASMDEFS=-DLANDDUMP=1): the landform with its margin and the generator to C:\LANDn.BIN
 u2_landdump:
 	movem.l	d0-d2/a0-a2,-(sp)
+	bsr	mt_own
 	move.w	u2_ldn,d0
 	addq.w	#1,u2_ldn
 	add.b	#'A',d0
@@ -864,6 +936,7 @@ u2_sfind:
 	rts
 ; u2_sload(a0 = entry): landform, generator; the countdown as after the 225000 steps
 u2_sload:
+	bsr	mt_own
 	move.l	GS_LANDFORM(a6),a1
 	move.w	#28800/4-1,d0
 .l:	move.l	(a0)+,(a1)+
@@ -879,6 +952,7 @@ u2_sload:
 	bra	u2_count
 ; u2_sstore(key d0.l): the landform and generator into the next slot (round robin)
 u2_sstore:
+	bsr	mt_own
 	move.w	u2_snext,d1
 	lea	u2_skey,a0
 	move.w	d1,d2
@@ -1039,6 +1113,7 @@ createplanet:
 	swap	d0
 	move.w	d0,u2_i
 	bsr	u2_count
+	bsr	mt_own
 	lea	u2_wstate,a0		; the generator as after the walk
 	lea	mt_state,a1
 	move.w	#MT_N/2-1,d0
@@ -1227,77 +1302,128 @@ makesphere2:
 	; fall through
 u2_sphere_rows:
 	movem.l	d3-d7/a3-a5,-(sp)
-	move.w	d0,d6			; i
+	tst.b	u2_xok			; (Phase 6i) the pixel table of this radius and shading
+	bne.s	.ok
+	movem.l	d0-d1,-(sp)
+	bsr	u2_sphx_build
+	movem.l	(sp)+,d0-d1
+.ok:	move.w	d0,d6			; i
 	move.w	d1,u2_last
-	lea	u2_sphw,a1		; the radius's rows (words: pm, n, n x index*2): skip to row d0
+	lea	u2_sphx,a1		; skip to row d0 (pm, n, n x (index*120, alt*256), cnt[128])
 	move.w	d0,d1
 	subq.w	#6,d1
 	bra.s	.sk
 .skl:	move.w	2(a1),d2
-	addq.w	#2,d2
-	add.w	d2,d2
+	lsl.w	#2,d2
+	add.w	#4+128,d2
 	add.w	d2,a1
 .sk:	dbf	d1,.skl
-	move.l	a1,u2_rowp
-	lea	u2_colofs,a5		; colofs[index] := (j2-1)*120, j2 := index + c (wrapped at 240)
-	move.w	GS_C(a6),d1
-	moveq	#0,d0			; index
-.co:	move.w	d0,d2
-	add.w	d1,d2
-	cmp.w	#240,d2
-	ble.s	.c1
-	sub.w	#240,d2
-.c1:	subq.w	#1,d2
-	mulu	#LAND_W,d2
-	move.w	d2,(a5)+
-	addq.w	#1,d0
-	cmp.w	#128,d0
-	bne.s	.co
-	lea	u2_colofs,a5
-	lea	u2_altw,a3
+	move.w	GS_C(a6),d4		; j2 := index + c, wrapped at 240: pixels with index <= 240 - c
+	move.w	#240,d5			; read column index + c - 1, the others index + c - 241
+	sub.w	d4,d5
+	move.w	d4,d3
+	subq.w	#1,d3
+	muls	#LAND_W,d3		; (c - 1) * 120 (c starts at 0)
 	lea	u2_tab,a0
 .row:	cmp.w	u2_last,d6
 	bgt	.x
 	move.w	d6,d0			; ii := 60*i div spherei
 	mulu	#60,d0
 	divu	GS_SPHEREI(a6),d0
-	move.l	GS_LANDFORM(a6),a4	; a4 = landform^[1, ii]
+	move.l	GS_LANDFORM(a6),a4	; a4 = landform^[1, ii] + (c - 1) * 120
 	lea	-1(a4,d0.w),a4
+	add.l	d3,a4
 	move.w	d6,d0			; ofsy := i + offset (planet^ row, 1-based)
 	add.w	GS_OFFSET(a6),d0
 	subq.w	#1,d0
 	mulu	#120,d0
 	move.l	GS_PLANET(a6),a2
 	add.l	d0,a2
-	move.l	u2_rowp,a1
 	move.w	(a1)+,d0		; ofsx := pm[i] + offset: the first pixel is planet^[ofsy, ofsx+1]
 	add.w	GS_OFFSET(a6),d0
 	add.w	d0,a2
 	move.w	(a1)+,d7		; n
 	move.w	d7,d2
-	add.w	d2,d2
-	move.l	a1,d0
-	add.l	d2,d0
-	move.l	d0,u2_rowp		; next row
-	subq.w	#1,d7
+	lsl.w	#2,d2
+	lea	0(a1,d2.w),a3		; the row's cnt[]
+	move.w	d7,d1			; k: the pixels before the wrap
+	cmp.w	#127,d5
+	bhi.s	.k
+	moveq	#0,d1
+	move.b	0(a3,d5.w),d1
+.k:	sub.w	d1,d7
+	subq.w	#1,d1
+	bmi.s	.w
+.p1:	move.w	(a1)+,d0		; colour := u2_tab[alt][landform^[j2, ii]]
+	move.w	(a1)+,d2
+	move.b	0(a4,d0.w),d2
+	move.b	0(a0,d2.w),(a2)+
+	dbf	d1,.p1
+.w:	subq.w	#1,d7
 	bmi.s	.nr
-	move.w	(a1)+,d3		; the first pixel (j = 1) may light differently
-	move.w	0(a5,d3.w),d0
-	move.w	u2_first,d1
-	bpl.s	.f1
-	move.w	0(a3,d3.w),d1
-.f1:	move.b	0(a4,d0.w),d1
-	move.b	0(a0,d1.w),(a2)+
-	bra.s	.pn
-.px:	move.w	(a1)+,d3		; the others: colour := u2_tab[alt(index)][landform^[j2, ii]]
-	move.w	0(a5,d3.w),d0
-	move.w	0(a3,d3.w),d1
-	move.b	0(a4,d0.w),d1
-	move.b	0(a0,d1.w),(a2)+
-.pn:	dbf	d7,.px
-.nr:	addq.w	#1,d6
+	lea	-240*LAND_W(a4),a4	; the wrapped run
+.p2:	move.w	(a1)+,d0
+	move.w	(a1)+,d2
+	move.b	0(a4,d0.w),d2
+	move.b	0(a0,d2.w),(a2)+
+	dbf	d7,.p2
+.nr:	lea	128(a3),a1
+	addq.w	#1,d6
 	bra	.row
 .x:	movem.l	(sp)+,d3-d7/a3-a5
+	rts
+
+; u2_sphx_build: u2_sphx from u2_sphw (the radius's rows), u2_altw and u2_first (the shading): per
+; row pm, n, per pixel (index * 120, alt * 256 - the first pixel's alt from u2_first when that is
+; set), then cnt[t] = the pixels with index <= t for t = 0..127 (index rises along a row)
+u2_sphx_build:
+	movem.l	d3-d5/a3,-(sp)
+	lea	u2_sphw,a0
+	lea	u2_sphx,a1
+	lea	u2_altw,a3
+	move.w	GS_MAXSPHEREI(a6),d5
+	subq.w	#6,d5			; rows - 1
+.r:	move.w	(a0)+,(a1)+		; pm
+	move.w	(a0)+,d3		; n
+	move.w	d3,(a1)+
+	move.l	a0,a2
+	move.w	d3,d4
+	subq.w	#1,d4
+	bmi.s	.cnt
+	moveq	#1,d2			; the first pixel
+.e:	move.w	(a0)+,d0		; index * 2
+	move.w	d0,d1
+	mulu	#LAND_W/2,d1
+	move.w	d1,(a1)+
+	move.w	0(a3,d0.w),d1
+	tst.w	d2
+	beq.s	.e1
+	moveq	#0,d2
+	tst.w	u2_first
+	bmi.s	.e1
+	move.w	u2_first,d1
+.e1:	move.w	d1,(a1)+
+	dbf	d4,.e
+.cnt:	moveq	#0,d0			; t
+	moveq	#0,d1			; p
+.c:	cmp.w	d3,d1
+	bhs.s	.cs
+	move.w	d1,d2
+	add.w	d2,d2
+	move.w	0(a2,d2.w),d2
+	lsr.w	#1,d2
+	cmp.w	d0,d2
+	bhi.s	.cs
+	addq.w	#1,d1
+	bra.s	.c
+.cs:	move.b	d1,(a1)+
+	addq.w	#1,d0
+	cmp.w	#128,d0
+	bne.s	.c
+	dbf	d5,.r
+	st	u2_xok
+	sf	u2_sxok			; (the star's table shares u2_sphx)
+	movem.l	(sp)+,d3-d5/a3
 	rts
 
 ; u2_shade: the colour tables of the planet in orbit (after colorlookup, water, spcindex, ecl):
@@ -1306,6 +1432,7 @@ u2_sphere_rows:
 ; at least 0; Pascal div truncates); u2_first = 10 * 256 when ecl > 170 (the first
 ; pixel of each row), else 0 (the column's own)
 u2_shade:
+	sf	u2_xok
 	movem.l	d3-d6/a3,-(sp)
 	lea	u2_tab,a3
 	moveq	#0,d3			; a
@@ -1459,65 +1586,155 @@ makesphere:
 ; journey.pas makestar: rows 6..2*r2+4, colour = landform (darker at the rim)
 makestar:
 	movem.l	d3-d7/a3-a5,-(sp)
-	move.l	u2_sph,a5
-	lea	SPH_ROWS(a5),a5
-	move.l	GS_LANDFORM(a6),a4
-	lea	-LAND_W-1(a4),a4
+	tst.b	u2_sxok			; (Phase 6i) the star's pixel table: as the sphere's, but each
+	bne.s	.ok			; pixel is landform^[j2, i] itself except the first and those
+	bsr	u2_stx_build		; with index = xw (alt 6), fixed up after the row
+.ok:	lea	u2_sphx,a1		; per row: pm, n, e, n x index*120, cnt[128]
+	move.w	GS_C(a6),d4
+	move.w	#240,d5
+	sub.w	d4,d5			; pixels with index <= 240 - c do not wrap
+	move.w	d4,d3
+	subq.w	#1,d3
+	muls	#LAND_W,d3		; (c - 1) * 120
 	moveq	#6,d6			; i
 .row:	move.w	GS_R2(a6),d0
 	add.w	d0,d0
 	addq.w	#4,d0
 	cmp.w	d0,d6
 	bgt	.x
-	move.w	d6,d0
+	move.l	GS_LANDFORM(a6),a4	; landform^[1, i] + (c - 1) * 120
+	lea	-1(a4,d6.w),a4
+	add.l	d3,a4
+	move.w	d6,d0			; planet^[i + offset, pm[i] + offset + 1]
 	add.w	GS_OFFSET(a6),d0
 	subq.w	#1,d0
 	mulu	#120,d0
 	move.l	GS_PLANET(a6),a2
 	add.l	d0,a2
-	move.w	(a5)+,d0
+	move.w	(a1)+,d0
 	add.w	GS_OFFSET(a6),d0
 	add.w	d0,a2
-	move.w	(a5)+,d7
-	move.l	a5,a1
-	move.w	d7,d0
-	addq.w	#1,d0
-	and.w	#$fffe,d0
-	add.w	d0,a5
-	subq.w	#1,d7
-	bmi.s	.nr
-	moveq	#1,d5			; j
-.px:	moveq	#0,d3
-	move.b	(a1)+,d3		; index
-	move.w	d3,d0			; j2 := index + c
-	add.w	GS_C(a6),d0
-	cmp.w	#240,d0
-	ble.s	.j2
-	sub.w	#240,d0
-.j2:	moveq	#0,d4			; alt: 6 at both ends
-	cmp.w	#1,d5
-	beq.s	.a6
-	cmp.w	GS_XW(a6),d3
-	bne.s	.a0
-.a6:	moveq	#6,d4
-.a0:	mulu	#LAND_W,d0
-	add.w	d6,d0			; landform^[j2, i]
+	move.l	a2,a5			; the row's first pixel
+	move.w	(a1)+,d7		; n
+	move.w	(a1)+,d4		; e: the trailing pixels with index = xw
+	move.l	a1,a3			; the entries
+	move.w	d7,d2
+	add.w	d2,d2
+	lea	0(a1,d2.w),a0		; cnt[]
+	move.w	d7,d1			; k: before the wrap
+	cmp.w	#127,d5
+	bhi.s	.k
 	moveq	#0,d1
-	move.b	0(a4,d0.l),d1
-	move.w	d1,d2
-	and.w	#15,d2
-	cmp.w	d2,d4			; if alt > landform mod 16 then landform div 16
-	ble.s	.lt
-	lsr.w	#4,d1
-	bra.s	.put
-.lt:	sub.w	d4,d1
-.put:	move.b	d1,(a2)+
-	addq.w	#1,d5
-	dbf	d7,.px
-.nr:	addq.w	#1,d6
+	move.b	0(a0,d5.w),d1
+.k:	move.w	d7,d2
+	sub.w	d1,d2			; after the wrap
+	move.w	d1,-(sp)
+	subq.w	#1,d1
+	bmi.s	.w
+.p1:	move.w	(a1)+,d0
+	move.b	0(a4,d0.w),(a2)+
+	dbf	d1,.p1
+.w:	subq.w	#1,d2
+	bmi.s	.f
+	lea	-240*LAND_W(a4),a4
+.p2:	move.w	(a1)+,d0
+	move.b	0(a4,d0.w),(a2)+
+	dbf	d2,.p2
+	lea	240*LAND_W(a4),a4
+.f:	move.w	(sp)+,d1		; the fix-ups (alt 6): the first pixel, the last e
+	tst.w	d7
+	beq.s	.nr
+	moveq	#0,d0
+	bsr.s	.fix
+	move.w	d7,d0
+	sub.w	d4,d0
+	bne.s	.fl
+	addq.w	#1,d0			; (the first is done)
+.fl:	cmp.w	d7,d0
+	bge.s	.nr
+	bsr.s	.fix
+	addq.w	#1,d0
+	bra.s	.fl
+.nr:	lea	128(a0),a1
+	addq.w	#1,d6
 	bra	.row
 .x:	movem.l	(sp)+,d3-d7/a3-a5
 	bra	makesphere3
+; pixel d0.w of the row again with alt 6: v := landform^[j2, i]; if 6 > v mod 16 then v div 16
+; else v - 6.  (d1 = the pixels before the wrap, a3 = the entries, a4 = the base, a5 = the row)
+.fix:	move.w	d0,d2
+	add.w	d2,d2
+	move.w	0(a3,d2.w),d2
+	move.l	a4,a2
+	cmp.w	d1,d0
+	blt.s	.fb
+	lea	-240*LAND_W(a2),a2
+.fb:	move.b	0(a2,d2.w),d2
+	move.b	d2,-(sp)
+	and.b	#15,d2
+	cmp.b	#6,d2
+	move.b	(sp)+,d2
+	bhs.s	.fs
+	lsr.b	#4,d2
+	bra.s	.fp
+.fs:	subq.b	#6,d2
+.fp:	move.b	d2,0(a5,d0.w)
+	rts
+
+; u2_stx_build: makestar's pixel table in u2_sphx (shared with the sphere's: each build makes the
+; other's stale): per row pm, n, e (the trailing pixels with index = xw), n x index*120, cnt[128]
+u2_stx_build:
+	movem.l	d3-d5,-(sp)
+	lea	u2_sphw,a0
+	lea	u2_sphx,a1
+	move.w	GS_R2(a6),d5
+	add.w	d5,d5
+	subq.w	#2,d5			; rows - 1 (2*r2+4 - 6)
+.r:	move.w	(a0)+,(a1)+		; pm
+	move.w	(a0)+,d3		; n
+	move.w	d3,(a1)+
+	move.l	a0,a2
+	moveq	#0,d4			; e
+	move.w	GS_XW(a6),d1
+	add.w	d1,d1
+	move.w	d3,d0
+.e:	subq.w	#1,d0
+	bmi.s	.ee
+	move.w	d0,d2
+	add.w	d2,d2
+	cmp.w	0(a2,d2.w),d1
+	bne.s	.ee
+	addq.w	#1,d4
+	bra.s	.e
+.ee:	move.w	d4,(a1)+
+	move.w	d3,d4
+	subq.w	#1,d4
+	bmi.s	.cnt
+.w:	move.w	(a0)+,d0		; index * 2 -> index * 120
+	mulu	#LAND_W/2,d0
+	move.w	d0,(a1)+
+	dbf	d4,.w
+.cnt:	moveq	#0,d0			; cnt[t] = the pixels with index <= t
+	moveq	#0,d1
+.c:	cmp.w	d3,d1
+	bhs.s	.cs
+	move.w	d1,d2
+	add.w	d2,d2
+	move.w	0(a2,d2.w),d2
+	lsr.w	#1,d2
+	cmp.w	d0,d2
+	bhi.s	.cs
+	addq.w	#1,d1
+	bra.s	.c
+.cs:	move.b	d1,(a1)+
+	addq.w	#1,d0
+	cmp.w	#128,d0
+	bne.s	.c
+	dbf	d5,.r
+	st	u2_sxok
+	sf	u2_xok
+	movem.l	(sp)+,d3-d5
+	rts
 
 	section	data
 u2_wseed:	dc.l	-1		; the seed of the walk in u2_cmap (-1: none)
@@ -1543,6 +1760,7 @@ u2_need:				; steps of +7 until 240: ceil((240 - v) / 7), 0 from 240
 	dc.b	3,3,2,2,2,2,2,2,2,1,1,1,1,1,1,1
 	dc.b	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 u2_main:	dc.b	"MAIN",0
+u2_dname:	dc.b	"DATA",92,"MAIN.ISP",0
 u2_cloud:	dc.b	"CLOUD",0
 u2_s_planet:	dc.b	21,"Approaching planet..."
 u2_s_star:	dc.b	19,"Approaching star..."
@@ -1578,7 +1796,11 @@ u2_rowp:	ds.l	1
 u2_first:	ds.w	1		; alt 10's row offset for each row's first pixel, or -1: its own
 u2_altw:	ds.w	128		; per column index: its alt's row offset in u2_tab (alt * 256)
 u2_sphw:	ds.w	U2_SPHW		; the radius's rows as words: pm, n, n x index * 2 (sphere_setup)
-u2_colofs:	ds.w	128		; per column index: the texture column's offset this frame
+u2_sphx:	ds.b	4*U2_SPHW+132*128	; u2_sphere_rows' pixel table (u2_sphx_build)
+u2_dpath:	ds.b	20		; u2_design's file name
+u2_xok:		ds.b	1		; u2_sphx holds the sphere's table, up to date
+u2_sxok:	ds.b	1		; u2_sphx holds makestar's table, up to date
+	even
 u2_tab:		ds.b	32*256		; [alt 0-31][land value] -> colour
 
 	section	text

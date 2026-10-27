@@ -1032,7 +1032,7 @@ sl_s_load:	dc.b	9,"Load Game"
 sl_mode_loadg:	dc.b	"LOADG",0
 sl_s_cancel:	dc.b	6,"Cancel"
 sl_slash:	dc.b	1,"/"
-sl_version:	dc.b	20,"v1.30.0001 STE 0.4  "
+sl_version:	dc.b	20,"v1.30.0001 STE 0.5  "
 sl_fn_dir:	dc.b	"SAVEGAME.DIR",0
 sl_fn_planets:	dc.b	"PLANETS.DTA",0
 sl_fn_contacts:	dc.b	"CONTACTS.DTA",0

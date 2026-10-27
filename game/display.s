@@ -2291,20 +2291,24 @@ dp_planicon:
 	rts
 ; draw planicons^[i, a+b] (10x10, non-zero pixels) at (d0 x, d1 y), a = dp_a
 dp_planicon_put:
-	movem.l	d3-d5,-(sp)
+	movem.l	d3-d6,-(sp)
 	move.w	d0,d4
 	move.w	d1,d5
 	move.l	GS_PLANICONS(a6),a1	; planicons^: array[0..9, 0..319] of byte
 	add.w	dp_a,a1
-	moveq	#0,d3			; i (row)
-.i:	move.w	d4,d0
+	moveq	#0,d6			; (Phase 6i) any pixel changed? Mostly not: the system view draws
+	moveq	#0,d3			; every icon again each pass where it was - unchanged pixels need
+.i:	move.w	d4,d0			; no flush (the planar screen already shows them)
 	move.w	d5,d1
 	add.w	d3,d1
 	bsr	ms_addr
 	moveq	#0,d2			; b
 .b:	move.b	0(a1,d2.w),d0
 	beq.s	.n
+	cmp.b	0(a0,d2.w),d0
+	beq.s	.n
 	move.b	d0,0(a0,d2.w)
+	moveq	#1,d6
 .n:	addq.w	#1,d2
 	cmp.w	#10,d2
 	bne.s	.b
@@ -2312,6 +2316,8 @@ dp_planicon_put:
 	addq.w	#1,d3
 	cmp.w	#10,d3
 	bne.s	.i
+	tst.w	d6
+	beq.s	.x
 	move.w	d4,d0
 	move.w	d5,d1
 	move.w	d4,d2
@@ -2319,7 +2325,7 @@ dp_planicon_put:
 	move.w	d5,d3
 	add.w	#9,d3
 	bsr	ms_dirty
-	movem.l	(sp)+,d3-d5
+.x:	movem.l	(sp)+,d3-d6
 	rts
 
 ; ar := x/sin(arctan(x/z)); br := ar/2; t2 := arctan(z/(2*x)): from integer x d0, z d1 (the

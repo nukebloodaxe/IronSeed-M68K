@@ -159,7 +159,55 @@ ms_circle:
 .d4:	bsr	ms_dirty
 	addq.l	#6,sp
 	move.b	d4,ms_lcol
-	moveq	#0,d3			; xx
+	cmp.w	#MC_RMAX,d7		; (Phase 6i) radius <= MC_RMAX: from the kept pixel list
+	bhi	.old
+	cmp.w	mc_r,d7
+	beq.s	.have
+	bsr	mc_build
+.have:	move.w	mc_n,d3
+	beq	.x
+	subq.w	#1,d3
+	lea	mc_list,a1
+	move.w	d5,d0			; the whole circle on the screen: no pixel needs the check
+	sub.w	d7,d0
+	bmi.s	.slow
+	move.w	d5,d0
+	add.w	d7,d0
+	cmp.w	#MS_W,d0
+	bge.s	.slow
+	move.w	d6,d0
+	add.w	mc_dymin,d0
+	bmi.s	.slow
+	move.w	d6,d0
+	add.w	mc_dymax,d0
+	cmp.w	#MS_H,d0
+	bge.s	.slow
+	move.w	d6,d1
+	mulu	#MS_W,d1
+	move.l	ms_buf,a0
+	add.l	d1,a0
+	add.w	d5,a0
+.f:	move.l	(a1)+,d0		; dy * W + dx
+	addq.l	#4,a1
+	move.b	d4,0(a0,d0.l)
+	dbf	d3,.f
+	bra	.x
+.slow:	addq.l	#4,a1
+	move.w	(a1)+,d0
+	add.w	d5,d0
+	move.w	(a1)+,d1
+	add.w	d6,d1
+	cmp.w	#MS_W,d0
+	bhs.s	.sn
+	cmp.w	#MS_H,d1
+	bhs.s	.sn
+	mulu	#MS_W,d1
+	move.l	ms_buf,a0
+	add.l	d1,a0
+	move.b	d4,0(a0,d0.w)
+.sn:	dbf	d3,.slow
+	bra.s	.x
+.old:	moveq	#0,d3			; xx
 	move.w	d7,d4			; yy
 	move.w	d7,d0			; r*r
 	mulu	d7,d0
@@ -215,6 +263,79 @@ ms_circle:
 	add.l	d1,a0
 	move.b	ms_lcol,0(a0,d0.w)
 	move.w	(sp)+,d1
+.pxx:	rts
+
+; mc_build: circle(0, 0, r = d7)'s pixels in ms_circle's order into mc_list (8 bytes each: dy*W+dx
+; long, dx, dy), their dy range.  keeps d5-d7.  trashes d0-d2/a0-a2
+MC_RMAX		equ	63
+MC_MAX		equ	640
+mc_build:
+	movem.l	d3-d6,-(sp)
+	move.w	d7,mc_r
+	clr.w	mc_n
+	move.w	#$7fff,mc_dymin
+	move.w	#-$7fff,mc_dymax
+	lea	mc_list,a2
+	moveq	#0,d5
+	moveq	#0,d6
+	moveq	#0,d3			; xx
+	move.w	d7,d4			; yy
+	move.w	d7,d0			; r*r
+	mulu	d7,d0
+	move.l	d0,ms_rr
+	bsr.s	.four
+.l:	tst.w	d4
+	ble.s	.x
+	subq.w	#1,d4
+	bsr.s	.inside
+	bge.s	.n1
+	addq.w	#1,d3
+.n1:	bsr.s	.inside
+	bge.s	.n2
+	addq.w	#1,d4
+.n2:	bsr.s	.four
+	bra.s	.l
+.x:	movem.l	(sp)+,d3-d6
+	rts
+.inside:
+	move.w	d3,d0
+	muls	d3,d0
+	move.w	d4,d1
+	muls	d4,d1
+	add.l	d1,d0
+	sub.l	ms_rr,d0
+	rts
+.four:	lea	ct_up,a1
+	move.b	0(a1,d4.w),d1
+	ext.w	d1
+	move.w	d3,d0
+	bsr.s	.px
+	move.w	d3,d0
+	neg.w	d0
+	bsr.s	.px
+	lea	ct_dn,a1
+	move.b	0(a1,d4.w),d1
+	ext.w	d1
+	move.w	d3,d0
+	bsr.s	.px
+	move.w	d3,d0
+	neg.w	d0
+.px:	cmp.w	#MC_MAX,mc_n		; (cannot fill: r <= MC_RMAX)
+	bhs.s	.pxx
+	addq.w	#1,mc_n
+	move.w	d1,d2
+	muls	#MS_W,d2
+	move.w	d0,a0
+	add.l	a0,d2
+	move.l	d2,(a2)+
+	move.w	d0,(a2)+
+	move.w	d1,(a2)+
+	cmp.w	mc_dymin,d1
+	bge.s	.p1
+	move.w	d1,mc_dymin
+.p1:	cmp.w	mc_dymax,d1
+	ble.s	.pxx
+	move.w	d1,mc_dymax
 .pxx:	rts
 
 ; c_utils.c rectangle(x1 d0, y1 d1, x2 d2, y2 d3) in colour d4 (the far corner stays unset)
@@ -546,17 +667,34 @@ rebuildcargoreserve:
 	rts
 
 ; utils.pas findfirstplanet(sys): first i with tempplan^[i].system = sys
+; (Phase 6i) the last answer is kept: crewgen makes each system's planets one consecutive run, so
+; planet r is the first of system s when r's system is s and r-1's is not (checked at every use).
 findfirstplanet:
 	sf	GS_DONE(a6)
 	move.l	GS_TEMPPLAN(a6),a0
-	moveq	#1,d1
-.l:	cmp.b	PLANET_SYSTEM(a0),d0
+	cmp.b	mu_ffs,d0
+	bne.s	.s
+	move.w	mu_ffr,d1		; (0: nothing kept)
+	beq.s	.s
+	move.w	d1,d2
+	mulu	#PLANET_SIZEOF,d2
+	lea	-PLANET_SIZEOF(a0,d2.l),a1	; tempplan^[r]
+	cmp.b	PLANET_SYSTEM(a1),d0
+	bne.s	.s
+	cmp.w	#1,d1
 	beq.s	.f
+	cmp.b	-PLANET_SIZEOF+PLANET_SYSTEM(a1),d0
+	bne.s	.f
+.s:	moveq	#1,d1
+.l:	cmp.b	PLANET_SYSTEM(a0),d0
+	beq.s	.k
 	cmp.w	#1000,d1
 	beq.s	.f
 	lea	PLANET_SIZEOF(a0),a0
 	addq.w	#1,d1
 	bra.s	.l
+.k:	move.b	d0,mu_ffs
+	move.w	d1,mu_ffr
 .f:	move.w	d1,d0
 	rts
 
@@ -565,6 +703,16 @@ wait:
 	bra	delay
 
 	section	bss
+mc_n:		ds.w	1
+mc_dymin:	ds.w	1
+mc_dymax:	ds.w	1
+mc_list:	ds.l	2*MC_MAX
+	section	data
+mc_r:		dc.w	-1		; ms_circle's kept pixel list: its radius (-1 = none); count, dy range
+	section	bss
+mu_ffr:		ds.w	1		; findfirstplanet's kept result (0 = none) and system
+mu_ffs:		ds.b	1
+	even
 ms_bx:		ds.w	4
 ms_sdx:		ds.w	1
 ms_sdy:		ds.w	1

@@ -1,0 +1,23 @@
+vtime
+args /playseed 3
+# m52 (Phase 6i): the bridge at a star (readystar, makestar; the star's band design MAINS1-3:
+# its shades in their own slots), then planet 1 (readyplanet: MAIN's design again), then the star
+# again (the stars' cache); quit
+# vbls 90000
+wait 3000
+key #27
+wait 2500
+key @0
+wait 30000
+shot S1
+key @1
+wait 20000
+shot S2
+key @0
+wait 8000
+shot S3
+key #291
+wait 1500
+key y
+wait 3000
+quit

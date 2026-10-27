@@ -80,6 +80,7 @@ tools/reglint.sh > /tmp/reglint.txt && echo "PASS reglint (no scratch register u
 # software floating point (kernel/fp.s) against Free Pascal's own arithmetic (tools/fp/fpref)
 [ -x tools/fp/fpref ] || fpc -O1 tools/fp/fpref.pas -otools/fp/fpref > /dev/null
 python3 tests/fptest.py 300 14000 > /tmp/fp.txt && echo "PASS fp ($(tail -1 /tmp/fp.txt): SSE/x87 arithmetic, rounding, str, sin/cos/arctan bit-exact with FPC)" || { echo "FAIL fp: $(tail -1 /tmp/fp.txt)"; fail=1; }
+python3 tests/check_sincos.py 2000 > /tmp/sc.txt && echo "PASS sincos (fast sin/cos: $(tail -1 /tmp/sc.txt | sed 's/^sincos: //'))" || { echo "FAIL sincos: $(tail -1 /tmp/sc.txt)"; fail=1; }
 # crew generation against the Linux oracle (state dumps, screens, saved files)
 tests/check_crewgen.sh || fail=1
 # the port's own 1994 probes option (no oracle: tests/st/, ST only, from crewgen's save)

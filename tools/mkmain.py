@@ -86,6 +86,91 @@ def snap_to_reps(d, pal):
     d.table = table
 
 
+def dialog_button(im, x1, y1, x2, y2, alt):
+    """saveload.pas / utils button(x1,y1,x2,y2,alt): bar in 35+alt, bottom/right in 32+alt,
+    top/left in 38+alt, two corners in 36+alt"""
+    im[y1:y2 + 1, x1:x2 + 1] = 35 + alt
+    im[y1:y2 + 1, x2] = 32 + alt; im[y2, x1:x2 + 1] = 32 + alt
+    im[y1, x1:x2 + 1] = 38 + alt; im[y1:y2 + 1, x1] = 38 + alt
+    im[y1, x2] = 36 + alt; im[y2, x1] = 36 + alt
+
+
+def paint_star(im, base, radius, rng):
+    """journey.pas makestar onto the bridge's viewscreen (planet^ at screen[13:133, 28:148]): a
+    star's landform after readystar's walks holds i..i+6 (i = base), mostly the cap i+6; the first
+    pixel of each row and those with index = xw take alt 6 (v div 16 when 6 > v mod 16, else v-6)"""
+    g = mm.sphere_geometry(radius)
+    vals = np.arange(base, base + 7)
+    prob = np.array([0.06] * 6 + [0.64]); prob /= prob.sum()
+    for i in range(6, g['maxspherei'] + 1):
+        ofsy = i + g['offset']
+        ofsx = g['pm'][i] + g['offset']
+        for j, index in enumerate(mm.row_indices(g, i), 1):
+            ofsx += 1
+            v = int(rng.choice(vals, p=prob))
+            if j == 1 or index == g['xw']:
+                v = v // 16 if 6 > v % 16 else v - 6
+            if 1 <= ofsy <= 120 and 1 <= ofsx <= 120:
+                im[12 + ofsy, 27 + ofsx] = v
+
+
+def star_modes(main, cloud, pal, icons, font, dmain, out, prev=None):
+    """MAINS1-3 (Phase 6i): the bridge while orbiting a star of mode 1-3 (readystar: radius 2000,
+    3025, 900; landform values from 120, 83, 16 - yellow, red, grey). MAIN's split lines; the bands
+    are fitted on the bridge with that star on the viewscreen instead of planets, gas giants and
+    rocks (MAIN's own fit gives the star's seven shades one slot: a flat disc). Bands outside the
+    viewscreen come out as MAIN's (same rows, same fit). game/utils2.s u2_design switches."""
+    import fpcrand
+    for m, (base, radius) in enumerate(((120, 2000), (83, 3025), (16, 900)), 1):
+        rng = np.random.RandomState(70 + m)
+        stack, weights = [], []
+        for k in range(8):
+            im = mm.bridge_base(main, cloud, rng.randint(320), rng.randint(200))
+            paint_star(im, base, radius, rng)
+            mm.readystatus(im, font)
+            mm.displaystatus(im, [(rng.randint(1, 1000), 1000), (rng.randint(1, 200), 200), (rng.randint(1, 32000), 32000), (rng.randint(0, 101), 100)], font)
+            mm.showtime(im, [2, 3, 3784, 8, 75], font)
+            im[145:190, 215:266] = mm.cube_image(icons, k % 6)
+            cm.printxy(im, 208, 128, ['Psychometry', 'Engineering', '  Science  ', ' Security  ', 'Astrogation', '  Medical  '][k % 6], 45, 0, font)
+            for li, col in enumerate((31, 94, 63, 47, 45, 191)):
+                cm.printxy(im, 9, 150 + 6 * li, 'SECURITY: Shield integrity ok', col, 3, font)
+            stack.append(im); weights.append(1.0)
+        for tc in (48, 80, 112):
+            im = mm.bridge_base(main, cloud, 0, 0)
+            im[184:200, 0:8] = (im[184:200, 0:8].astype(int) + tc - 80) & 255
+            for y0 in (29, 49, 69, 89):
+                reg = im[y0:y0 + 11, 300:314]
+                reg[reg != 0] = (reg[reg != 0].astype(int) + tc) & 255
+            stack.append(im); weights.append(0.5)
+        hist = bf.hist_of(stack, weights)
+        for v in (63, 95):
+            hist[150:190, v] += 4
+        for tc in (48, 80, 112):
+            lit = mm.bridge_base(main, cloud, 0, 0)
+            for y0 in (29, 49, 69, 89):
+                reg = lit[y0:y0 + 11, 300:314]
+                reg[reg != 0] = (reg[reg != 0].astype(int) + tc) & 255
+                for y in range(y0, y0 + 11):
+                    hist[y] += np.bincount(lit[y, 300:314], minlength=256) * 6
+        for y0, y1, i0, i1, f in ((25, 101, 80, 96, 15), (20, 115, 176, 192, 4), (124, 136, 32, 64, 4),
+                                  (140, 186, 128, 144, 3), (145, 195, 16, 48, 3)):
+            hist[y0:y1, i0:i1] *= f
+        hist[13:133, base:base + 7] *= 4          # the star's shades: each its own slot if it can
+        # MAIN's design with only the viewscreen band (1) fitted again: the screen above and below
+        # stays exactly MAIN's, so a switch converts only that band's lines
+        y0, y1 = dmain.splits[1], dmain.splits[2]
+        err, cent, lut, rp, _ = bf._band(hist[y0:y1], pal, [])
+        d = bf.Design(list(dmain.splits), list(dmain.table), [l.copy() for l in dmain.luts], list(dmain.reps), err)
+        d.table[1] = (y0, [c.to_ste_word(x) for x in cent])
+        d.luts[1] = lut
+        d.reps[16:32] = rp
+        snap_to_reps(d, pal)
+        open(os.path.join(out, 'MAINS%d.ISP' % m), 'wb').write(bytes(d.isp_header(w=0, h=0)))
+        if prev:
+            Image.fromarray(d.rgb(stack[0])).resize((640, 400), Image.NEAREST).save(prev.replace('.png', '_star%d.png' % m))
+        print('MAINS%d: splits' % m, d.splits, 'err %.0f' % d.err)
+
+
 def main_mode(src, out, font, prev=None):
     """MAIN: the bridge (starter.pas initializedata, utils2.pas reloadbackground/readyplanet,
     usecode.pas readystatus, journey.pas text box and cube)"""
@@ -120,11 +205,35 @@ def main_mode(src, out, font, prev=None):
             reg = im[y0:y0 + 11, 300:314]
             reg[reg != 0] = (reg[reg != 0].astype(int) + tc) & 255
         stack.append(im); weights.append(0.5)
+    # (Phase 6i) the dialogs over the bridge - save/load (saveload.pas, the cursor row faded +3)
+    # and yesnorequest: their blues 32-43 shared one slot (the selected save slot did not show)
+    dlgw = float(os.environ.get('MAIN_DLGW', '0'))   # (Phase 6i experiment, off: see PLAN)
+    dstack = []
+    for k in range(2):
+        im = mm.bridge_base(main, cloud, rng.randint(320), rng.randint(200))
+        dialog_button(im, 75, 40, 244, 140, 0)
+        for a in range(1, 9):
+            dialog_button(im, 85, 40 + a * 10, 235, 48 + a * 10, 2)
+            cm.printxy(im, 85, 41 + a * 10, 'Nuke' if a == 3 else '', 21, 37, font)
+            cm.printxy(im, 187, 41 + a * 10, ' 2/ 3784', 21, 37, font)
+        dialog_button(im, 185, 130, 225, 138, 2)
+        cm.printxy(im, 130, 41, ['Save Game', 'Load Game'][k], 26, 35, font)
+        a = 3 + 2 * k
+        reg = im[40 + a * 10:48 + a * 10, 85:236]
+        reg[:] = (reg.astype(int) + 3) & 255
+        dstack.append(im)
+    im = mm.bridge_base(main, cloud, rng.randint(320), rng.randint(200))
+    dialog_button(im, 74, 60, 245, 102, 0)
+    dialog_button(im, 110, 78, 150, 92, 2)
+    dialog_button(im, 169, 78, 209, 92, 2)
+    cm.printxy(im, 116, 65, 'Do you want to quit?', 26, 35, font)
+    dstack.append(im)
     ap = np.zeros((200, 320), np.uint8)
     cm.printxy(ap, 30, 160, 'Approaching planet...', 47, 0, font)
     cm.printxy(ap, 30, 170, 'ETA T Minus 123 hrs', 47, 0, font)
     stack.append(ap); weights.append(0.3)
     hist = bf.hist_of(stack, weights)
+    hist[12:140] += bf.hist_of(dstack, [dlgw] * len(dstack))[12:140]   # (the dialogs: band 1 only)
     for v in (63, 95):
         hist[150:190, v] += 4
     # gas giants (bands of 32-79 or 96-143), gas clouds (32/48/64 + 0-7) and asteroid fields
@@ -154,8 +263,31 @@ def main_mode(src, out, font, prev=None):
     for y0, y1, i0, i1, f in ((25, 101, 80, 96, 15), (20, 115, 176, 192, 4), (124, 136, 32, 64, 4),
                               (140, 186, 128, 144, 3), (145, 195, 16, 48, 3)):
         hist[y0:y1, i0:i1] *= f
-    d = bf.fit(hist, pal)
-    snap_to_reps(d, pal)
+    # (Phase 6i) the text box's crew colours (journey.pas: white 31, green 63, red 94, blue 47/45,
+    # magenta 191; the font shades each glyph tcolor, -2, -4 ...): their upper shades were folded
+    # into dim slots (white text grey 136, the greens (0,68,0) - hard to read). With the third
+    # split at 188 (was 170) the whole text box is one band (2) and band 3 keeps the panic
+    # button's alert colours and the clock. Weights chosen by a search scored on the oracle
+    # sessions' Linux shots shown through each design (tools/looks_eval.py; PLAN Phase 6i):
+    # text error per colour family 109/136/38/57 -> 47/40/39/55 (white/green/red/magenta), the
+    # side buttons' labels 42 -> 11, the panic button 35 -> 27, the rest of the screen +0.5.
+    txtw = float(os.environ.get('MAIN_TXTW', '4'))
+    if txtw:
+        for top in (31, 63, 94, 47, 45, 191):
+            for k in (0, 2, 4):
+                hist[145:192, top - k] *= txtw
+    for k in (0, 2, 4):
+        hist[145:192, 191 - k] *= float(os.environ.get('MAIN_MAGW', '4'))   # (magenta text)
+    hist[140:195, 136:144] *= float(os.environ.get('MAIN_BTNW', '3'))   # the side buttons' labels
+    pbw = float(os.environ.get('MAIN_PBW', '2'))                         # the panic button's alert
+    for c0 in (48, 80, 112):                                             # colours (green, red, yellow)
+        hist[170:200, c0:c0 + 8] *= pbw
+    own = []
+    if os.environ.get('MAIN_DLGOWN'):                 # (experiment: a slot for the dialogs' light blues)
+        own = [(12, 140, list(range(40, 44)), 1)]
+    d = bf.fit(hist, pal, own=own, splits=[0, 12, 140, int(os.environ.get('MAIN_SPLIT3', '188'))])   # (the frame / the viewscreen + panels / text
+    snap_to_reps(d, pal)                               # box / cube: the star designs refit band 1)
+    star_modes(main, cloud, pal, icons, font, d, out, prev)
     # header-only ISP2 (the bridge is composed at run time) + main.cpr and cloud.cpr as chunky
     open(os.path.join(out, 'MAIN.ISP'), 'wb').write(bytes(d.isp_header(w=0, h=0)))
     open(os.path.join(out, 'MAIN.CHK'), 'wb').write(main.astype(np.uint8).tobytes() + bytes(pal.astype(np.uint8).ravel()))
@@ -744,6 +876,9 @@ def main():
     src, out = sys.argv[1:3]
     prev = sys.argv[3] if len(sys.argv) > 3 else None
     font = cm.load_font()[0]
+    if os.environ.get('MKMAIN_ONLY') == 'MAIN':        # (design experiments: the bridge only)
+        main_mode(src, out, font, prev and os.path.join(prev, 'main_preview.png'))
+        return
     log_mode(src, out, font, prev and os.path.join(prev, 'log_preview.png'))
     main_mode(src, out, font, prev and os.path.join(prev, 'main_preview.png'))
     land_mode(src, out, font, prev and os.path.join(prev, 'land_preview.png'))

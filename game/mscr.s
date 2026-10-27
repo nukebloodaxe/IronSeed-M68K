@@ -314,6 +314,7 @@ ms_addr:
 
 ms_load:
 	movem.l	d3/a3,-(sp)
+	move.w	#-1,ms_design		; (a mode's own design: not one of u2_design's)
 	lea	ms_path+5,a1		; "DATA\" + name + ".ISP"
 .cp:	move.b	(a0)+,(a1)+
 	bne.s	.cp
@@ -368,7 +369,7 @@ ms_load:
 	or.b	#1,ccr
 	rts
 
-MS_SNAP		equ	MS_W*MS_H+SCR_SIZE+(2+4*BAND_SIZE)+1024+64+64+768
+MS_SNAP		equ	MS_W*MS_H+SCR_SIZE+(2+4*BAND_SIZE)+1024+64+64+768+2	; (+ ms_design)
 
 ms_snap:
 	movem.l	d3/a3,-(sp)
@@ -408,6 +409,7 @@ ms_snap:
 	move.w	#768/4-1,d0
 .c7:	move.l	(a0)+,(a1)+
 	dbf	d0,.c7
+	move.w	ms_design,(a1)+
 	tst.w	(sp)+
 	beq.s	.x
 	bsr	kbd_cursor_show
@@ -440,6 +442,7 @@ ms_unsnap:
 	move.w	#768/4-1,d0
 .c7:	move.l	(a0)+,(a1)+
 	dbf	d0,.c7
+	move.w	(a0)+,ms_design
 	addq.l	#4,sp
 	bsr	kbd_cursor_hide
 	move.l	a3,a0
@@ -702,6 +705,7 @@ ms_path:	dc.b	"DATA",92,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 
 	section	bss
 ms_buf:		ds.l	1
+ms_design:	ds.w	1		; (Phase 6i) the bridge design in use: 0 MAIN, 1-3 MAINSn, -1 another
 ms_snaps:	ds.l	3
 ms_color:	ds.w	1		; graph.setcolor's colour (rectangle, circle in explore)
 ms_any:		ds.w	1

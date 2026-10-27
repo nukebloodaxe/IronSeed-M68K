@@ -432,24 +432,32 @@ fpx_mul:
 	or.w	d6,d0
 	move.w	d0,-(sp)
 	lea	fp_prod,a1		; 128-bit product of d1:d2 x d4:d5 -> fp_prod (4 longs, big-endian)
-	movem.l	d1-d2/d4-d5,fp_ops
-	move.l	d2,d0			; al*bl -> p1:p0
+	movem.l	d1-d2/d4-d5,fp_ops	; (Phase 6i: a zero low long - integers, short constants -
+	moveq	#0,d0			; skips its products)
+	moveq	#0,d1
+	tst.l	d2			; al*bl -> p1:p0
+	beq.s	.z1
+	tst.l	d5
+	beq.s	.z1
+	move.l	d2,d0
 	move.l	d5,d1
 	bsr	fpi_mul32
-	move.l	d0,8(a1)
+.z1:	move.l	d0,8(a1)
 	move.l	d1,12(a1)
 	move.l	fp_ops,d0		; ah*bh -> p3:p2
 	move.l	fp_ops+8,d1
 	bsr	fpi_mul32
 	move.l	d0,(a1)
 	move.l	d1,4(a1)
-	move.l	fp_ops,d0		; ah*bl -> + p2:p1
-	move.l	fp_ops+12,d1
+	move.l	fp_ops+12,d1		; ah*bl -> + p2:p1
+	beq.s	.z2
+	move.l	fp_ops,d0
 	bsr.s	.addm
-	move.l	fp_ops+4,d0		; al*bh -> + p2:p1
+.z2:	move.l	fp_ops+4,d0		; al*bh -> + p2:p1
+	beq.s	.z3
 	move.l	fp_ops+8,d1
 	bsr.s	.addm
-	move.w	(sp)+,d0
+.z3:	move.w	(sp)+,d0
 	movem.l	(a1),d1-d2/d6-d7
 	tst.l	d1			; normalise: product in [1, 4)
 	bmi.s	.n
@@ -843,14 +851,50 @@ fp_cmp:
 	rts
 
 ; ---------------------------------------------------------------- sin, cos, arctan (x87)
-; x := st0; k := round(x * 2/pi); r := (x - k*P1) - k*P2 (pi/2 in two parts); then sin or cos of r
-; by Taylor series (|r| <= pi/4, error ~2^-62) and the quadrant.  Computed in 64-bit mode.
+; Phase 6i: sin and cos come from fpi_fsc (below: fixed point, both at once, ~10x faster and closer
+; to the x87) and are kept for the last argument - the game asks for cos(a) and then sin(a). An
+; argument fpi_fsc does not take (|x| >= 2^14, tiny, or |r| < 2^-24) goes to the series.
 fp_cos:
 	moveq	#1,d0
 	bra.s	fpi_sincos
 fp_sin:
 	moveq	#0,d0
 fpi_sincos:
+	move.l	fp_sp,a0
+	tst.b	fps_kok			; the same argument as last time?
+	beq.s	.calc
+	move.w	(a0),d1
+	cmp.w	fps_key,d1
+	bne.s	.calc
+	move.l	2(a0),d1
+	cmp.l	fps_key+2,d1
+	bne.s	.calc
+	move.l	6(a0),d1
+	cmp.l	fps_key+6,d1
+	beq.s	.hit
+.calc:	move.w	d0,-(sp)
+	bsr	fpi_fsc
+	movem.w	(sp)+,d0		; (movem: the carry stays)
+	bcs.s	fpi_sser
+	move.l	fp_sp,a0		; keep the argument
+	move.w	(a0),fps_key
+	move.l	2(a0),fps_key+2
+	move.l	6(a0),fps_key+6
+	st	fps_kok
+.hit:	lea	fps_res,a1		; st0 := sin or cos
+	tst.w	d0
+	beq.s	.cp
+	lea	12(a1),a1
+.cp:	move.l	fp_sp,a0
+	move.w	(a1)+,(a0)+
+	move.l	(a1)+,(a0)+
+	move.l	(a1)+,(a0)+
+	rts
+
+; the series (until Phase 6h all of it): k := round(x * 2/pi); r := (x - k*P1) - k*P2 (pi/2 in
+; two parts); then sin or cos of r by Taylor series (|r| <= pi/4, error ~2^-62) and the quadrant.
+; Computed in 64-bit mode.  d0.w = 0 sin, 1 cos
+fpi_sser:
 	movem.l	d3-d4,-(sp)
 	move.w	fp_mode,-(sp)
 	move.w	#1,fp_mode
@@ -938,6 +982,646 @@ fpi_mulst1:
 	move.l	6(a0),d2
 	bsr	fpi_push
 	bra	fp_mul
+
+; ---------------------------------------------------------------- fast sin and cos (Phase 6i)
+; fpi_fsc: a0 = the argument's slot (se.w, m.l, m.l).  Carry clear: fps_res = sin(x), fps_res+12 =
+; cos(x) (12-byte slots).  Carry set: not taken (fps_res unchanged).  Exactly tools/sincos_model.py:
+; R = x - k*Pm (Pm = pi/2 in 66 bits, as the x87 reduces; units 2^-65, exact), A = |R|, j = round(A
+; * 512), b = A - j/512 (|b| <= 2^-10, exact); sin/cos(j/512) from fps_tab (units 2^-95);
+; sin A = S - S*ec + sb*(C*b - C*b*es), cos A = C - C*ec - sb*(S*b - S*b*es) with ec = 1 - cos b,
+; es = 1 - sin(b)/b by short series; every product exact, then floored; one rounding to 64 bits.
+; trashes d0-d2/a0-a2
+fpi_fsc:
+	movem.l	d3-d7/a3-a5,-(sp)
+	move.w	(a0),d7			; se
+	move.l	2(a0),d1
+	move.l	6(a0),d2
+	tst.l	d1
+	beq	.no			; zero
+	move.w	d7,d0			; E = exponent - bias: -12 .. 13
+	and.w	#$7fff,d0
+	sub.w	#FP_BIAS,d0
+	cmp.w	#13,d0
+	bgt	.no
+	cmp.w	#-12,d0
+	blt	.no
+	moveq	#0,d3			; X = |x| * 2^65 = d3:d1:d2, exact
+	addq.w	#2,d0
+	bmi.s	.xr
+	beq.s	.xok
+	subq.w	#1,d0
+.xl:	add.l	d2,d2
+	addx.l	d1,d1
+	addx.l	d3,d3
+	dbf	d0,.xl
+	bra.s	.xok
+.xr:	neg.w	d0
+	subq.w	#1,d0
+.xs:	lsr.l	#1,d1
+	roxr.l	#1,d2
+	bcs	.no			; a bit would be lost
+	dbf	d0,.xs
+.xok:	move.l	d1,d4			; k = (q16 * 41722 + 2^31) >> 32, q16 = X >> 49
+	moveq	#17,d0
+	lsr.l	d0,d4
+	move.l	d3,d5
+	moveq	#15,d0
+	lsl.l	d0,d5
+	or.l	d5,d4			; q16 (< 2^30)
+	move.l	d4,d5
+	swap	d5
+	mulu	#41722,d5		; qh * 41722
+	mulu	#41722,d4		; ql * 41722
+	move.l	d5,d6			; P = ph << 16 + pl + 2^31, k = P >> 32
+	clr.w	d6
+	swap	d6
+	swap	d5
+	clr.w	d5
+	add.l	d4,d5
+	bcc.s	.k1
+	addq.l	#1,d6
+.k1:	add.l	#$80000000,d5
+	bcc.s	.k2
+	addq.l	#1,d6
+.k2:	lea	fps_pm+12,a1		; R = X - k * Pm (word by word from the low end)
+	lea	fps_t+12,a2
+	moveq	#0,d4
+	moveq	#5,d5
+.km:	moveq	#0,d0
+	move.w	-(a1),d0
+	mulu	d6,d0
+	add.l	d4,d0
+	move.w	d0,-(a2)
+	clr.w	d0
+	swap	d0
+	move.l	d0,d4
+	dbf	d5,.km
+	movem.l	fps_t,d0/d4/d5
+	sub.l	d5,d2
+	subx.l	d4,d1
+	subx.l	d0,d3
+.adj:	tst.l	d3			; while R > h: R -= Pm, k++; while R < -h: R += Pm, k--
+	bmi.s	.adn
+	cmp.l	fps_h,d3
+	bhi.s	.asub
+	bne.s	.aok
+	cmp.l	fps_h+4,d1
+	bhi.s	.asub
+	bne.s	.aok
+	cmp.l	fps_h+8,d2
+	bls.s	.aok
+.asub:	movem.l	fps_pm,d0/d4/d5
+	sub.l	d5,d2
+	subx.l	d4,d1
+	subx.l	d0,d3
+	addq.w	#1,d6
+	bra.s	.adj
+.adn:	moveq	#0,d0			; -R in d0:d4:d5
+	moveq	#0,d4
+	moveq	#0,d5
+	sub.l	d2,d5
+	subx.l	d1,d4
+	subx.l	d3,d0
+	cmp.l	fps_h,d0
+	bhi.s	.aadd
+	bne.s	.aok
+	cmp.l	fps_h+4,d4
+	bhi.s	.aadd
+	bne.s	.aok
+	cmp.l	fps_h+8,d5
+	bls.s	.aok
+.aadd:	movem.l	fps_pm,d0/d4/d5
+	add.l	d5,d2
+	addx.l	d4,d1
+	addx.l	d0,d3
+	subq.w	#1,d6
+	bra.s	.adj
+.aok:	move.w	d6,fps_k		; k (its low two bits: the quadrant)
+	move.w	d7,fps_se
+	sf	fps_sr
+	tst.l	d3			; A = |R|, fps_sr = R < 0
+	bpl.s	.ap
+	neg.l	d2
+	negx.l	d1
+	negx.l	d3
+	st	fps_sr
+.ap:	tst.l	d3			; A < 2^41: the short series
+	bne.s	.abig
+	cmp.l	#$200,d1
+	bhs.s	.abig
+	move.l	d1,d0
+	or.l	d2,d0
+	beq	.no			; A = 0
+	bra	.small
+.abig:	move.l	d1,d4			; j = (A + 2^55) >> 56
+	move.l	d3,d5
+	add.l	#$00800000,d4
+	bcc.s	.j1
+	addq.l	#1,d5
+.j1:	rol.l	#8,d4
+	and.l	#$ff,d4
+	lsl.w	#8,d5
+	or.w	d5,d4			; j
+	moveq	#0,d5			; b = A - j << 56
+	move.b	d4,d5
+	ror.l	#8,d5
+	moveq	#0,d0
+	move.w	d4,d0
+	lsr.w	#8,d0
+	sub.l	d5,d1
+	subx.l	d0,d3
+	sf	fps_sb			; Bm = |b|, fps_sb = b < 0
+	tst.l	d3
+	bpl.s	.bp
+	neg.l	d2
+	negx.l	d1
+	st	fps_sb
+.bp:	cmp.l	#$00800000,d1		; Bm >= 2^55: not here
+	bhs	.no
+	movem.l	d1-d2,fps_bm
+	mulu	#24,d4			; the table entry
+	lea	fps_tab,a5
+	add.l	d4,a5
+	lea	fps_bm,a0		; Q = Bm^2 >> 46
+	moveq	#2,d0
+	move.l	a0,a1
+	moveq	#2,d1
+	lea	fps_p,a2
+	bsr	fps_mul
+	lea	fps_p,a0
+	moveq	#4,d0
+	moveq	#46,d1
+	lea	fps_q,a1
+	moveq	#2,d2
+	bsr	fps_shr
+	lea	fps_q,a0		; Q2 = Q^2 >> 84
+	moveq	#2,d0
+	move.l	a0,a1
+	moveq	#2,d1
+	lea	fps_p,a2
+	bsr	fps_mul
+	lea	fps_p,a0
+	moveq	#4,d0
+	moveq	#84,d1
+	lea	fps_q2,a1
+	moveq	#2,d2
+	bsr	fps_shr
+	move.l	fps_q,d0		; W3 = (((W*W) >> 32) * W) >> 40, W = Q >> 32
+	move.l	d0,d1
+	bsr	fpi_mul32
+	move.l	fps_q,d1
+	bsr	fpi_mul32
+	lsr.l	#8,d0
+	move.l	d0,d7			; W3 (< 2^24)
+	movem.l	fps_q,d0-d1		; es = Q/6 - Q2/120 + W3/5040
+	movem.l	d0-d1,fps_es
+	lea	fps_es,a0
+	moveq	#2,d0
+	moveq	#6,d1
+	bsr	fps_divs
+	movem.l	fps_q2,d0-d1
+	movem.l	d0-d1,fps_t
+	lea	fps_t,a0
+	moveq	#2,d0
+	moveq	#120,d1
+	bsr	fps_divs
+	lea	fps_es,a0
+	lea	fps_t,a1
+	moveq	#2,d0
+	bsr	fps_sub
+	move.l	d7,d0
+	divu	#5040,d0
+	and.l	#$ffff,d0
+	add.l	d0,fps_es+4
+	bcc.s	.e1
+	addq.l	#1,fps_es
+.e1:	movem.l	fps_q,d0-d1		; ec = Q/2 - Q2/24 + W3/720
+	lsr.l	#1,d0
+	roxr.l	#1,d1
+	movem.l	d0-d1,fps_ec
+	movem.l	fps_q2,d0-d1
+	movem.l	d0-d1,fps_t
+	lea	fps_t,a0
+	moveq	#2,d0
+	moveq	#24,d1
+	bsr	fps_divs
+	lea	fps_ec,a0
+	lea	fps_t,a1
+	moveq	#2,d0
+	bsr	fps_sub
+	move.l	d7,d0
+	divu	#720,d0
+	and.l	#$ffff,d0
+	add.l	d0,fps_ec+4
+	bcc.s	.e2
+	addq.l	#1,fps_ec
+.e2:	lea	12(a5),a0		; CB = (C * Bm) >> 65 and CBe = ((CB >> 21) * es) >> 63
+	lea	fps_cb,a3
+	lea	fps_cbe,a4
+	bsr	fps_bterm
+	move.l	a5,a0			; SB, SBe the same with S
+	lea	fps_sbx,a3
+	lea	fps_sbe,a4
+	bsr	fps_bterm
+	move.l	a5,a0			; Sec = (S * ec) >> 84
+	lea	fps_sec,a3
+	bsr	fps_ecterm
+	lea	12(a5),a0		; Cec = (C * ec) >> 84
+	lea	fps_cec,a3
+	bsr	fps_ecterm
+	lea	fps_cb,a0		; u = CB - CBe, v = SB - SBe (in place)
+	lea	fps_cbe+8,a1
+	bsr	fps_sub3_2
+	lea	fps_sbx,a0
+	lea	fps_sbe+8,a1
+	bsr	fps_sub3_2
+	movem.l	(a5),d0-d2		; sA = S - Sec +- u
+	movem.l	d0-d2,fps_sa
+	lea	fps_sa,a0
+	lea	fps_sec,a1
+	moveq	#3,d0
+	bsr	fps_sub
+	lea	fps_sa,a0
+	lea	fps_cb,a1
+	moveq	#3,d0
+	tst.b	fps_sb
+	bne.s	.s1
+	bsr	fps_add
+	bra.s	.s2
+.s1:	bsr	fps_sub
+.s2:	movem.l	12(a5),d0-d2		; cA = C - Cec -+ v
+	movem.l	d0-d2,fps_ca
+	lea	fps_ca,a0
+	lea	fps_cec,a1
+	moveq	#3,d0
+	bsr	fps_sub
+	lea	fps_ca,a0
+	lea	fps_sbx,a1
+	moveq	#3,d0
+	tst.b	fps_sb
+	bne.s	.c1
+	bsr	fps_sub
+	bra.s	.c2
+.c1:	bsr	fps_add
+.c2:	lea	fps_sa,a0		; to extended: sin |r| -> fps_xs, cos r -> fps_xc
+	bsr	fps_toext
+	lea	fps_xs,a0
+	move.w	d0,(a0)+
+	move.l	d1,(a0)+
+	move.l	d2,(a0)
+	lea	fps_ca,a0
+	bsr	fps_toext
+	lea	fps_xc,a0
+	move.w	d0,(a0)+
+	move.l	d1,(a0)+
+	move.l	d2,(a0)
+	; quadrant q = k & 3 of |x|; sinR = sr * sA, cosR = cA:
+	; q 0: sin = sinR, cos = cosR   1: sin = cosR, cos = -sinR   2: -sinR, -cosR   3: -cosR, sinR
+	move.w	fps_k,d0
+	and.w	#3,d0
+	moveq	#0,d1			; d1.b: sin negative, d2.b: cos negative
+	moveq	#0,d2
+	move.b	fps_sr,d3		; $ff: sinR < 0
+	lea	fps_xs,a0		; the sin slot's source
+	lea	fps_xc,a1		; the cos slot's source
+	tst.w	d0
+	bne.s	.q1
+	move.b	d3,d1
+	bra.s	.qx
+.q1:	cmp.w	#1,d0
+	bne.s	.q2
+	exg	a0,a1
+	move.b	d3,d2
+	not.b	d2
+	bra.s	.qx
+.q2:	cmp.w	#2,d0
+	bne.s	.q3
+	move.b	d3,d1
+	not.b	d1
+	st	d2
+	bra.s	.qx
+.q3:	exg	a0,a1
+	st	d1
+	move.b	d3,d2
+.qx:	tst.w	fps_se			; x < 0: sin(x) = -sin|x|
+	bpl.s	.qp
+	not.b	d1
+.qp:	lea	fps_res,a2
+	move.w	(a0)+,d0
+	tst.b	d1
+	beq.s	.w1
+	or.w	#$8000,d0
+.w1:	move.w	d0,(a2)+
+	move.l	(a0)+,(a2)+
+	move.l	(a0)+,(a2)+
+	clr.w	(a2)+
+	move.w	(a1)+,d0
+	tst.b	d2
+	beq.s	.w2
+	or.w	#$8000,d0
+.w2:	move.w	d0,(a2)+
+	move.l	(a1)+,(a2)+
+	move.l	(a1)+,(a2)+
+	movem.l	(sp)+,d3-d7/a3-a5
+	and.b	#$fe,ccr		; carry clear: done
+	rts
+.no:	movem.l	(sp)+,d3-d7/a3-a5
+	or.b	#1,ccr			; carry set: the series
+	rts
+; |r| < 2^-24: sin A = A - A^3/6, cos A = 1 - A^2/2 (units 2^-95; the next terms are below them)
+.small:	movem.l	d1-d2,fps_bm
+	lea	fps_bm,a0		; A^2
+	moveq	#2,d0
+	move.l	a0,a1
+	moveq	#2,d1
+	lea	fps_a2,a2
+	bsr	fps_mul
+	lea	fps_a2,a0		; cA = 2^95 - (A^2 >> 36)
+	moveq	#4,d0
+	moveq	#36,d1
+	lea	fps_t,a1
+	moveq	#3,d2
+	bsr	fps_shr
+	move.l	#$80000000,fps_ca
+	clr.l	fps_ca+4
+	clr.l	fps_ca+8
+	lea	fps_ca,a0
+	lea	fps_t,a1
+	moveq	#3,d0
+	bsr	fps_sub
+	lea	fps_a2,a0		; sA = A << 30 - (A^3 >> 100) / 6
+	moveq	#4,d0
+	lea	fps_bm,a1
+	moveq	#2,d1
+	lea	fps_p,a2
+	bsr	fps_mul
+	lea	fps_p,a0
+	moveq	#6,d0
+	moveq	#100,d1
+	lea	fps_t,a1
+	moveq	#3,d2
+	bsr	fps_shr
+	lea	fps_t,a0
+	moveq	#3,d0
+	moveq	#6,d1
+	bsr	fps_divs
+	movem.l	fps_bm,d1-d2		; A << 30 = (A << 32) >> 2
+	move.l	d1,d0
+	move.l	d2,d1
+	moveq	#0,d2
+	lsr.l	#1,d0
+	roxr.l	#1,d1
+	roxr.l	#1,d2
+	lsr.l	#1,d0
+	roxr.l	#1,d1
+	roxr.l	#1,d2
+	movem.l	d0-d2,fps_sa
+	lea	fps_sa,a0
+	lea	fps_t,a1
+	moveq	#3,d0
+	bsr	fps_sub
+	bra	.c2
+
+; fps_bterm: a0 = the table's 3-long value V, a3 = (V * Bm) >> 65 (3 longs), a4 = ((that >> 21) *
+; es) >> 63 (2 longs).  trashes d0-d2/a0-a2
+fps_bterm:
+	moveq	#3,d0
+	lea	fps_bm,a1
+	moveq	#2,d1
+	lea	fps_p,a2
+	bsr	fps_mul
+	lea	fps_p,a0
+	moveq	#5,d0
+	moveq	#65,d1
+	move.l	a3,a1
+	moveq	#3,d2
+	bsr	fps_shr
+	move.l	a3,a0
+	moveq	#3,d0
+	moveq	#21,d1
+	lea	fps_t,a1
+	moveq	#2,d2
+	bsr	fps_shr
+	lea	fps_t,a0
+	moveq	#2,d0
+	lea	fps_es,a1
+	moveq	#2,d1
+	lea	fps_p,a2
+	bsr	fps_mul
+	lea	fps_p,a0
+	moveq	#4,d0
+	moveq	#63,d1
+	move.l	a4,a1
+	moveq	#2,d2
+	bra	fps_shr
+; fps_ecterm: a0 = the table's 3-long V, a3 = (V * ec) >> 84 (3 longs).  trashes d0-d2/a0-a2
+fps_ecterm:
+	moveq	#3,d0
+	lea	fps_ec,a1
+	moveq	#2,d1
+	lea	fps_p,a2
+	bsr	fps_mul
+	lea	fps_p,a0
+	moveq	#5,d0
+	moveq	#84,d1
+	move.l	a3,a1
+	moveq	#3,d2
+	bra	fps_shr
+; a0 = 3 longs -= the 2 longs ending at a1 (a1 = their end)
+fps_sub3_2:
+	lea	12(a0),a0
+	move.l	-(a1),d0
+	sub.l	d0,-(a0)
+	move.l	-(a1),d0
+	move.l	-(a0),d1
+	subx.l	d0,d1
+	move.l	d1,(a0)
+	move.l	-(a0),d1
+	moveq	#0,d0
+	subx.l	d0,d1
+	move.l	d1,(a0)
+	rts
+
+; fps_mul: a2 (d0+2 longs) := a0 (d0.w longs) * a1 (2 longs), unsigned, big-endian, exact (d1 is
+; ignored: every multiplier here has two longs).  trashes d0-d2 (keeps a0-a5)
+fps_mul:
+	movem.l	d3-d7/a2-a4,-(sp)
+	move.l	(a1),d6			; B
+	move.l	4(a1),d7
+	move.w	d0,d1			; clear P
+	addq.w	#1,d1
+	move.l	a2,a3
+.clr:	clr.l	(a3)+
+	dbf	d1,.clr
+	move.w	d0,d1			; rows from A's low long: row i adds at P[i .. i+2]
+	lsl.w	#2,d1
+	lea	0(a0,d1.w),a1		; after A's last long
+	lea	8(a2,d1.w),a2		; after P[i+2] for the last i
+	subq.w	#1,d0
+.r:	move.l	-(a1),d5
+	beq.s	.n
+	move.l	a2,-(sp)
+	bsr.s	fps_row
+	move.l	(sp)+,a2
+.n:	subq.l	#4,a2
+	dbf	d0,.r
+	movem.l	(sp)+,d3-d7/a2-a4
+	rts
+
+; MUL32: d0 * d1 -> d0 (high) : d1 (low), unsigned.  trashes d2-d4
+MUL32	macro
+	move.l	d0,d2
+	move.l	d1,d3
+	swap	d2
+	swap	d3
+	move.w	d2,d4
+	mulu	d3,d4
+	mulu	d0,d3
+	mulu	d1,d2
+	mulu	d1,d0
+	add.l	d3,d2
+	bcc.s	.nc\@
+	add.l	#$10000,d4
+.nc\@:	move.l	d2,d3
+	swap	d3
+	clr.w	d3
+	clr.w	d2
+	swap	d2
+	add.l	d3,d0
+	addx.l	d2,d4
+	move.l	d0,d1
+	move.l	d4,d0
+	endm
+
+; fps_row: the 3 longs before a2 += d5 * (d6:d7), the carry on into the longs before them.
+; trashes d1-d4/a2-a4 (keeps d0)
+fps_row:
+	move.l	d0,-(sp)
+	move.l	d5,d0
+	move.l	d6,d1
+	MUL32
+	move.l	d0,a3			; d5 * hi = h1:l1
+	move.l	d1,a4
+	move.l	d5,d0
+	move.l	d7,d1
+	MUL32				; d5 * lo = h0:l0
+	move.l	a4,d2			; the row: h1 + c : h0 + l1 : l0
+	add.l	d2,d0
+	move.l	a3,d2
+	moveq	#0,d3
+	addx.l	d3,d2
+	add.l	d1,-(a2)
+	move.l	-(a2),d3
+	addx.l	d0,d3
+	move.l	d3,(a2)
+	move.l	-(a2),d3
+	addx.l	d2,d3
+	bcs.s	.cy			; (a move clears the carry)
+	move.l	d3,(a2)
+	move.l	(sp)+,d0
+	rts
+.cy:	move.l	d3,(a2)
+.c:	addq.l	#1,-(a2)
+	bcs.s	.c
+	move.l	(sp)+,d0
+	rts
+
+; fps_shr: a1 (d2.w longs) := (a0 (d0.w longs) >> d1.w) mod 2^(32 * d2).  trashes d0-d2/a1
+fps_shr:
+	movem.l	d3-d6,-(sp)
+	move.w	d1,d3
+	lsr.w	#5,d3			; w: the source long (from the low end) of each result's low bits
+	and.w	#31,d1			; b
+	moveq	#32,d6
+	sub.w	d1,d6
+	move.w	d2,d4
+	lsl.w	#2,d4
+	add.w	d4,a1
+	subq.w	#1,d2
+.l:	move.w	d0,d4
+	sub.w	d3,d4
+	moveq	#0,d5
+	subq.w	#1,d4			; the source long's index (big-endian)
+	bmi.s	.st
+	lsl.w	#2,d4
+	move.l	0(a0,d4.w),d5
+	lsr.l	d1,d5
+	tst.w	d1
+	beq.s	.st
+	subq.w	#4,d4
+	bmi.s	.st
+	move.l	0(a0,d4.w),d4
+	lsl.l	d6,d4
+	or.l	d4,d5
+.st:	move.l	d5,-(a1)
+	addq.w	#1,d3
+	dbf	d2,.l
+	movem.l	(sp)+,d3-d6
+	rts
+
+; fps_divs: a0 (d0.w longs) := floor(a0 / d1.w), d1 = 1..65535.  trashes d0/d2/a0
+fps_divs:
+	add.w	d0,d0
+	subq.w	#1,d0
+	moveq	#0,d2
+.l:	move.w	(a0),d2			; (remainder << 16) + word
+	divu	d1,d2
+	move.w	d2,(a0)+
+	dbf	d0,.l
+	rts
+
+; fps_add / fps_sub: a0 (d0.w longs) +:= / -:= a1 (d0.w longs).  trashes d0-d1/a0-a1
+fps_add:
+	add.w	d0,d0
+	add.w	d0,d0
+	add.w	d0,a0
+	add.w	d0,a1
+	lsr.w	#2,d0
+	subq.w	#1,d0
+	moveq	#0,d1
+	add.l	d1,d1			; X := 0
+.l:	addx.l	-(a1),-(a0)
+	dbf	d0,.l
+	rts
+fps_sub:
+	add.w	d0,d0
+	add.w	d0,d0
+	add.w	d0,a0
+	add.w	d0,a1
+	lsr.w	#2,d0
+	subq.w	#1,d0
+	moveq	#0,d1
+	add.l	d1,d1
+.l:	subx.l	-(a1),-(a0)
+	dbf	d0,.l
+	rts
+
+; fps_toext: a0 = 3 longs V (0 < V < 2^96, units 2^-95) -> d0.w = exponent field, d1:d2 =
+; mantissa, rounded to 64 bits (nearest even).  trashes d3-d4/d6
+fps_toext:
+	movem.l	(a0),d1-d2/d6
+	move.w	#FP_BIAS,d0		; bias + n - 1 - 95: n = 96 when bit 95 is set
+.n8:	move.l	d1,d3			; whole bytes first
+	and.l	#$ff000000,d3
+	bne.s	.n
+	lsl.l	#8,d1
+	rol.l	#8,d2
+	move.b	d2,d1
+	clr.b	d2
+	rol.l	#8,d6
+	move.b	d6,d2
+	clr.b	d6
+	subq.w	#8,d0
+	bra.s	.n8
+.n:	tst.l	d1
+	bmi.s	.r
+	add.l	d6,d6
+	addx.l	d2,d2
+	addx.l	d1,d1
+	subq.w	#1,d0
+	bra.s	.n
+.r:	moveq	#1,d3
+	bra	fpi_round
 
 ; arctan(x): a = |x|; a > 1: a = 1/a; twice a := a / (1 + sqrt(1 + a^2)); series to a^29;
 ; times 4; pi/2 - that if inverted; the sign of x
@@ -1197,6 +1881,8 @@ fp_sp:		dc.l	fp_stack-FP_SLOT
 fp_mode:	dc.w	0
 	include	"fpconst.i"		; build/: tools/mkfpconst.py (2/pi, pi/2 parts, series)
 	even
+	include	"fpstab.i"		; build/: tools/sincos_model.py --table (fpi_fsc: Pm, h, sin/cos(j/512))
+	even
 
 	section	bss
 fp_stack:	ds.b	16*FP_SLOT
@@ -1209,3 +1895,29 @@ fp_tx:		ds.l	3
 fp_thr:		ds.l	1
 fp_s:		ds.w	1
 fp_buf:		ds.b	44
+fps_key:	ds.w	5		; fpi_sincos: the last argument (se, mantissa) and its results
+fps_res:	ds.w	12		; sin, cos (12-byte slots)
+fps_xs:		ds.w	6
+fps_xc:		ds.w	6
+fps_t:		ds.l	3		; fpi_fsc's numbers (big-endian longs)
+fps_bm:		ds.l	2
+fps_a2:		ds.l	4
+fps_p:		ds.l	6
+fps_q:		ds.l	2
+fps_q2:		ds.l	2
+fps_es:		ds.l	2
+fps_ec:		ds.l	2
+fps_cb:		ds.l	3
+fps_cbe:	ds.l	2
+fps_sbx:	ds.l	3
+fps_sbe:	ds.l	2
+fps_sec:	ds.l	3
+fps_cec:	ds.l	3
+fps_sa:		ds.l	3
+fps_ca:		ds.l	3
+fps_k:		ds.w	1
+fps_se:		ds.w	1
+fps_kok:	ds.b	1
+fps_sr:		ds.b	1
+fps_sb:		ds.b	1
+		even
