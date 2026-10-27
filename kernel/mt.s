@@ -15,6 +15,11 @@
 ;             overload the original's argument selects.           trashes: d1-d2/a0
 ; mt_random64l in: d0.l = l (>= 0): random(int64 l) for any longint l (0 gives 0, after the two
 ;             draws, as FPC)                                         trashes: d1-d2/a0
+; mt_seedc    in: d0.l = seed: mt_seed and the first draw's regeneration done at once (the state
+;             after mt_update, index 0: every later draw, skip and randseed exactly as after
+;             mt_seed), from a cache of the last MT_CN seeds (2.5 KB each). For code that seeds
+;             with the same few seeds again and again (Phase 6h: the system view's planet icons
+;             and facts, every pass)                                trashes: d0-d2/a0-a1
 ;mt_skip      in: d0.l = n: advances the generator as n calls would (fast)   trashes: d0-d2/a0-a1
 ; mt_randomize  seed from the clock (FPC randomize); scripted test runs (scr_test) use 1994,
 ;             like the oracle build.                                trashes: d0-d2/a0-a1
@@ -73,6 +78,49 @@ mt_seed:
 	bne.s	.i
 	move.w	#MT_N,mt_index
 	movem.l	(sp)+,d3-d4
+	rts
+
+mt_seedc:
+	movem.l	d3-d7/a2-a3,-(sp)
+	lea	mt_cache,a2
+	moveq	#MT_CN-1,d1
+.f:	tst.w	4(a2)
+	beq.s	.n
+	cmp.l	(a2),d0
+	beq.s	.hit
+.n:	lea	MT_CE(a2),a2
+	dbf	d1,.f
+	move.l	d0,-(sp)		; not kept: seed, regenerate, keep
+	bsr	mt_seed
+	bsr	mt_update
+	clr.w	mt_index
+	move.w	mt_cnext,d0
+	move.w	d0,d1
+	addq.w	#1,d1
+	cmp.w	#MT_CN,d1
+	blo.s	.w
+	moveq	#0,d1
+.w:	move.w	d1,mt_cnext
+	mulu	#MT_CE,d0
+	lea	mt_cache,a1
+	add.l	d0,a1
+	move.l	(sp)+,(a1)+		; the seed, valid
+	move.w	#1,(a1)+
+	addq.l	#2,a1
+	lea	mt_state,a2
+	bra.s	.cp
+.hit:	not.l	d0			; randseed and oldseed := not seed, as mt_seed leaves them
+	move.l	d0,mt_rs
+	move.l	d0,mt_old
+	clr.w	mt_index
+	addq.l	#8,a2
+	lea	mt_state,a1
+.cp:	moveq	#MT_N*4/32-1,d0		; 2496 bytes, 32 at a time
+.c:	movem.l	(a2)+,d1-d7/a3
+	movem.l	d1-d7/a3,(a1)
+	lea	32(a1),a1
+	dbf	d0,.c
+	movem.l	(sp)+,d3-d7/a2-a3
 	rts
 
 ; regenerate the 624 words (mtwist_update_state): mt[k] = mt[k+M] ^ twist(mt[k], mt[k+1]),
@@ -280,4 +328,8 @@ mt_rs:		ds.l	1		; FPC's randseed variable
 mt_old:		ds.l	1		; and its oldrandseed
 mt_state:	ds.l	MT_N
 mt_index:	ds.w	1
+MT_CN		equ	10		; mt_seedc's cache: seed.l, valid.w, pad.w, the state after mt_update
+MT_CE		equ	8+MT_N*4
+mt_cnext:	ds.w	1
+mt_cache:	ds.b	MT_CN*MT_CE
 	even

@@ -13,7 +13,7 @@ endgame:
 	move.w	#15,GS_TCOLOR(a6)
 	move.w	#255,GS_BKCOLOR(a6)
 	bsr	fading
-	bsr	mousehide
+	bsr	mousehidep
 	bsr	eg_clear		; scr_fillchar(screen, 0)
 	lea	eg_mod_dim,a0		; playmod(true, DIMENSIO.MOD)
 	bsr	playmod
@@ -440,7 +440,7 @@ eg_writestr2:
 	move.l	d0,a0
 	dbf	d1,.s
 	move.l	a0,-(sp)
-	bsr	mousehide
+	bsr	mousehidep
 	lea	eg_m_cred,a0		; scr_fillchar(screen, 0) (the ST: the credits' bands, black)
 	bsr	ms_load
 	bcs	fatal

@@ -399,61 +399,162 @@ removepanel:
 .x:	rts
 
 ; utils.pas sprinkle(x1,y1,x2,y2,seed d4): the background comes back pixel by pixel
+; sprinkle2 (usecode2.s) is the same with the planet's picture inside 28..147 x 13..133.
+; Phase 6h: no divisions per pixel (j = yo*w + xo kept as its quotient and remainder: j+seed adds
+; seed div w / seed mod w, j-max subtracts h rows), tables per row and per column, and the pixels
+; go to the shadow and the planar screen at once (ms_psetq's way; the cursor is off meanwhile).
+; Same pixels in the same order, same delays.
 sprinkle:
-	movem.l	d3-d7/a3-a4,-(sp)
+	sf	us_sp2
+us_sprinkle:
+	movem.l	d3-d7/a3-a5,-(sp)
 	move.w	d0,us_sx1
 	move.w	d1,us_sy1
-	sub.w	d0,d2			; x2-x1
+	sub.w	d0,d2			; w = x2-x1
 	move.w	d2,us_sw
-	sub.w	d1,d3
+	sub.w	d1,d3			; h = y2-y1
+	move.w	d3,us_sh
 	mulu	d2,d3			; max := (x2-x1)*(y2-y1) (word)
 	move.w	d3,us_max
 	move.w	d4,us_seed
-	clr.w	us_index
-	moveq	#0,d7			; j
-	bsr	mousehide
-	move.l	GS_BACKGR(a6),a4
-.l:	addq.w	#1,us_index
-	add.w	us_seed,d7		; j := j + seed; if j > max then j := j - max
-	cmp.w	us_max,d7
-	bls.s	.j
-	sub.w	us_max,d7
-.j:	moveq	#0,d0
-	move.w	d7,d0
-	divu	us_sw,d0		; y := y1 + j div w; x := x1 + j mod w
-	move.w	d0,d1
-	add.w	us_sy1,d1
+	moveq	#0,d0
+	move.w	d4,d0
+	divu	d2,d0
+	move.w	d0,us_sq		; seed div w
 	swap	d0
-	add.w	us_sx1,d0
-	move.w	d0,d2			; a := x + backgrx (wrapped); b := y + backgry
+	move.w	d0,us_sr		; seed mod w
+	bsr	mousehidep		; (the pixels go to the planar screen too)
+	lea	us_spt,a1		; rows yo = 0..h: planar row, shadow row + x1, LUT, picture row
+	moveq	#0,d3			; (the background's row b, or the planet's row y-13 - 28)
+.t:	move.w	us_sy1,d1
+	add.w	d3,d1			; y
+	move.w	d1,d2
+	mulu	#SCR_BPL,d2
+	add.l	vid_phys,d2
+	move.l	d2,(a1)+
+	move.w	d1,d2
+	mulu	#MS_W,d2
+	add.l	ms_buf,d2
+	moveq	#0,d0
+	move.w	us_sx1,d0
+	add.l	d0,d2
+	move.l	d2,(a1)+
+	lea	vid_line_lut,a0
+	move.w	d1,d2
+	lsl.w	#2,d2
+	move.l	0(a0,d2.w),(a1)+
+	move.w	d1,d2			; b := y + backgry (wrapped)
+	add.w	GS_BACKGRY(a6),d2
+	cmp.w	#199,d2
+	ble.s	.tb
+	sub.w	#200,d2
+.tb:	mulu	#320,d2
+	add.l	GS_BACKGR(a6),d2
+	move.l	d2,(a1)+
+	move.w	d1,d2			; planet^[y-12, x-27]: (y-13)*120 - 28 + x
+	sub.w	#13,d2
+	muls	#120,d2
+	sub.l	#28,d2
+	add.l	GS_PLANET(a6),d2
+	move.l	d2,(a1)+
+	move.w	d1,(a1)+		; y (sprinkle2's test)
+	lea	10(a1),a1		; (32 bytes a row)
+	addq.w	#1,d3
+	cmp.w	us_sh,d3
+	bls.s	.t
+	lea	us_sxt,a1		; columns xo = 0..w-1: group offset, bit, a, x
+	moveq	#0,d3
+.u:	move.w	us_sx1,d1
+	add.w	d3,d1			; x
+	move.w	d1,d0
+	lsr.w	#4,d0
+	lsl.w	#3,d0
+	move.w	d0,(a1)+
+	moveq	#15,d0
+	and.w	d1,d0
+	move.w	#$8000,d2
+	lsr.w	d0,d2
+	move.w	d2,(a1)+
+	move.w	d1,d2			; a := x + backgrx (wrapped)
 	add.w	GS_BACKGRX(a6),d2
 	cmp.w	#319,d2
-	ble.s	.a
+	ble.s	.ua
 	sub.w	#320,d2
-.a:	move.w	d1,d3
-	add.w	GS_BACKGRY(a6),d3
-	cmp.w	#199,d3
-	ble.s	.b
-	sub.w	#200,d3
-.b:	mulu	#320,d3
-	add.w	d2,d3
-	move.b	0(a4,d3.l),d2		; screen[y,x] := backgr^[b,a]
-	bsr	ms_pset
-	move.w	us_index,d0		; if index mod 100 = 0 then delay(tslice div 10)
-	ext.l	d0
-	divu	#100,d0
-	swap	d0
-	tst.w	d0
+.ua:	move.w	d2,(a1)+
+	move.w	d1,(a1)+
+	addq.w	#1,d3
+	cmp.w	us_sw,d3
+	blo.s	.u
+	moveq	#0,d7			; j
+	moveq	#0,d6			; xo = j mod w
+	moveq	#0,d5			; yo = j div w
+	moveq	#100,d3			; index mod 100
+	move.w	us_max,d4		; index 1..max+1
+	lea	us_spt,a3
+	lea	us_sxt,a4
+.l:	add.w	us_seed,d7		; j := j + seed
+	add.w	us_sr,d6
+	add.w	us_sq,d5
+	cmp.w	us_sw,d6
+	blo.s	.x1
+	sub.w	us_sw,d6
+	addq.w	#1,d5
+.x1:	cmp.w	us_max,d7		; if j > max then j := j - max
+	bls.s	.j
+	sub.w	us_max,d7
+	sub.w	us_sh,d5
+.j:	move.w	d5,d0
+	lsl.w	#5,d0
+	lea	0(a3,d0.w),a5		; the row's entry
+	move.w	d6,d0
+	lsl.w	#3,d0
+	lea	0(a4,d0.w),a2		; the column's entry
+	tst.b	us_sp2
+	beq.s	.bg
+	move.w	6(a2),d0		; sprinkle2: inside 28..147 x 13..133 the planet
+	cmp.w	#28,d0
+	blt.s	.bg
+	cmp.w	#147,d0
+	bgt.s	.bg
+	move.w	20(a5),d1
+	cmp.w	#13,d1
+	blt.s	.bg
+	cmp.w	#133,d1
+	bgt.s	.bg
+	move.l	16(a5),a0
+	moveq	#0,d2
+	move.b	0(a0,d0.w),d2
+	bra.s	.put
+.bg:	move.l	12(a5),a0		; backgr^[b, a]
+	move.w	4(a2),d0
+	moveq	#0,d2
+	move.b	0(a0,d0.w),d2
+.put:	move.l	4(a5),a0
+	move.b	d2,0(a0,d6.w)		; screen[y, x]: the shadow
+	move.l	8(a5),a0
+	move.b	0(a0,d2.w),d2		; the slot of the line's band
+	move.l	(a5),a0
+	add.w	(a2)+,a0		; the group
+	move.w	(a2),d1			; the bit
+	move.w	d1,d0
+	not.w	d0
+	REPT	4
+	lsr.b	#1,d2
+	bcc.s	*+6
+	or.w	d1,(a0)+
+	bra.s	*+4
+	and.w	d0,(a0)+
+	ENDR
+	subq.w	#1,d3			; if index mod 100 = 0 then delay(tslice div 10)
 	bne.s	.nd
+	moveq	#100,d3
 	move.w	GS_TSLICE(a6),d0
 	ext.l	d0
 	divu	#10,d0
 	bsr	delay
-.nd:	move.w	us_index,d0
-	cmp.w	us_max,d0
-	bls	.l
+.nd:	dbf	d4,.l
 	bsr	mouseshow
-	movem.l	(sp)+,d3-d7/a3-a4
+	movem.l	(sp)+,d3-d7/a3-a5
 	rts
 
 ; ---------------------------------------------------------------
@@ -1197,6 +1298,13 @@ us_sw:		ds.w	1
 us_max:		ds.w	1
 us_seed:	ds.w	1
 us_index:	ds.w	1
+us_sh:		ds.w	1		; sprinkle: h, seed div w, seed mod w
+us_sq:		ds.w	1
+us_sr:		ds.w	1
+us_sp2:		ds.b	1		; sprinkle2's planet
+	even
+us_spt:		ds.b	32*136		; per row (h+1 <= 125): see us_sprinkle
+us_sxt:		ds.b	8*272		; per column (w <= 266)
 us_bx:		ds.w	4
 us_lastx:	ds.w	1
 us_lasty:	ds.w	1

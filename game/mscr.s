@@ -8,8 +8,8 @@
 ; ms_init      allocate the shadow, chk_open it, draw into vid_phys    trashes: d0-d2/a0-a2
 ; ms_dirty     in: d0.w x1, d1.w y1, d2.w x2, d3.w y2 (inclusive): mark  trashes: d0-d2/a0-a1
 ; ms_dirty_all mark the whole screen                                     trashes: d0-d2/a0-a1
-; ms_flush     convert the dirty spans to the shown screen (cursor kept off meanwhile), clear
-;              them                                                       trashes: d0-d2/a0-a2
+; ms_flush     convert the dirty spans to the shown screen, clear them (the cursor stays drawn;
+;              only lines under it are converted with it off, then it is drawn again at once)                                                       trashes: d0-d2/a0-a2
 ; ms_addr      in: d0.w x, d1.w y   out: a0 = shadow address              trashes: d1
 ; ms_load      in: a0 = mode name (C string, "LOG"): DATA\NAME.ISP (bands, LUTs, reps, planar
 ;              picture -> pic_show on the shown screen) and DATA\NAME.CHK (64000 indices -> the
@@ -24,10 +24,14 @@
 ; ms_bar       in: d0-d3 = x1,y1,x2,y2, d4.b colour (scr_fillchar rows; marks) trashes: d0-d2/a0-a2
 ; ms_print     in: d0.w x1, d1.w y1, a0 = Pascal string: printxy (marks)  trashes: d0-d2/a0-a2
 ; ms_fade      in: d0-d3 = x1,y1,x2,y2, d4.w alt: plainfadearea (marks)   trashes: d0-d2/a0-a2
-; mousehide / mouseshow   the original's: hide; flush + show
+; mousehide / mouseshow   the original's: hide; flush + show. Phase 6h: mousehide is soft (the
+;              cursor stays while the game draws into the shadow: kernel kbd_cursor_soft);
+;              mousehidep really hides it, for code that writes the planar screen itself
 ; delay        in: d0.w ms: flush, then tim_delay (the original's delay)  trashes: d0-d2/a0-a2
 ; ms_psetp     in: d0.w x, d1.w y, d2.b colour: the shadow pixel and the planar one at once,
-;              nothing marked (for pixel-by-pixel effects; the cursor must be hidden) trashes: d0-d2/a0-a1
+;              nothing marked (for pixel-by-pixel effects; hide the cursor with mousehidep) trashes: d0-d2/a0-a1
+; ms_psetq     in: d0.w x, d1.w y, d2.b colour: shadow + planar pixel through the line's LUT, no
+;              marks (sprinkles; cursor off: mousehidep)              trashes: d0-d2/a0-a1
 ; ms_vscroll   in: d0.w x1, d1.w y1, d2.w x2, d3.w y2 (inclusive), d4.w dir: the same row move on
 ;              the shown planar screen as the caller then makes in the shadow (dir 1: row y takes
 ;              row y+1, y1 up to y2; -1: row y takes row y-1, y2 down to y1), which it does not mark.
@@ -56,6 +60,13 @@ ms_init:
 	bsr	ms_slot
 	moveq	#2,d0
 	bsr	ms_slot
+	ifd	CURSTAT			; (the shot's check: a planar screen converted from the shadow)
+	move.l	#SCR_SIZE,d0
+	bsr	mem_alloc
+	bcs	fatal
+	move.l	a0,ms_vbuf
+	move.l	#ms_verify,scr_shot_hook
+	endif
 	move.l	vid_phys,a0
 	bsr	gfx_set_target
 	; fall through: nothing dirty
@@ -118,19 +129,13 @@ ms_dirty:
 .x:	move.w	(sp)+,d3
 	rts
 
-ms_flush:
-	bsr	snd_poll
-	tst.w	ms_any
-	beq	.none
-	movem.l	d3-d4/a3-a4,-(sp)
-	move.w	kbd_cur_on,-(sp)
-	beq.s	.off
-	bsr	ms_curhit		; the cursor is only taken off if a dirty span meets it
-	bne.s	.hide
-	clr.w	kbd_cur_on		; (else the VBL only leaves it alone meanwhile: it stays drawn)
-	bra.s	.off
-.hide:	bsr	kbd_cursor_hide
-.off:	lea	ms_x1,a3
+ms_flush:				; (Phase 6h) the cursor stays on the screen: lines under it wait
+	bsr	snd_poll		; for a second pass that takes it off for just those lines and
+	tst.w	ms_any			; draws it again at once; meanwhile the VBL may move it, but
+	beq	.none			; never onto the line being converted (kbd_busy)
+	movem.l	d3-d5/a3-a4,-(sp)
+	clr.w	ms_defer
+	lea	ms_x1,a3
 	lea	ms_x2,a4
 	move.w	ms_ymin,d3		; y: the dirty range only
 	add.w	d3,a3
@@ -141,74 +146,163 @@ ms_flush:
 .y:	move.w	(a3),d0
 	cmp.w	#$7fff,d0
 	beq.s	.n
+	tst.w	kbd_cur_on
+	beq.s	.cv			; off: nothing drawn (the VBL draws nothing either)
+	move.w	d3,d1
+	addq.w	#1,d1
+	move.w	d1,kbd_busy		; first: from here the VBL leaves this line alone
+	bsr	ms_curline		; is the drawn cursor on it, over the span?
+	beq.s	.cv
+	st	ms_defer		; yes: the parts beside it now, its 32 pixels in the second pass
+	movem.w	d1-d2,-(sp)		; (left, right: whole groups, so the parts share no word with it)
+	move.w	(a3),d0
+	cmp.w	d1,d0
+	bge.s	.nl
+	move.w	d1,(a3)
+	move.w	d1,d2
+	subq.w	#1,d2
+	bsr	ms_conv			; x1 .. left-1
+.nl:	move.w	2(sp),d0
+	cmp.w	(a4),d0
+	bge.s	.nr
 	move.w	(a4),d2
-	sub.w	d0,d2
-	addq.w	#1,d2			; count
+	move.w	d0,(a4)
+	addq.w	#1,d0
+	bsr	ms_conv			; right+1 .. x2
+.nr:	addq.l	#4,sp
+	bra.s	.n
+.cv:	bsr	ms_span
+.n:	addq.l	#2,a3
+	addq.l	#2,a4
+	addq.w	#1,d3
+	cmp.w	d4,d3
+	ble.s	.y
+	clr.w	kbd_busy
+	tst.w	ms_defer
+	beq.s	.done
+	ifd	CURSTAT
+	addq.l	#1,kbd_st_p2
+	endif
+	move.w	kbd_cur_on,d5		; the lines under the cursor: off, convert, on again
+	clr.w	kbd_cur_on
+	bsr	kbd_cur_restore
+	lea	ms_x1,a3
+	lea	ms_x2,a4
+	move.w	ms_ymin,d3
+	add.w	d3,a3
+	add.w	d3,a3
+	add.w	d3,a4
+	add.w	d3,a4
+.y2:	cmp.w	#$7fff,(a3)
+	beq.s	.n2
+	bsr	ms_span
+.n2:	addq.l	#2,a3
+	addq.l	#2,a4
+	addq.w	#1,d3
+	cmp.w	d4,d3
+	ble.s	.y2
+	tst.w	d5
+	beq.s	.done
+	bsr	kbd_cursor_drawnow
+	move.w	d5,kbd_cur_on
+.done:	clr.w	ms_any
+	move.w	#MS_H,ms_ymin
+	move.w	#-1,ms_ymax
+	movem.l	(sp)+,d3-d5/a3-a4
+.none:	rts
+
+	ifd	CURSTAT
+; ms_verify (CURSTAT builds; kernel scr_shot calls it with the cursor off): flush, convert the
+; whole shadow into ms_vbuf and compare it with the planar screen - tag 242 = differing longs
+; (cursor debris, a stale save-under), tag 241 = the first one's byte offset.
+ms_verify:
+	movem.l	d3-d4/a3,-(sp)
+	bsr	ms_flush
+	move.l	gfx_target,-(sp)
+	move.l	ms_vbuf,gfx_target
+	moveq	#0,d3
+.l:	move.w	d3,d1
+	mulu	#MS_W,d1
+	move.l	ms_buf,a0
+	add.l	d1,a0
+	moveq	#0,d0
+	move.w	#MS_W,d2
+	move.w	d3,d1
+	bsr	gfx_c4_span
+	addq.w	#1,d3
+	cmp.w	#MS_H,d3
+	bne.s	.l
+	move.l	(sp)+,gfx_target
+	move.l	ms_vbuf,a0
+	move.l	vid_phys,a1
+	moveq	#0,d4
+	moveq	#-1,d3
+	move.w	#SCR_SIZE/4-1,d2
+.c:	cmpm.l	(a0)+,(a1)+
+	beq.s	.n
+	addq.l	#1,d4
+	tst.l	d3
+	bpl.s	.n
+	move.l	a1,d3
+	sub.l	vid_phys,d3
+	subq.l	#4,d3
+.n:	dbf	d2,.c
+	move.l	d4,d0
+	or.l	#242<<24,d0
+	bsr	scr_dbg
+	move.l	d3,d0
+	and.l	#$ffffff,d0
+	or.l	#241<<24,d0
+	bsr	scr_dbg
+	movem.l	(sp)+,d3-d4/a3
+	rts
+	endif
+
+; ms_span: line d3, (a3)/(a4) = its span: convert it and clear it.  trashes: d0-d2/a0-a2
+; ms_conv: line d3, x d0..d2: convert.  trashes: d0-d2/a0-a2
+ms_span:
+	move.w	(a3),d0
+	move.w	(a4),d2
 	move.w	#$7fff,(a3)
 	move.w	#-1,(a4)
+ms_conv:
+	sub.w	d0,d2
+	addq.w	#1,d2			; count
 	move.w	d3,d1
 	mulu	#MS_W,d1
 	move.l	ms_buf,a0
 	add.l	d1,a0
 	add.w	d0,a0
 	move.w	d3,d1
-	bsr	gfx_c4_span
-.n:	addq.l	#2,a3
-	addq.l	#2,a4
-	addq.w	#1,d3
-	cmp.w	d4,d3
-	ble.s	.y
-	clr.w	ms_any
-	move.w	#MS_H,ms_ymin
-	move.w	#-1,ms_ymax
-	tst.w	(sp)+
-	beq.s	.x
-	bsr	kbd_cursor_show
-.x:	movem.l	(sp)+,d3-d4/a3-a4
-.none:	rts
+	bra	gfx_c4_span
 
-; ms_curhit: Z clear if the cursor's drawn rectangle (32 pixels from its group, kbd_save_rows
-; lines; on another screen than the flush's target: always) meets a dirty span.
-; trashes d0-d4/a0-a1
-ms_curhit:
+; ms_curline: Z clear if the drawn cursor (32 pixels from its group, kbd_save_rows lines) covers
+; line d3 within its span (a3)/(a4); a cursor on another screen than the flush's target never
+; does.  out: d0 (Z), d1.w = the cursor's left x, d2.w = its right x (when it does)
+; trashes: d0-d2/a0
+ms_curline:
+	DI				; (one consistent rectangle: the VBL may move it)
 	move.l	kbd_save_at,d0
-	beq.s	.no			; not drawn
-	move.l	kbd_save_scr,d1
-	cmp.l	gfx_target,d1
-	bne.s	.yes
-	sub.l	d1,d0
-	divu	#SCR_BPL,d0		; y0; the remainder: the byte in the line
-	move.l	d0,d3
-	swap	d3
-	lsr.w	#3,d3
-	lsl.w	#4,d3			; x left
-	move.w	d3,d4
-	add.w	#31,d4			; x right
-	move.w	d0,d1			; last line
-	add.w	kbd_save_rows,d1
-	subq.w	#1,d1
-	cmp.w	ms_ymax,d1
-	ble.s	.l1
-	move.w	ms_ymax,d1
-.l1:	cmp.w	ms_ymin,d0
-	bge.s	.l2
-	move.w	ms_ymin,d0
-.l2:	sub.w	d0,d1			; lines - 1
-	bmi.s	.no
-	lea	ms_x1,a0
-	lea	ms_x2,a1
-	add.w	d0,d0
-	add.w	d0,a0
-	add.w	d0,a1
-.y:	cmp.w	(a0)+,d4		; x1 <= right and x2 >= left: it meets
-	blt.s	.n
-	cmp.w	(a1),d3
-	ble.s	.yes
-.n:	addq.l	#2,a1
-	dbf	d1,.y
-.no:	moveq	#0,d0
+	beq.s	.no
+	move.l	kbd_save_scr,a0
+	cmp.l	gfx_target,a0
+	bne.s	.no
+	move.w	d3,d0
+	sub.w	kbd_save_y,d0		; line - top
+	cmp.w	kbd_save_rows,d0
+	bhs.s	.no			; (unsigned: above or below)
+	move.w	kbd_save_x,d1
+	move.w	d1,d2
+	add.w	#31,d2
+	cmp.w	(a3),d2			; x1 <= right and x2 >= left: it meets
+	blt.s	.no
+	cmp.w	(a4),d1
+	bgt.s	.no
+	EI
+	moveq	#1,d0
 	rts
-.yes:	moveq	#1,d0
+.no:	EI
+	moveq	#0,d0
 	rts
 
 ms_addr:
@@ -439,12 +533,14 @@ ms_print:
 	move.w	(sp)+,d3
 	rts
 
-mousehide:
+mousehide:				; (Phase 6h) the game draws into the shadow only: the cursor
+	bra	kbd_cursor_soft		; stays (kernel kbd.s: off after KBD_SOFTV frames)
+mousehidep:				; for code that writes the planar screen itself
 	bra	kbd_cursor_hide
 
 mouseshow:
 	bsr	ms_flush
-	bra	kbd_cursor_show
+	bra	kbd_cursor_shownow
 
 ms_psetp:
 	move.w	d1,-(sp)
@@ -459,6 +555,45 @@ ms_psetp:
 	move.l	vid_phys,gfx_target
 	bsr	gfx_pset
 	move.l	(sp)+,gfx_target
+	rts
+
+; ms_psetq: the shadow pixel and the planar one at once, straight through the line's LUT (no
+; marks, no flush: the sprinkles' pixel-by-pixel reveal, Phase 6h). The cursor must be off
+; (mousehidep).  in: d0.w x, d1.w y, d2.b colour  trashes: d0-d2/a0-a1
+ms_psetq:
+	move.l	d3,-(sp)
+	move.w	d1,d3
+	mulu	#MS_W,d1
+	move.l	ms_buf,a0
+	add.l	d1,a0
+	move.b	d2,0(a0,d0.w)		; the shadow
+	lea	vid_line_lut,a0
+	move.w	d3,d1
+	lsl.w	#2,d1
+	move.l	0(a0,d1.w),a0
+	and.w	#$ff,d2
+	move.b	0(a0,d2.w),d2		; the slot of the line's band
+	mulu	#SCR_BPL,d3
+	move.l	vid_phys,a0
+	add.l	d3,a0
+	move.w	d0,d1
+	lsr.w	#4,d1
+	lsl.w	#3,d1
+	add.w	d1,a0			; the group
+	not.w	d0
+	and.w	#15,d0
+	moveq	#0,d1
+	bset	d0,d1			; the pixel's bit
+	move.w	d1,d0
+	not.w	d0
+	REPT	4
+	lsr.b	#1,d2
+	bcc.s	*+6
+	or.w	d1,(a0)+
+	bra.s	*+4
+	and.w	d0,(a0)+
+	ENDR
+	move.l	(sp)+,d3
 	rts
 
 MSVMASK	macro				; one group, 4 planes: dst ^= (src ^ dst) & \1
@@ -570,6 +705,11 @@ ms_buf:		ds.l	1
 ms_snaps:	ds.l	3
 ms_color:	ds.w	1		; graph.setcolor's colour (rectangle, circle in explore)
 ms_any:		ds.w	1
+ms_defer:	ds.w	1		; ms_flush: lines under the cursor wait for the second pass
+	ifd	CURSTAT
+ms_vbuf:	ds.l	1
+kbd_st_p2:	ds.l	1
+	endif
 ms_ymin:	ds.w	1		; first and last line marked dirty since the last flush
 ms_ymax:	ds.w	1
 ms_x1:		ds.w	MS_H

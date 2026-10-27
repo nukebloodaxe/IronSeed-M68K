@@ -14,10 +14,22 @@
 ; kbd_cursor_show / kbd_cursor_hide  (original mouseshow / mousehide)
 ; The cursor is drawn by the VBL on the displayed screen with save-under; drawing code
 ; must hide it while drawing under it (as the original did with mousehide/mouseshow).
+; kbd_cursor_soft   (Phase 6h; MAIN's mousehide) a hide for code that draws only into a
+;                   shadow: the cursor stays drawn and keeps following the mouse; the VBL
+;                   takes it off only when no kbd_cursor_shownow comes within KBD_SOFTV
+;                   frames (a long hidden stretch). Writers of the planar screen still use
+;                   kbd_cursor_hide (or take kbd_cur_on away meanwhile, like ms_flush).
+;                   trashes: d0
+; kbd_cursor_shownow  (MAIN's mouseshow) ends a soft hide; shown at once (not at the next
+;                   VBL) when it was off.  trashes: d0-d2/a0-a2
+; kbd_cursor_drawnow  main code: draw it now at the mouse position (kbd_cur_on must be 0
+;                   and the cursor not drawn; the caller sets kbd_cur_on afterwards).
+;                   trashes: d0-d2/a0-a2
 
 LA_GCURX	equ	-602		; Line-A: GEM's mouse position
 LA_GCURY	equ	-600
 KBD_VAR		equ	16*2+16*4*2	; one cursor variant: 16 mask words + 16 x 4 plane words
+KBD_SOFTV	equ	50		; frames a soft hide may last before the VBL hides it
 
 	section	text
 kbd_init:
@@ -303,17 +315,86 @@ kbd_cursor_show:
 	rts
 
 kbd_cursor_hide:
+	ifd	CURSTAT			; (who takes a drawn cursor off: tag 251 = return address)
+	tst.w	kbd_cur_on
+	beq.s	.ns
+	move.l	d0,-(sp)
+	move.l	4(sp),d0
+	and.l	#$ffffff,d0
+	or.l	#251<<24,d0
+	tst.l	kbd_save_at
+	bne.s	.lg
+	sub.l	#6<<24,d0		; (245: it was on but not drawn)
+.lg:	bsr	scr_dbg
+	move.l	(sp)+,d0
+.ns:
+	endif
 	DI
 	clr.w	kbd_cur_on
 	bsr	kbd_cur_restore
 	EI
 	rts
 
+kbd_cursor_soft:
+	tst.w	kbd_soft
+	bne.s	.x			; (the first hide of a stretch counts)
+	move.l	vid_frames,kbd_soft_t
+	move.w	#1,kbd_soft
+.x:	rts
+
+kbd_cursor_shownow:
+	clr.w	kbd_soft
+	tst.w	kbd_cur_on
+	bne.s	.x			; on: the VBL keeps it
+	bsr	kbd_cursor_drawnow
+	move.w	#1,kbd_cur_on
+.x:	rts
+
+kbd_cursor_drawnow:
+	tst.l	kbd_save_at
+	bne.s	.x
+	movem.l	d3-d7/a3-a4,-(sp)
+	move.l	kbd_mx,kbd_drawn	; (x and y as one long: the VBL then sees it in place)
+	bsr	kbd_cur_draw
+	movem.l	(sp)+,d3-d7/a3-a4
+.x:	rts
+
 ; VBL: restore under the old position, draw at the current one (on the shown screen)
 kbd_vbl:
+	ifd	CURSTAT			; (measuring builds: frames with the cursor on the screen)
+	bsr.s	.v
+	addq.l	#1,kbd_st_n
 	tst.w	kbd_cur_on
-	beq.s	.x
-	tst.l	kbd_save_at		; already drawn, same place, same screen: nothing to do
+	bne.s	.son
+	addq.l	#1,kbd_st_off
+	move.l	54(sp),d0		; (the interrupted PC: tag 244)
+	and.l	#$ffffff,d0
+	or.l	#244<<24,d0
+	bsr	scr_dbg
+.son:	tst.l	kbd_save_at
+	beq.s	.sx
+	addq.l	#1,kbd_st_v
+.sx:	rts
+.v:
+	endif
+	tst.w	kbd_cur_on
+	beq	.x
+	tst.w	kbd_soft		; a soft hide that lasts: take the cursor off now
+	beq.s	.vis
+	move.l	vid_frames,d0
+	sub.l	kbd_soft_t,d0
+	cmp.l	#KBD_SOFTV,d0
+	blo.s	.vis
+	clr.w	kbd_soft
+	clr.w	kbd_cur_on
+	ifd	CURSTAT
+	addq.l	#1,kbd_st_to
+	endif
+	movem.l	d1/a0-a1,-(sp)
+	bsr	kbd_cur_restore
+	movem.l	(sp)+,d1/a0-a1
+	rts
+.vis:	tst.l	kbd_save_at		; already drawn, same place, same screen: nothing to do
 	beq.s	.draw
 	move.l	vid_shown,d0
 	cmp.l	kbd_save_scr,d0
@@ -321,7 +402,14 @@ kbd_vbl:
 	move.l	kbd_mx,d0		; (x and y as one long)
 	cmp.l	kbd_drawn,d0
 	beq.s	.x
-.draw:	move.l	kbd_mx,kbd_drawn
+.draw:	move.l	kbd_mx,d1		; (x, y: one snapshot for the check and the draw)
+	move.w	kbd_busy,d0		; ms_flush converts line d0-1 meanwhile: never draw over it
+	beq.s	.go			; (it tries again next frame)
+	subq.w	#1,d0
+	sub.w	d1,d0
+	cmp.w	#16,d0
+	blo.s	.x
+.go:	move.l	d1,kbd_drawn
 	movem.l	d0-d7/a0-a5,-(sp)
 	bsr	kbd_cur_restore
 	bsr	kbd_cur_draw
@@ -346,9 +434,13 @@ kbd_cur_restore:
 	dbf	d1,.r
 .x:	rts
 
-kbd_cur_draw:
-	move.w	kbd_mx,d0
-	move.w	kbd_my,d1
+kbd_cur_draw:				; at kbd_drawn (the position the caller took: x, y)
+	move.w	kbd_drawn,d0
+	move.w	kbd_drawn+2,d1
+	move.w	d1,kbd_save_y		; (for ms_flush: the drawn rectangle's top line and left x)
+	moveq	#-16,d2
+	and.w	d0,d2
+	move.w	d2,kbd_save_x
 	move.w	#SCR_H,d7
 	sub.w	d1,d7			; rows that fit
 	cmp.w	#16,d7
@@ -372,7 +464,7 @@ kbd_cur_draw:
 	lea	kbd_save,a1
 	moveq	#0,d3			; row 0..15
 	subq.w	#1,d7
-.row:	move.w	kbd_my,d0		; this row's band -> variant
+.row:	move.w	kbd_drawn+2,d0		; this row's band -> variant
 	add.w	d3,d0
 	lea	vid_line_band,a2
 	moveq	#0,d2
@@ -447,6 +539,18 @@ kbd_mx:		ds.w	1		; kbd_mx/kbd_my must stay together (read as one long)
 kbd_my:		ds.w	1
 kbd_drawn:	ds.l	1
 kbd_cur_on:	ds.w	1
+kbd_soft:	ds.w	1		; a soft hide is running (kbd_cursor_soft)
+kbd_busy:	ds.w	1		; line+1 that main code is writing (ms_flush), 0 = none: the
+					; VBL does not move the cursor onto it
+kbd_save_x:	ds.w	1		; the drawn cursor's left x (its first group) and top line
+kbd_save_y:	ds.w	1
+kbd_soft_t:	ds.l	1		; its first frame (vid_frames)
+	ifd	CURSTAT
+kbd_st_n:	ds.l	1		; frames since the last script shot
+kbd_st_v:	ds.l	1		; of those, frames with the cursor drawn
+kbd_st_to:	ds.l	1		; soft hides that timed out
+kbd_st_off:	ds.l	1		; frames with kbd_cur_on clear
+	endif
 kbd_save_rows:	ds.w	1
 kbd_cur_ready:	ds.w	1
 kbd_cur_src:	ds.b	256

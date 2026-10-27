@@ -1175,7 +1175,7 @@ ex_sprinkle:				; (x, y counted on, no divisions; per row and per column tables;
 	move.w	d1,a3			; seed div 240
 	swap	d1
 	move.w	d1,d6			; seed mod 240
-	bsr	mousehide
+	bsr	mousehidep		; (writes the planar screen itself)
 	lea	ex_lc,a0		; the picture: landcolors^ or summarypic^
 	tst.b	ex_sum
 	beq.s	.pic

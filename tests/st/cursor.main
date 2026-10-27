@@ -1,0 +1,49 @@
+args /playseed 3
+# cursor (Phase 6h, real time, CURSTAT build): the frames with the mouse cursor on the screen per
+# stretch between shots - ASMDEFS="-DCURSTAT=1 -DSCR_DBGN=8192", tests/st/run_st.sh cursor, then
+# tools/curstat.py hatari/c/DBG.BIN. David (27 Oct 2026): on the system view and with more panels
+# open the cursor was hardly drawn. Stretches: C1 bridge (mouse on the planet), C3 system view (on
+# the orbits), C5 the same with the mouse on the right-hand panel, C7 + the damage-control panel
+# (mouse on the planet), C9 the star map instead of the system view (mouse on the map).
+# vbls 12000
+wait 3000
+key #27
+wait 2000
+move 100 60
+shot C0
+wait 8000
+shot C1
+key z
+wait 1500
+key x
+wait 8000
+move 100 60
+shot C2
+wait 8000
+shot C3
+move 250 70
+wait 100
+shot C4
+wait 8000
+shot C5
+key a
+wait 1500
+key w
+wait 8000
+move 100 60
+shot C6
+wait 8000
+shot C7
+key g
+wait 1500
+key w
+wait 8000
+move 90 60
+shot C8
+wait 8000
+shot C9
+key #291
+wait 1500
+key y
+wait 3000
+quit

@@ -32,7 +32,9 @@ SCR_DBGN	equ	256		; longs in the debug ring (ASMDEFS=-DSCR_DBGN=8192 for long tr
 ; scr_vdelay in: d0.l = ms: tim_delay in virtual time
 ; A command waits until the program has consumed the previous key or click.
 
-SCR_MAX		equ	4096
+	ifnd	SCR_MAX
+SCR_MAX		equ	4096		; (-DSCR_MAX=32768 for long scripts: tests/st/cursorx.main)
+	endif
 
 	section	text
 scr_open:
@@ -210,6 +212,30 @@ scr_tick:
 	bsr	scr_dbg
 	move.l	(sp)+,d0
 	endif
+	ifd	CURSTAT			; cursor builds: frames with the cursor drawn, frames (tag 253/252)
+	move.l	kbd_st_v,d0
+	and.l	#$ffffff,d0
+	or.l	#253<<24,d0
+	bsr	scr_dbg
+	move.l	kbd_st_n,d0
+	and.l	#$ffffff,d0
+	or.l	#252<<24,d0
+	bsr	scr_dbg
+	move.l	kbd_st_to,d0
+	or.l	#248<<24,d0
+	bsr	scr_dbg
+	move.l	kbd_st_p2,d0
+	or.l	#247<<24,d0
+	bsr	scr_dbg
+	move.l	kbd_st_off,d0
+	or.l	#246<<24,d0
+	bsr	scr_dbg
+	clr.l	kbd_st_v
+	clr.l	kbd_st_n
+	clr.l	kbd_st_to
+	clr.l	kbd_st_p2
+	clr.l	kbd_st_off
+	endif
 	move.l	a0,-(sp)
 	bsr	scr_shot
 	move.l	(sp)+,a0
@@ -312,6 +338,13 @@ scr_shot:
 	movem.l	d3/a3,-(sp)
 	move.w	kbd_cur_on,-(sp)	; without the mouse cursor (like the Linux shots)
 	bsr	kbd_cursor_hide
+	ifd	CURSTAT			; (a program's check of the screen: MAIN's ms_verify)
+	move.l	scr_shot_hook,d0
+	beq.s	.nh
+	move.l	d0,a0
+	jsr	(a0)
+.nh:
+	endif
 	lea	scr_name,a0
 	clr.w	-(sp)
 	move.l	a0,-(sp)
@@ -367,6 +400,9 @@ scr_key:	ds.b	1
 scr_ext:	ds.b	1
 scr_mouse:	ds.b	1		; the script has placed the mouse (c_utils.c script_mouse)
 	even
+	ifd	CURSTAT
+scr_shot_hook:	ds.l	1
+	endif
 scr_dbgn:	ds.l	1		; (scr_dbgbuf must follow: written together)
 scr_dbgbuf:	ds.l	SCR_DBGN
 scr_args:	ds.b	128		; command tail from the script (length byte, text, 0)

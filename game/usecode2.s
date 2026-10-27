@@ -81,78 +81,9 @@ genericrightside:
 
 ; utils.pas sprinkle2(x1 d0, y1 d1, x2 d2, y2 d3, seed d4): as sprinkle, but inside the
 ; viewscreen (28..147 x 13..133) the pixels come from the planet
-sprinkle2:
-	movem.l	d3-d7/a3-a4,-(sp)
-	move.w	d0,us_sx1
-	move.w	d1,us_sy1
-	sub.w	d0,d2
-	move.w	d2,us_sw
-	sub.w	d1,d3
-	mulu	d2,d3
-	move.w	d3,us_max
-	move.w	d4,us_seed
-	clr.w	us_index
-	moveq	#0,d7
-	bsr	mousehide
-	move.l	GS_BACKGR(a6),a4
-.l:	addq.w	#1,us_index
-	add.w	us_seed,d7
-	cmp.w	us_max,d7
-	bls.s	.j
-	sub.w	us_max,d7
-.j:	moveq	#0,d0
-	move.w	d7,d0
-	divu	us_sw,d0
-	move.w	d0,d1
-	add.w	us_sy1,d1		; y
-	swap	d0
-	add.w	us_sx1,d0		; x
-	cmp.w	#28,d0
-	blt.s	.bg
-	cmp.w	#13,d1
-	blt.s	.bg
-	cmp.w	#147,d0
-	bgt.s	.bg
-	cmp.w	#133,d1
-	bgt.s	.bg
-	move.w	d1,d2			; planet^[y-12, x-27] (rows/columns from 1)
-	sub.w	#13,d2
-	mulu	#120,d2
-	add.w	d0,d2
-	sub.w	#28,d2
-	move.l	GS_PLANET(a6),a0
-	move.b	0(a0,d2.l),d2
-	bra.s	.put
-.bg:	move.w	d0,d2
-	add.w	GS_BACKGRX(a6),d2
-	cmp.w	#319,d2
-	ble.s	.a
-	sub.w	#320,d2
-.a:	move.w	d1,d3
-	add.w	GS_BACKGRY(a6),d3
-	cmp.w	#199,d3
-	ble.s	.b
-	sub.w	#200,d3
-.b:	mulu	#320,d3
-	add.w	d2,d3
-	move.b	0(a4,d3.l),d2
-.put:	bsr	ms_pset
-	move.w	us_index,d0
-	ext.l	d0
-	divu	#100,d0
-	swap	d0
-	tst.w	d0
-	bne.s	.nd
-	move.w	GS_TSLICE(a6),d0
-	ext.l	d0
-	divu	#10,d0
-	bsr	delay
-.nd:	move.w	us_index,d0
-	cmp.w	us_max,d0
-	bls	.l
-	bsr	mouseshow
-	movem.l	(sp)+,d3-d7/a3-a4
-	rts
+sprinkle2:				; (usecode.s us_sprinkle: utils.pas sprinkle2)
+	st	us_sp2
+	bra	us_sprinkle
 
 ; ---------------------------------------------------------------- the panels' openers
 readyoptions:

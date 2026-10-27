@@ -2193,9 +2193,9 @@ displayhistorymap:
 dp_planicon:
 	movem.l	d3/a3,-(sp)
 	move.l	a0,a3
-	moveq	#0,d0			; randseed := seed (a word)
-	move.w	PLANET_SEED(a3),d0
-	bsr	mt_seed
+	moveq	#0,d0			; randseed := seed (a word; kernel mt_seedc: the seeded state
+	move.w	PLANET_SEED(a3),d0	; kept for the last 10 seeds - every pass of the system view
+	bsr	mt_seedc		; seeds each planet again)
 	moveq	#0,d3
 	move.b	PLANET_STATE(a3),d3
 	bne.s	.s15
@@ -3428,7 +3428,7 @@ genericplanetinfo:
 	bra	.pr
 .tm1:	moveq	#0,d0			; randseed := seed
 	move.w	PLANET_SEED(a3),d0
-	bsr	mt_seed
+	bsr	mt_seedc
 	cmp.w	#-1,d4
 	bne	.t05
 	moveq	#0,d0			; j := random(word(state+mode+seed)) mod 3
@@ -3904,7 +3904,33 @@ dp_sysplanet:
 	bne.s	.ni
 .inc:	addq.w	#1,d0
 .ni:	move.w	d0,dp_i
-	FSSE				; t2 := i/100
+	moveq	#0,d1			; (Phase 6h) ar, br and t2 depend on i and the orbit only: the
+	move.b	PLANET_ORBIT(a3),d1	; last DP_SCN planets' values are kept (bit for bit the same;
+	lea	dp_sc,a0		; only ang moves with t1)
+	moveq	#DP_SCN-1,d2
+.sl:	tst.w	4(a0)
+	beq.s	.sn
+	cmp.w	(a0),d0
+	bne.s	.sn
+	cmp.w	2(a0),d1
+	beq.s	.hit
+.sn:	lea	32(a0),a0
+	dbf	d2,.sl
+	moveq	#-1,d3			; a miss: compute, then keep
+	bra.s	.miss
+.hit:	moveq	#0,d3
+	lea	GS_T2(a6),a1		; t2, ar, br (consecutive in GS)
+	move.l	8(a0),(a1)+
+	move.l	12(a0),(a1)+
+	move.l	16(a0),(a1)+
+	move.l	20(a0),(a1)+
+	move.l	24(a0),(a1)+
+	move.l	28(a0),(a1)+
+	cmp.w	#2,4(a0)
+	beq	.c0			; the star's position
+	FSSE
+	bra	.ang
+.miss:	FSSE				; t2 := i/100
 	bsr	fp_ldw
 	FLDI	100
 	bsr	fp_div
@@ -3965,7 +3991,11 @@ dp_sysplanet:
 	bsr	fp_div
 	bsr	fp_atan
 	FSTG	GS_T2
-	moveq	#8,d0			; ang := t2 + t1*(8-orbit)  (SSE)
+	tst.w	d3
+	beq.s	.ang
+	moveq	#1,d0
+	bsr	dp_scput
+.ang:	moveq	#8,d0			; ang := t2 + t1*(8-orbit)  (SSE)
 	sub.b	PLANET_ORBIT(a3),d0
 	ext.w	d0
 	bsr	fp_ldw
@@ -3994,13 +4024,42 @@ dp_sysplanet:
 	FSTG	GS_Y1
 	FSSE
 	bra.s	.x
-.c:	FSSE				; the star: x1 := 142; y1 := 65
+.c:	tst.w	d3
+	beq.s	.c0
+	moveq	#2,d0
+	bsr	dp_scput
+.c0:	FSSE				; the star: x1 := 142; y1 := 65
 	FLDI	142
 	FSTG	GS_X1
 	FLDI	65
 	FSTG	GS_Y1
 .x:	movem.l	(sp)+,d3-d4/a3
 	rts
+; dp_scput: keep dp_sysplanet's t2/ar/br for dp_i and a3's orbit, d0.w = 1 (a planet) or 2 (the
+; star's position: t2 only).  trashes: d0-d2/a0-a1
+dp_scput:
+	move.w	dp_scnext,d1
+	move.w	d1,d2
+	addq.w	#1,d2
+	and.w	#DP_SCN-1,d2
+	move.w	d2,dp_scnext
+	lsl.w	#5,d1
+	lea	dp_sc,a0
+	add.w	d1,a0
+	move.w	dp_i,(a0)
+	moveq	#0,d1
+	move.b	PLANET_ORBIT(a3),d1
+	move.w	d1,2(a0)
+	move.w	d0,4(a0)
+	lea	GS_T2(a6),a1
+	move.l	(a1)+,8(a0)
+	move.l	(a1)+,12(a0)
+	move.l	(a1)+,16(a0)
+	move.l	(a1)+,20(a0)
+	move.l	(a1)+,24(a0)
+	move.l	(a1)+,28(a0)
+	rts
+
 ; d0 := round(x1), d1 := round(y1)
 dp_rxy:
 	FSSE
@@ -6041,4 +6100,7 @@ dp_tmpd:	ds.l	2
 dp_xd:		ds.l	2
 dp_zd:		ds.l	2
 dp_ang:		ds.l	2
+DP_SCN		equ	16
+dp_sc:		ds.b	32*DP_SCN	; dp_sysplanet's kept values: i, orbit, kind (0 = free), pad, t2, ar, br
+dp_scnext:	ds.w	1
 dp_shippixbuf:	ds.l	1
