@@ -1052,6 +1052,12 @@ yesnorequest:
 	moveq	#82,d1
 	lea	us_s_no,a0
 	bsr	printxy
+	move.w	#74,d0			; (Phase 6j) the box's colours: the bands under it refitted
+	moveq	#60,d1
+	move.w	#245,d2
+	moveq	#102,d3
+	moveq	#3,d4			; (the buttons' highlight: plainfadearea +3)
+	bsr	ms_refit
 	bsr	us_mainloop2
 	move.w	d0,d5
 	bsr	mousehide		; restore the screen under the box
@@ -1071,6 +1077,7 @@ yesnorequest:
 	move.w	#245,d2
 	moveq	#102,d3
 	bsr	ms_dirty
+	bsr	ms_refit_end		; (the screen's own design again)
 	move.l	(sp)+,d0
 	bsr	mem_release
 	move.w	#3,GS_BKCOLOR(a6)

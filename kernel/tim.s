@@ -34,10 +34,17 @@ tim_delay:
 	divu	#5,d0			; ms -> ticks, rounded up
 	and.l	#$ffff,d0
 	add.l	HZ200.w,d0
+	ifd	PROFILE
+	move.l	HZ200.w,-(sp)
+	endif
 .w:	bsr	scr_tick		; test scripts keep running during waits
 	move.l	HZ200.w,d1
 	cmp.l	d0,d1
 	blo.s	.w
+	ifd	PROFILE			; (idle 200 Hz ticks, logged with each script shot: tag 61)
+	sub.l	(sp)+,d1
+	add.l	d1,tim_idlet
+	endif
 	rts
 
 ; tim_pace: as tim_delay, for a main loop's frame: the wait ends d0.w ms after the previous
@@ -61,10 +68,17 @@ tim_pace:
 	cmp.l	d1,d0
 	bls.s	.late
 	move.l	d0,tim_pdead
+	ifd	PROFILE
+	move.l	d1,-(sp)
+	endif
 .w:	bsr	scr_tick
 	move.l	HZ200.w,d1
 	cmp.l	d0,d1
 	blo.s	.w
+	ifd	PROFILE
+	sub.l	(sp)+,d1
+	add.l	d1,tim_idlet
+	endif
 	rts
 .late:	move.l	d1,tim_pdead
 	bra	scr_tick
@@ -72,6 +86,7 @@ tim_pace:
 	section	bss
 tim_base:	ds.l	1
 tim_pdead:	ds.l	1		; tim_pace's last deadline (200 Hz ticks)
+tim_idlet:	ds.l	1		; (PROFILE: idle ticks in tim_delay/tim_pace)
 
 	section	text
 rnd:

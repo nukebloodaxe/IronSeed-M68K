@@ -327,7 +327,238 @@ if_project:
 	movem.l	(sp)+,d3/a3
 	rts
 
+; ---------------------------------------------------------------- Phase 6j: the stars' fast paths
+ILDX	macro				; d3.w/d4/d5 := the 10-byte extended \1
+	lea	\1,a0
+	move.w	(a0)+,d3
+	move.l	(a0)+,d4
+	move.l	(a0),d5
+	endm
+; if_rotf: if_rot for a star (a0 = a, a1 = b doubles, d0.w = mode) - the same x87 operations
+; (each product and the sum rounded to 64 bits, the sum to 53 when stored) through fp.s's register
+; primitives fpx_mul/fpx_add/fpi_std instead of its stack: bit for bit if_rot, without x1/y1
+; (dead for the stars: the target's projection sets them at the end of every displaysector).
+; trashes d0-d2/a0-a2
+if_rotf:
+	movem.l	d3-d7/a3-a4,-(sp)
+	move.l	a0,a3
+	move.l	a1,a4
+	move.w	d0,if_rm
+	FX87
+	bsr	fpi_ldd			; a
+	movem.l	d0-d2,if_ra
+	move.l	a4,a0
+	bsr	fpi_ldd			; b
+	movem.l	d0-d2,if_rb
+	ILDX	gx_0_156355812		; s*b
+	bsr	fpx_mul
+	tst.w	if_rm
+	bpl.s	.a1
+	eor.w	#$8000,d0		; mode -1: c*a - s*b
+.a1:	movem.l	d0-d2,if_rp
+	ILDX	gx_0_987700794		; c*a
+	movem.l	if_ra,d0-d2
+	bsr	fpx_mul
+	movem.l	if_rp,d3-d5
+	bsr	fpx_add
+	move.l	a3,a0
+	bsr	fpi_std			; a :=
+	ILDX	gx_0_156355812		; s*a
+	movem.l	if_ra,d0-d2
+	bsr	fpx_mul
+	tst.w	if_rm
+	bmi.s	.b1
+	eor.w	#$8000,d0		; mode 1: -s*a + c*b
+.b1:	movem.l	d0-d2,if_rp
+	ILDX	gx_0_987700794		; c*b
+	movem.l	if_rb,d0-d2
+	bsr	fpx_mul
+	movem.l	if_rp,d3-d5
+	bsr	fpx_add
+	move.l	a4,a0
+	bsr	fpi_std			; b :=
+	FSSE
+	movem.l	(sp)+,d3-d7/a3-a4
+	rts
+
+	ifd	IFCHECK			; check build: if_rot on copies, compared with if_rotf (tag 42)
+if_rchk:
+	move.l	(a0),if_ca
+	move.l	4(a0),if_ca+4
+	move.l	(a1),if_cb
+	move.l	4(a1),if_cb+4
+	move.w	d0,if_cm
+	rts
+if_rchk2:
+	lea	if_ca,a0
+	lea	if_cb,a1
+	move.w	if_cm,d0
+	bsr	if_rot
+	lea	NEARBY_X(a3),a0
+	lea	NEARBY_Z(a3),a1
+	move.l	(a0),d0
+	cmp.l	if_ca,d0
+	bne.s	.bad
+	move.l	4(a0),d0
+	cmp.l	if_ca+4,d0
+	bne.s	.bad
+	move.l	(a1),d0
+	cmp.l	if_cb,d0
+	bne.s	.bad
+	move.l	4(a1),d0
+	cmp.l	if_cb+4,d0
+	beq.s	.ok
+.bad:	move.l	#42<<24,d0
+	bsr	scr_dbg
+	addq.l	#1,if_nbad
+.ok:	rts
+	endif
+
+; if_fix: a0 = double* -> d0.l = trunc(v * 65536) (16.16), carry set when |v| >= 256.  trashes d1-d2
+if_fix:
+	move.l	(a0),d1
+	move.l	d1,d0
+	swap	d0
+	lsr.w	#4,d0
+	and.w	#$7ff,d0		; e (0: zero or denormal)
+	beq.s	.z
+	move.w	#1023+31-16,d2		; v*65536 = (1.f << 31) >> (1038 - e)
+	sub.w	d0,d2
+	cmp.w	#8,d2
+	blt.s	.big			; |v| >= 256
+	cmp.w	#32,d2
+	bge.s	.z			; |v| < 2^-16
+	move.l	d1,d0
+	and.l	#$fffff,d0
+	or.l	#$100000,d0
+	lsl.l	#8,d0			; << 11
+	lsl.l	#3,d0
+	move.l	d1,-(sp)
+	move.l	4(a0),d1
+	swap	d1
+	lsr.w	#5,d1			; lo >> 21
+	and.l	#$7ff,d1
+	or.l	d1,d0
+	lsr.l	d2,d0
+	move.l	(sp)+,d1
+	bpl.s	.p
+	neg.l	d0
+.p:	andi.b	#$fe,ccr
+	rts
+.z:	moveq	#0,d0
+	rts
+.big:	ori.b	#1,ccr
+	rts
+
+; if_projf: if_project's d0 = round(85 + x*250/(500-z)), d1 = round(70 + y*250/(500-z)) (a0 = the
+; x double; y, z at +8, +16) in 16.16 fixed point: r = 250/D from one divu (D normalised to 16
+; bits: relative error <= 2^-15), q = x*r. The error of q is below 3*(|x|+1)+8 units of 2^-16
+; (D's truncation 2|q|, r's |x|, x's and the product's 1 each, the doubles' own rounding far
+; below one), so when the fraction is farther than that from 1/2 the rounding of the oracle's
+; double is the same; otherwise (and for |x|, |y| >= 256, D outside [256, 1024)) if_project
+; computes it exactly. Leaves x1/y1 alone (dead for the stars, as in if_rotf).  trashes d0-d2/a0-a2
+if_projf:
+	movem.l	d3-d6/a3,-(sp)
+	move.l	a0,a3
+	lea	16(a3),a0
+	bsr	if_fix			; z
+	bcs.s	.slow
+	move.l	#500<<16,d3		; D = 500 - z
+	sub.l	d0,d3
+	cmp.l	#256<<16,d3
+	blo.s	.slow
+	cmp.l	#1024<<16,d3
+	bhs.s	.slow
+	move.l	#250<<22,d4		; r16 = 250*2^16/D: D >= 512: Dk = D >> 10 (D*64), else D >> 9
+	cmp.l	#512<<16,d3
+	bhs.s	.k6
+	lsr.l	#8,d3
+	lsr.l	#1,d3
+	add.l	d4,d4
+	bra.s	.kd
+.k6:	moveq	#10,d5
+	lsr.l	d5,d3
+.kd:	divu	d3,d4			; Dk in [32768, 65536): r16 <= 64000
+	and.l	#$ffff,d4
+	move.l	a3,a0
+	bsr	if_fix			; x
+	bcs.s	.slow
+	moveq	#85,d1
+	bsr.s	.q
+	bcs.s	.slow
+	move.w	d0,d5
+	lea	8(a3),a0
+	bsr	if_fix			; y
+	bcs.s	.slow
+	moveq	#70,d1
+	bsr.s	.q
+	bcs.s	.slow
+	move.w	d0,d1
+	move.w	d5,d0
+	ifd	IFCHECK
+	bsr	.chk
+	endif
+	movem.l	(sp)+,d3-d6/a3
+	rts
+.slow:	addq.l	#1,if_nslow
+	move.l	a3,a0
+	bsr	if_project
+	movem.l	(sp)+,d3-d6/a3
+	rts
+; d0.l = x (16.16, |x| < 256), d1.w = the offset, d4 = r16 -> d0.w = round(offset + x*r), carry =
+; too near 1/2.  trashes d1-d3/d6
+.q:	move.l	d0,d2
+	bpl.s	.qp
+	neg.l	d0
+.qp:	move.l	d0,d3
+	move.w	d0,d6			; |x| lo * r16 >> 16 + |x| hi * r16
+	mulu	d4,d6
+	clr.w	d6
+	swap	d6
+	swap	d0
+	mulu	d4,d0
+	add.l	d6,d0
+	tst.l	d2
+	bpl.s	.qq
+	neg.l	d0
+.qq:	swap	d1
+	clr.w	d1
+	add.l	d1,d0			; v = offset + q
+	swap	d3			; E = 3*(|x| hi + 1) + 8
+	addq.w	#1,d3
+	move.w	d3,d6
+	add.w	d3,d3
+	add.w	d6,d3
+	addq.w	#8,d3
+	move.w	d0,d2			; |fraction - 1/2|
+	sub.w	#$8000,d2
+	bpl.s	.qa
+	neg.w	d2
+.qa:	cmp.w	d3,d2
+	bls.s	.qu
+	add.l	#$8000,d0
+	swap	d0
+	andi.b	#$fe,ccr
+	rts
+.qu:	ori.b	#1,ccr
+	rts
+	ifd	IFCHECK			; check build: the exact answer too, mismatches to DBG.BIN (tag 41)
+.chk:	movem.l	d0-d1,-(sp)
+	move.l	a3,a0
+	bsr	if_project
+	cmp.w	2(sp),d0
+	bne.s	.bad
+	cmp.w	6(sp),d1
+	beq.s	.ok
+.bad:	move.l	#41<<24,d0
+	bsr	scr_dbg
+	addq.l	#1,if_nbad
+.ok:	movem.l	(sp)+,d0-d1
+	rts
+	endif
+
 if_displaysector:
+	PMARK	40			; (PROFILE: one per sector map frame)
 	movem.l	d3-d7/a3,-(sp)
 	cmp.b	#59,GS_SHIP+SHIP_DAMAGES+DMG_CPU-1(a6)
 	bhi	.static
@@ -368,9 +599,15 @@ if_displaysector:
 	beq.s	.nr
 	lea	NEARBY_X(a3),a0		; (x, z)
 	lea	NEARBY_Z(a3),a1
-	bsr	if_rot
+	ifd	IFCHECK
+	bsr	if_rchk
+	endif
+	bsr	if_rotf
+	ifd	IFCHECK
+	bsr	if_rchk2
+	endif
 .nr:	lea	NEARBY_X(a3),a0
-	bsr	if_project
+	bsr	if_projf
 	move.w	d0,GS_X(a6)
 	move.w	d1,GS_Y(a6)
 	move.w	NEARBY_INDEX(a3),d0
@@ -1713,6 +1950,15 @@ if_fn_sysset:	dc.b	"DATA",92,"SYSSET.DTA",0
 	even
 
 	section	bss
+if_ra:		ds.l	3		; if_rotf: a, b, a product (d0-d2 images)
+if_rb:		ds.l	3
+if_rp:		ds.l	3
+if_nslow:	ds.l	1		; if_projf: exact fallbacks (statistics)
+if_nbad:	ds.l	1		; (IFCHECK builds: mismatches)
+if_ca:		ds.l	2
+if_cb:		ds.l	2
+if_rm:		ds.w	1
+if_cm:		ds.w	1
 if_dots:	ds.l	40		; this frame's dots in starmapscreen (offsets)
 if_nmin:	ds.w	106		; per copied row: first column with a dot
 if_nmax:	ds.w	106		; (212 bytes after if_nmin) last column

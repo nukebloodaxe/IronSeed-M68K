@@ -1701,6 +1701,7 @@ savegamedata:
 	move.w	#245,d2
 	move.w	#140,d3
 	bsr	ms_dirty
+	bsr	ms_refit_end		; (Phase 6j: the screen's own design again)
 	bsr	mouseshow
 	BKCOL	3
 	move.l	(sp)+,d0

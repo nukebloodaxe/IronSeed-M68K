@@ -68,6 +68,12 @@ fpi_pop2:				; B (d3-d5) := st0, A (d0-d2) := st1, pop both
 ; ---------------------------------------------------------------- loads and stores
 fp_ldd:
 	movem.l	d3,-(sp)
+	bsr.s	fpi_ldd
+	bsr	fpi_push
+	movem.l	(sp)+,d3
+	rts
+; fpi_ldd: a0 = double* -> d0.w/d1/d2 (no push; Phase 6j: register-level users).  trashes d3
+fpi_ldd:
 	move.l	(a0),d3			; hi
 	move.l	4(a0),d2		; lo
 	move.l	d3,d0
@@ -78,7 +84,7 @@ fp_ldd:
 	moveq	#0,d0			; zero (and denormals)
 	moveq	#0,d1
 	moveq	#0,d2
-	bra.s	.p
+	rts
 .nz:	add.w	#FP_BIAS-1023,d0
 	tst.l	d3
 	bpl.s	.ps
@@ -95,8 +101,6 @@ fp_ldd:
 	or.l	d3,d1
 	moveq	#11,d3
 	lsl.l	d3,d2
-.p:	bsr	fpi_push
-	movem.l	(sp)+,d3
 	rts
 
 fp_ldx:
@@ -142,15 +146,20 @@ fp_std:
 	movem.l	d3-d6,-(sp)
 	move.l	a0,-(sp)
 	bsr	fpi_pop
+	move.l	(sp)+,a0
+	bsr.s	fpi_std
+	movem.l	(sp)+,d3-d6
+	rts
+; fpi_std: d0.w/d1/d2 rounded to 53 bits -> the double at a0 (no pop; Phase 6j).  trashes d0-d6
+fpi_std:
 	moveq	#0,d6
 	moveq	#0,d3			; 53 bits
 	bsr	fpi_round
-	move.l	(sp)+,a0
 	tst.l	d1
 	bne.s	.nz
-	clr.l	(a0)+
 	clr.l	(a0)
-	bra.s	.x
+	clr.l	4(a0)
+	rts
 .nz:	move.w	d0,d3			; exponent: biased 16383 -> 1023
 	and.w	#$7fff,d3
 	sub.w	#FP_BIAS-1023,d3
@@ -165,14 +174,13 @@ fp_std:
 	lsr.l	d5,d4
 	and.l	#$fffff,d4
 	or.l	d4,d3
-	move.l	d3,(a0)+
+	move.l	d3,(a0)
 	moveq	#21,d5			; lo = mant_hi << 21 | mant_lo >> 11
 	lsl.l	d5,d1
 	moveq	#11,d5
 	lsr.l	d5,d2
 	or.l	d2,d1
-	move.l	d1,(a0)
-.x:	movem.l	(sp)+,d3-d6
+	move.l	d1,4(a0)
 	rts
 
 fp_stx:

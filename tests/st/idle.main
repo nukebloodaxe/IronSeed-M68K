@@ -1,0 +1,20 @@
+args /playseed 3
+# idle (PROFILE build: tags 61/62 at each shot = idle and total 200 Hz ticks): the bridge in orbit
+# of a planet, then the star (after its walks), the system view
+# vbls 12000
+wait 3000
+key #27
+wait 3000
+shot I0
+wait 20000
+shot I1
+key @0
+wait 25000
+shot I2
+wait 20000
+shot I3
+key #291
+wait 1500
+key y
+wait 3000
+quit

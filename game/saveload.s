@@ -79,6 +79,16 @@ sl_savegamedata:
 	move.w	d0,GS_TCOLOR(a6)
 .redo:	bsr	sl_loadfilenames
 	bsr	sl_displayfilenames
+	ifd	SL_LOAD			; (Phase 6j, MAIN: the bands under the dialog refitted for its
+	movem.w	d0-d4,-(sp)		; colours; savegamedata puts the design back)
+	move.w	#SL_WX,d0
+	move.w	#SL_WY,d1
+	move.w	#SL_WX+SL_WW-1,d2
+	move.w	#SL_WY+SL_WH-1,d3
+	moveq	#3,d4			; (the rows' highlight: plainfadearea +3)
+	bsr	ms_refit
+	movem.w	(sp)+,d0-d4
+	endc
 	moveq	#SL_WY,d1
 	move.w	#SL_WY+SL_WH-1,d2
 	bsr	chk_show
@@ -330,6 +340,12 @@ sl_loadgamedata:
 	move.w	#245,d2
 	move.w	#140,d3
 	bsr	ms_dirty
+	move.w	#SL_WX,d0		; (Phase 6j: the bands under the dialog refitted for its colours)
+	move.w	#SL_WY,d1
+	move.w	#SL_WX+SL_WW-1,d2
+	move.w	#SL_WY+SL_WH-1,d3
+	moveq	#3,d4
+	bsr	ms_refit
 .go2:	bsr	ms_flush
 	bsr	sl_mainloop		; result = the slot (9 = cancel)
 	move.w	d0,d3
@@ -355,6 +371,7 @@ sl_loadgamedata:
 	move.w	#245,d2
 	move.w	#140,d3
 	bsr	ms_dirty
+	bsr	ms_refit_end
 .ns:	bsr	mouseshow
 	move.w	#3,GS_BKCOLOR(a6)
 	tst.w	d7

@@ -409,7 +409,88 @@ def land_mode(src, out, font, prev=None):
         preview(prev, d, stack[1])
         preview(prev.replace('.png', '2.png'), d, stack[-1])
     print('LAND: splits', d.splits, 'err %.0f' % d.err)
+    land_state_modes(clean, pal, font, d, out, summary=stack[-1], prev=prev)
     return d
+
+
+def land_composite(clean, P, st, mo, rng, font, k):
+    """one training screen of the exploration: planet P's map, a zoom window, the probes' views,
+    the scan buttons, the compound list (as land_mode draws them)"""
+    gi, g2, wi, water = EX_SETCOLORS[st]
+    if st == 5 and mo == 3: water = 0
+    spc = P.spc
+    lut = ex_landlut(water, gi, g2, wi, spc)
+    zl = ex_zoomlut(water, gi, g2, wi, spc)
+    im = clean.copy()
+    L = P.land
+    for y in range(1, 121):
+        for x in range(1, 241):
+            v = lut[L[x, y]]
+            if v is not None: im[y + 12, x + 27] = v
+    zx, zy = rng.randint(1, 170), rng.randint(1, 55)
+    zoom = np.zeros((61, 61), np.uint8)
+    for a in range(30):
+        for b in range(30):
+            l0 = int(L[zx + a, zy + b])
+            zoom[a * 2 + 1, b * 2 + 1] = l0
+            zoom[a * 2 + 2, b * 2 + 1] = (l0 + round((int(L[zx + a + 1, zy + b]) - l0) / 2)) & 255
+            zoom[a * 2 + 1, b * 2 + 2] = (l0 + round((int(L[zx + a, zy + b + 1]) - l0) / 2)) & 255
+            zoom[a * 2 + 2, b * 2 + 2] = (l0 + round((int(L[zx + a + 1, zy + b + 1]) - l0) / 2)) & 255
+    for i in range(1, 61):
+        for j in range(1, 61):
+            im[i + 138, j + 205] = zl[zoom[j, i]]
+    for r in (8, 16, 4, 8):
+        mm_circle(im, 236, 169, r, 47)
+    for j in range(1, 5):
+        px, py = rng.randint(30, 200), rng.randint(30, 80)
+        im[j * 40 - 25:j * 40 + 1, 281:313] = im[py:py + 26, px + 11:px + 43]
+    for i in range(1, 6):
+        cc = [112, 80, 48][(i + k) % 3]
+        reg = im[9 * i + 14:9 * i + 17, 2:21]
+        reg[reg >= 32] = (reg[reg >= 32] & 15) | cc
+    for ln in range(7):
+        cm.printxy(im, 8, 155 + ln * 6, ['Hydrogen', 'Iron Oxide', 'Silicon', 'Nitrogen', 'Water', 'Methane', 'Gold'][ln], 207, 0, font)
+    return im
+
+
+def land_state_modes(clean, pal, font, dland, out, summary, prev=None):
+    """LAND1-6 (Phase 6j): the exploration screen for a planet of state 1-6. LAND's split lines and
+    bands 1-3; band 0 (the map, the probes' views, the scan buttons: lines 0 to LAND's first split)
+    fitted again on that state's maps only (LAND's own fit shares its slots between every state's
+    water and special colours: the map's greys come out in a few levels). game/explore.s
+    ex_design switches while the screen is still dark."""
+    import fpcrand
+    for st in range(1, 7):
+        rng = np.random.RandomState(400 + st)
+        stack, weights = [], []
+        for k in range(8):
+            mo = 1 + k % 3
+            ps = rng.randint(0, 5)
+            wa = rng.randint(5, 70)
+            tp = [fake_planet(st, mo, ps, wa, 3000 + 977 * st + 131 * k)]
+            P = mm.Planet(tp, 1, fpcrand.FpcRandom(0))
+            stack.append(land_composite(clean, P, st, mo, rng, font, k)); weights.append(1.0)
+        stack.append(summary); weights.append(2.0)
+        hist = bf.hist_of(stack, weights)
+        for v in (90, 91, 92, 93, 94, 95, 235):
+            hist[13:134, v] += 3
+        uiw = float(os.environ.get('LAND_UIW', '3'))  # the panels beside the map (probe bays, scan
+        for im, w in zip(stack, weights):          # buttons) count UIW times more than their pixels
+            for y in range(dland.splits[1]):
+                row = im[y]
+                if 13 <= y < 134: row = np.concatenate([row[:28], row[268:]])
+                hist[y] += np.bincount(row, minlength=256) * w * (uiw - 1)
+        y0, y1 = 0, dland.splits[1]
+        err, cent, lut, rp, _ = bf._band(hist[y0:y1], pal, [(13, 134, [235], 1)])
+        d = bf.Design(list(dland.splits), list(dland.table), [l.copy() for l in dland.luts], list(dland.reps), err)
+        d.table[0] = (y0, [c.to_ste_word(x) for x in cent])
+        d.luts[0] = lut
+        d.reps[0:16] = rp
+        snap_to_reps(d, pal)
+        open(os.path.join(out, 'LAND%d.ISP' % st), 'wb').write(bytes(d.isp_header(w=0, h=0)))
+        if prev:
+            Image.fromarray(d.rgb(stack[0])).resize((640, 400), Image.NEAREST).save(prev.replace('.png', '_land%d.png' % st))
+        print('LAND%d: splits' % st, d.splits, 'err %.0f' % d.err)
 
 
 def char2_mode(src, out, font, prev=None):
@@ -878,6 +959,9 @@ def main():
     font = cm.load_font()[0]
     if os.environ.get('MKMAIN_ONLY') == 'MAIN':        # (design experiments: the bridge only)
         main_mode(src, out, font, prev and os.path.join(prev, 'main_preview.png'))
+        return
+    if os.environ.get('MKMAIN_ONLY') == 'LAND':        # (the exploration's designs only)
+        land_mode(src, out, font, prev and os.path.join(prev, 'land_preview.png'))
         return
     log_mode(src, out, font, prev and os.path.join(prev, 'log_preview.png'))
     main_mode(src, out, font, prev and os.path.join(prev, 'main_preview.png'))

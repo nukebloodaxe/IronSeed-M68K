@@ -38,6 +38,11 @@
 ;                 the slot whose colour is nearest to their colour in GS_COLORS now (for indices
 ;                 whose colours were changed at run time, e.g. after colour cycling stopped)
 ;                 trashes: d0-d2/a0-a2
+; vid_flip_pal    (Phase 6j) a screen and a palette change shown from the same frame: call
+;                 vid_defer_on, change the palette (vid_set_fade and whatever calls it build into
+;                 vid_palnext instead of vid_cur), draw the new screen into vid_log, then call
+;                 this: vid_flip, and the VBL that starts showing vid_log takes vid_palnext.
+;                 Returns once both are on the screen; clears vid_defer.  trashes: d0-d2/a0-a2
 ; Screens: vid_scr = 3 buffers (256-byte aligned, 32000 bytes); vid_log = where to draw next;
 ; vid_phys = last flipped (or the start-up screen); programs that never flip draw into vid_phys.
 ; vid_vbl_hook    (long) 0, or a routine the VBL calls every frame after the band-0 palette and
@@ -141,8 +146,7 @@ vid_set_fade:
 	move.w	#(2+4*BAND_SIZE)/2-1,d1
 .cp:	move.w	(a0)+,(a1)+
 	dbf	d1,.cp
-	move.l	(sp)+,vid_cur
-	rts
+	bra.s	.cur
 .f:	move.w	(a0)+,d1
 	move.w	d1,(a1)+
 	subq.w	#1,d1
@@ -171,7 +175,11 @@ vid_set_fade:
 	move.w	d0,(a1)+
 	dbf	d2,.col
 	dbf	d1,.band
+.cur:	tst.b	vid_defer		; (Phase 6j) deferred: the VBL takes it with vid_palscr
+	bne.s	.def
 	move.l	(sp)+,vid_cur		; atomic switch for the VBL
+	rts
+.def:	move.l	(sp)+,vid_palnext
 	rts
 
 ; ---------------------------------------------------------------
@@ -325,6 +333,9 @@ vid_set256:
 
 vid_set_luts:
 	move.l	a3,-(sp)
+	move.l	a0,-(sp)
+	bsr	gfx_pair_inval		; (Phase 6j: the pair tables follow the LUTs)
+	move.l	(sp)+,a0
 	lea	vid_luts,a1
 	cmp.l	a0,a1
 	beq.s	.same
@@ -457,6 +468,19 @@ vid_flip:
 	move.l	d1,vid_spare		; becomes free after the next VBL
 	rts
 
+vid_defer_on:				; (vid_palscr first: vid_palnext is only taken with it)
+	move.l	vid_log,vid_palscr
+	st	vid_defer
+	rts
+vid_flip_pal:
+	sf	vid_defer
+	bsr	vid_flip
+.w:	tst.l	vid_palnext		; until the VBL that shows it has taken the palette
+	beq.s	.x
+	bsr	snd_poll
+	bra.s	.w
+.x:	rts
+
 vid_clear:
 	movem.l	d3-d7/a3-a5,-(sp)
 	lea	SCR_SIZE(a0),a0
@@ -483,7 +507,15 @@ vid_clear:
 vid_vbl_handler:
 	movem.l	d0-d7/a0-a3,-(sp)
 	move.l	vid_written,vid_shown	; the base written last VBL is on screen now
-	move.l	vid_pending,d0
+	move.l	vid_palnext,d0		; (Phase 6j) a palette that goes with that screen
+	beq.s	.npal
+	move.l	vid_shown,d1
+	cmp.l	vid_palscr,d1
+	bne.s	.npal
+	move.l	d0,vid_cur
+	clr.l	vid_palnext
+	clr.l	vid_palscr
+.npal:	move.l	vid_pending,d0
 	beq.s	.nosw
 	move.l	d0,vid_written
 	lsr.w	#8,d0			; STE: high, mid, low base bytes
@@ -578,6 +610,10 @@ vid_black_bands:
 	dcb.w	16,0
 	even
 vid_cur:	dc.l	vid_bands_a
+vid_palnext:	dc.l	0		; (Phase 6j) the next palette copy, shown from the frame that
+vid_palscr:	dc.l	0		; shows this screen (vid_flip_pal)
+vid_defer:	dc.b	0		; vid_set_fade builds into vid_palnext instead of vid_cur
+	even
 
 	section	bss
 vid_scr:	ds.l	3

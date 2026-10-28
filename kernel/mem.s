@@ -36,6 +36,12 @@ mem_alloc:
 	cmp.l	mem_end,d1
 	bhi.s	.full
 	move.l	d1,mem_top
+	ifd	MEMHI			; (test builds: the pool's high-water mark)
+	cmp.l	mem_hi,d1
+	bls.s	.h
+	move.l	d1,mem_hi
+.h:
+	endif
 	and.b	#$fe,ccr		; carry clear
 	rts
 .full:	sub.l	a0,a0
@@ -59,4 +65,7 @@ mem_free:
 mem_pool:	ds.l	1
 mem_pool_size:	ds.l	1
 mem_top:	ds.l	1
+	ifd	MEMHI
+mem_hi:		ds.l	1
+	endif
 mem_end:	ds.l	1

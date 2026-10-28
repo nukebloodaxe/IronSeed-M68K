@@ -336,6 +336,38 @@ scr_eol:
 ; save the shown screen + band table
 scr_shot:
 	movem.l	d3/a3,-(sp)
+	ifd	PROFILE			; (tag 61: idle 200 Hz ticks so far, tag 62: HZ200 now; tags 64-66:
+	move.l	tim_idlet,d0		; pixels converted by pairs / 16, pixels / 16, tables built)
+	and.l	#$ffffff,d0
+	or.l	#61<<24,d0
+	bsr	scr_dbg
+	move.l	HZ200.w,d0
+	and.l	#$ffffff,d0
+	or.l	#62<<24,d0
+	bsr	scr_dbg
+	lea	gfx_stat,a3
+	moveq	#64,d3
+.gs:	move.l	(a3)+,d0
+	cmp.w	#66,d3
+	beq.s	.g1
+	lsr.l	#4,d0
+.g1:	and.l	#$ffffff,d0
+	move.l	d3,d1
+	ror.l	#8,d1
+	or.l	d1,d0
+	bsr	scr_dbg
+	addq.w	#1,d3
+	cmp.w	#67,d3
+	bne.s	.gs
+	endif
+	ifd	MEMHI			; (tag 60: the pool's free bytes / 16 at its high-water mark)
+	move.l	mem_end,d0
+	sub.l	mem_hi,d0
+	lsr.l	#4,d0
+	and.l	#$ffffff,d0
+	or.l	#60<<24,d0
+	bsr	scr_dbg
+	endif
 	move.w	kbd_cur_on,-(sp)	; without the mouse cursor (like the Linux shots)
 	bsr	kbd_cursor_hide
 	ifd	CURSTAT			; (a program's check of the screen: MAIN's ms_verify)
@@ -350,7 +382,7 @@ scr_shot:
 	move.l	a0,-(sp)
 	GEMDOS	GD_FCREATE,8
 	tst.l	d0
-	bmi.s	.x
+	bmi	.x
 	move.w	d0,d3
 	move.l	vid_phys,-(sp)
 	move.l	#SCR_SIZE,-(sp)
@@ -358,6 +390,10 @@ scr_shot:
 	GEMDOS	GD_FWRITE,12
 	pea	vid_bands_src
 	move.l	#2+4*BAND_SIZE,-(sp)
+	move.w	d3,-(sp)
+	GEMDOS	GD_FWRITE,12
+	pea	vid_luts		; (Phase 6j: the LUTs in use - run-time refits)
+	move.l	#1024,-(sp)
 	move.w	d3,-(sp)
 	GEMDOS	GD_FWRITE,12
 	move.w	d3,-(sp)

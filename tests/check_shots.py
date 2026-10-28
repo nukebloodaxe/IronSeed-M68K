@@ -25,6 +25,8 @@ for arg in sys.argv[4:]:
     tab = s[32000:32000 + 138]
     lin = np.frombuffer(open(os.path.join(odir, 'shot_%s.raw' % name), 'rb').read()[:64000], np.uint8).reshape(200, 320)
     cand = [m for m in modes if lines(m[1]) == lines(tab)]
+    if len(s) >= 32000 + 138 + 1024:    # (Phase 6j: the shot carries the LUTs in use - a dialog's refit)
+        cand.append(('(own)', tab, [np.frombuffer(s[32138 + i * 256:32138 + (i + 1) * 256], np.uint8) for i in range(4)]))
     if not cand:
         print('%-6s no mode with split lines %s' % (name, lines(tab))); bad_total += 1; continue
     best = None

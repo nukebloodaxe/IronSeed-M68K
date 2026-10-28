@@ -1,0 +1,20 @@
+args /playseed 3
+# sector (timing, real time, PROFILE build: if_displaysector's tag-40 marks in DBG.BIN = frames):
+# the sector map rotating for 20 s, then quit
+# setup events[1]|=8 @knowall=1
+# vbls 6000
+wait 3000
+key #27
+wait 2000
+key g
+wait 1500
+key s
+wait 20000
+shot S1
+key #27
+wait 3000
+key #291
+wait 1500
+key y
+wait 3000
+quit

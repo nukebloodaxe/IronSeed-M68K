@@ -4475,6 +4475,7 @@ ex_readydata:
 	lea	ex_mode,a0
 	bsr	ms_load
 	bcs	fatal
+	bsr	ex_design		; (Phase 6j: the planet type's band design, while still dark)
 	lea	ex_fn_mod,a0		; playmod(true, PROBE.MOD)
 	bsr	playmod
 	bsr	setcolors
@@ -4600,6 +4601,31 @@ ex_readydata:
 	movem.l	(sp)+,d3-d7/a3
 	rts
 
+; ex_design (Phase 6j): LAND's band 0 (the map, the probe bays, the scan buttons) fitted for the
+; planet's state 1-6 (tools/mkmain.py land_state_modes: DATA\LANDn.ISP, a header): LAND's one fit
+; shares band 0 between every planet type's water and special colours, the map's greys came out in
+; a few levels. Band 0's lines are converted again at the next flush (the screen is still dark).
+; A missing file leaves LAND as it is.
+ex_design:
+	bsr	ex_plan
+	moveq	#0,d0
+	move.b	PLANET_STATE(a0),d0
+	subq.w	#1,d0
+	cmp.w	#6-1,d0
+	bhi.s	.x			; (state 0, 7: LAND)
+	add.b	#'1',d0
+	move.b	d0,ex_dpath+9		; "DATA\LANDn.ISP"
+	lea	ex_dpath,a0
+	bsr	ms_loaddesign
+	bcs.s	.x
+	moveq	#0,d0			; band 0's lines
+	moveq	#0,d1
+	move.w	#MS_W-1,d2
+	move.w	vid_bands_src+2+BAND_SIZE,d3	; (band 1's first line - 1)
+	subq.w	#1,d3
+	bsr	ms_dirty
+.x:	rts
+
 ex_removedata:
 	bsr	mousehide
 	moveq	#-8,d0			; fadestopmod(-FADEFULL_STEP, FADEFULL_DELAY)
@@ -4698,6 +4724,7 @@ exploreplanet:
 ; ---------------------------------------------------------------- data
 	section	data
 ex_mode:	dc.b	"LAND",0
+ex_dpath:	dc.b	"DATA",92,"LANDn.ISP",0
 ex_fn_mod:	dc.b	"SOUND",92,"PROBE.MOD",0
 ex_fn_elem:	dc.b	"DATA",92,"ELEMENTS.DTA",0
 	even

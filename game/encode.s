@@ -76,6 +76,12 @@ en_encodecrew:
 	lea	GS_SHIP+SHIP_CREW(a6),a0	; displaycrew
 	bsr	en_list
 	PXY	51,140,"Encode All"
+	moveq	#42,d0			; (Phase 6j: the bands under the dialog refitted for its colours;
+	moveq	#30,d1			; ms_unsnap below brings the design back)
+	move.w	#270,d2
+	move.w	#152,d3
+	moveq	#3,d4			; (the rows' highlight)
+	bsr	ms_refit
 	bsr	en_mainloop
 	move.w	d0,d5			; src
 	cmp.w	#7,d5
@@ -142,6 +148,12 @@ en_decodecrew:
 	BKCOL	37
 	lea	GS_SHIP+SHIP_ENCODES(a6),a0
 	bsr	en_list
+	moveq	#42,d0			; (Phase 6j: the bands under the dialog refitted for its colours;
+	moveq	#30,d1			; ms_unsnap below brings the design back)
+	move.w	#270,d2
+	move.w	#152,d3
+	moveq	#3,d4			; (the rows' highlight)
+	bsr	ms_refit
 	bsr	en_mainloop
 	cmp.w	#7,d0
 	bge.s	.x

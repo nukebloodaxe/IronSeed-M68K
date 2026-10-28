@@ -18,6 +18,8 @@ OPT_PROBES	equ	10		; the port's own: options[10] (OPT_UNUSED1) = 1 for the 1994 
 					; (explore.s); shown in the options panel's first row (the screen
 					; saver's: commented out in the FPC source, never used)
 SL_LOAD		equ	1		; saveload.s: with sl_loadgame
+MN_KEEP		equ	576*1024	; (Phase 6j) the pool left after the pair tables: ~1035 KB are free
+					; there, MAIN's later peak takes ~350 KB more (the ending; tags 60/63)
 
 	section	text
 start:	move.l	4(sp),a0
@@ -77,7 +79,31 @@ init_everything:
 	lea	jy_cubecols,a1
 	move.l	#21*77*2+20*67*2,d0
 	bsr	load_exact
-	bsr	resetcrew
+	bsr	mem_free		; (Phase 6j) the pair tables for the chunky-to-planar conversion
+	ifd	PROFILE			; (tag 63: the pool's free bytes / 16 before them)
+	move.l	d0,-(sp)
+	lsr.l	#4,d0
+	or.l	#63<<24,d0
+	bsr	scr_dbg
+	move.l	(sp)+,d0
+	endif
+	sub.l	#MN_KEEP,d0		; (kernel gfx.s): as many slots as leave MN_KEEP free, at most 2
+	bmi.s	.np
+	divu	#GFX_PSLOT/256,d0	; (d0 / 256 / 513 = slots; bytes < 2^24 * 256 fits)
+	lsr.w	#8,d0
+	cmp.w	#2,d0
+	bls.s	.ns
+	moveq	#2,d0
+.ns:	tst.w	d0
+	beq.s	.np
+	move.w	d0,d3
+	mulu	#GFX_PSLOT/256,d0
+	lsl.l	#8,d0
+	bsr	mem_alloc
+	bcs.s	.np
+	move.w	d3,d0
+	bsr	gfx_pair_init
+.np:	bsr	resetcrew
 	moveq	#0,d0			; mouse.setmousecursor(0)
 	bsr	setmousecursor
 	moveq	#0,d0			; FPC's randseed starts at 0 (main never calls randomize first)
@@ -352,6 +378,7 @@ screensaver:
 	include	"kernel.s"
 	include	"gutil.s"
 	include	"mscr.s"
+	include	"refit.s"
 	include	"mdata.s"
 	include	"mutils.s"
 	include	"saveload.s"

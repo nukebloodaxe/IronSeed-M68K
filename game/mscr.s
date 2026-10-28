@@ -314,6 +314,8 @@ ms_addr:
 
 ms_load:
 	movem.l	d3/a3,-(sp)
+	sf	rf_on			; (a whole design replaces a dialog's refit: refit.s)
+	sf	gfx_pnobuild
 	move.w	#-1,ms_design		; (a mode's own design: not one of u2_design's)
 	lea	ms_path+5,a1		; "DATA\" + name + ".ISP"
 .cp:	move.b	(a0)+,(a1)+
@@ -416,8 +418,47 @@ ms_snap:
 .x:	movem.l	(sp)+,d3/a3
 	rts
 
+; ms_loaddesign(a0 = path of an ISP header, e.g. DATA\LAND3.ISP; Phase 6j): another band design for
+; the screen as it is - reps, bands, LUTs, the colours from GS_COLORS (vid_set256: the fade level
+; stays). The caller marks the lines whose design changed. carry set: no such file (nothing
+; changed).  trashes: d0-d2/a0-a2
+ms_loaddesign:
+	movem.l	d3/a3,-(sp)
+	move.l	a0,-(sp)
+	bsr	mem_mark
+	move.l	d0,d3
+	move.l	#ISP_DATA+64,d0
+	bsr	mem_alloc
+	move.l	(sp)+,a1
+	bcs.s	.no
+	move.l	a0,a3
+	exg	a0,a1			; a0 = path, a1 = buffer
+	move.l	#ISP_DATA+64,d0
+	bsr	fil_load
+	bcs.s	.no
+	lea	ISP_DATA(a3),a0
+	bsr	vid_set_reps
+	lea	ISP_BANDS(a3),a0
+	bsr	vid_set_bands
+	lea	ISP_LUTS(a3),a0
+	bsr	vid_set_luts
+	lea	GS_COLORS(a6),a0
+	bsr	vid_set256
+	move.l	d3,d0
+	bsr	mem_release
+	movem.l	(sp)+,d3/a3
+	andi.b	#$fe,ccr
+	rts
+.no:	move.l	d3,d0
+	bsr	mem_release
+	movem.l	(sp)+,d3/a3
+	ori.b	#1,ccr
+	rts
+
 ms_unsnap:
 	movem.l	d3/a3,-(sp)
+	sf	rf_on			; (the snapshot's design replaces a dialog's refit)
+	sf	gfx_pnobuild
 	bsr	ms_slot
 	move.l	a0,a3
 	move.l	ms_buf,a1		; shadow

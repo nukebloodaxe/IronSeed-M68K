@@ -264,6 +264,12 @@ showchar:
 	bsr	mb_pick
 	move.w	d0,GS_BKCOLOR(a6)
 	PXY	149,114,"OK"
+	moveq	#70,d0			; (Phase 6j: the bands under the box and portrait refitted;
+	moveq	#8,d1			; ms_unsnap below brings the design back)
+	move.w	#249,d2
+	move.w	#134,d3
+	moveq	#0,d4
+	bsr	ms_refit
 	bsr	mouseshow
 	moveq	#110,d3
 	moveq	#0,d4
@@ -353,6 +359,12 @@ printbox:
 	bsr	mb_pick
 	move.w	d0,GS_BKCOLOR(a6)
 	PXY	149,82,"OK"
+	moveq	#75,d0			; (Phase 6j: the bands under the box refitted)
+	moveq	#60,d1
+	move.w	#244,d2
+	moveq	#102,d3
+	moveq	#0,d4
+	bsr	ms_refit
 	bsr	mouseshow
 	moveq	#78,d3
 	moveq	#1,d4
@@ -374,6 +386,7 @@ printbox:
 	move.w	#246,d2
 	moveq	#102,d3
 	bsr	ms_dirty
+	bsr	ms_refit_end
 	bsr	mouseshow
 	move.w	d6,GS_TCOLOR(a6)
 	clr.w	GS_BKCOLOR(a6)
@@ -461,6 +474,12 @@ printbigbox:
 	bsr	mb_pick
 	move.w	d0,GS_BKCOLOR(a6)
 	PXY	149,82,"OK"
+	moveq	#70,d0			; (Phase 6j: the bands under the box refitted)
+	moveq	#50,d1
+	move.w	#249,d2
+	moveq	#102,d3
+	moveq	#0,d4
+	bsr	ms_refit
 	bsr	mouseshow
 	moveq	#78,d3
 	moveq	#1,d4
@@ -482,6 +501,7 @@ printbigbox:
 	move.w	#249,d2
 	moveq	#102,d3
 	bsr	ms_dirty
+	bsr	ms_refit_end
 	bsr	mouseshow
 	move.w	d6,GS_TCOLOR(a6)
 	clr.w	GS_BKCOLOR(a6)
