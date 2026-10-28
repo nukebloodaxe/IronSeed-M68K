@@ -9,8 +9,9 @@
 R=$(cd "$(dirname "$0")/.." && pwd); cd "$R"
 fail=0
 [ -d build/oracle_s4/home/.ironseed/save3 ] && [ -f hatari/c/SAVE3/SHIP.DTA ] || { echo "FAIL main: no s4 save (run check_crewgen.sh first)"; exit 1; }
-MODES="$(for m in LOG MAIN MAINS1 MAINS2 MAINS3 LAND CHAR2 PSYCHE CARGO TECH1 CCOM COMNR COMA1 COMA2 COMA3 COMA4 COMA5 COMA6 COMA7 COMA8 COMA9 COMA10 COMA11 COMG30 COMG31 COMG32 COMG33 SECTOR FIGHT LOADG END1B END2B END3B END4B END5B INTRO2E CRED ENDS EGGN EGG3 EGG6; do printf "hatari/c/DATA/%s.ISP " $m; done)"
-cp hatari/c/SAVEGAME.DIR /tmp/main_sgdir.bak   # sessions that save get their slots compared, then undone
+MODES="$(for m in LOG MAIN MAINS1 MAINS2 MAINS3 $(cd hatari/c/DATA && ls MAIN[GPCA]*.ISP 2>/dev/null | sed "s/.ISP//") LAND CHAR2 PSYCHE CARGO TECH1 CCOM COMNR COMA1 COMA2 COMA3 COMA4 COMA5 COMA6 COMA7 COMA8 COMA9 COMA10 COMA11 COMG30 COMG31 COMG32 COMG33 SECTOR FIGHT LOADG END1B END2B END3B END4B END5B INTRO2E CRED ENDS EGGN EGG3 EGG6; do printf "hatari/c/DATA/%s.ISP " $m; done)"
+T=/tmp/cm_$(echo "$R" | tr / _); mkdir -p $T   # (per tree: two trees run at once)
+cp hatari/c/SAVEGAME.DIR $T/sgdir.bak   # sessions that save get their slots compared, then undone
 for S in ${@:-m1 m2 m3 m4 m5 m6 m7 m8 m9 m10 m11 m12 m13 m14 m15 m16 m17 m18 m19 m20 m21 m22 m23 m24 m25 m26 m27 m28 m29 m30 m31 m32 m33 m34 m35 m36 m37 m38 m39 m40 m41 m42 m43 m44 m45 m46 m47 m48 m49 m50 m51 m52}; do
   O=build/oracle_$S; H=build/oracle_s4/home
   SETUP=$(sed -n 's/^# *setup //p' oracle/scripts/$S.main)   # a test position made from the s4 save
@@ -39,10 +40,10 @@ for S in ${@:-m1 m2 m3 m4 m5 m6 m7 m8 m9 m10 m11 m12 m13 m14 m15 m16 m17 m18 m19
   [ $n -gt 0 ] && [ $bad = 0 ] && echo "PASS main $S state ($n dumps identical with Linux$ST)" || { echo "FAIL main $S state ($bad of $n dumps differ)"; fail=1; }
   for D in $O/home/.ironseed/save[0-9]; do      # games saved in the session (slot 3 is the start)
     N=${D##*save}; [ $N = 3 ] && continue
-    rm -rf /tmp/st_save; python3 tools/st2dos.py build/layout.json hatari/c/SAVE$N /tmp/st_save > /dev/null
-    python3 tools/st2dos.py build/layout.json hatari/c /tmp/st_save > /dev/null
+    rm -rf $T/st_save; python3 tools/st2dos.py build/layout.json hatari/c/SAVE$N $T/st_save > /dev/null
+    python3 tools/st2dos.py build/layout.json hatari/c $T/st_save > /dev/null
     sb=0; for f in $D/* $O/home/.ironseed/savegame.dir; do
-      b=$(basename $f | tr a-z A-Z); cmp -s $f /tmp/st_save/$b || { sb=1; echo "  $S SAVE$N: $b differs"; }
+      b=$(basename $f | tr a-z A-Z); cmp -s $f $T/st_save/$b || { sb=1; echo "  $S SAVE$N: $b differs"; }
     done
     [ $sb = 0 ] && echo "PASS main $S saved game (SAVE$N + SAVEGAME.DIR byte-identical with Linux after st2dos)" || fail=1
     rm -rf hatari/c/SAVE$N
@@ -51,7 +52,7 @@ for S in ${@:-m1 m2 m3 m4 m5 m6 m7 m8 m9 m10 m11 m12 m13 m14 m15 m16 m17 m18 m19
     if [ -f $O/LPT1 ] && cmp -s $O/LPT1 <(tr -d '\r' < hatari/c/TEMP/LPT1 2>/dev/null); then echo "PASS main $S printed file (TEMP\\LPT1 = Linux's, line ends aside)"
     else echo "FAIL main $S printed file"; fail=1; fi
   fi
-  cp /tmp/main_sgdir.bak hatari/c/SAVEGAME.DIR
+  cp $T/sgdir.bak hatari/c/SAVEGAME.DIR
   [ -n "$SETUP" ] && python3 tools/mksave.py build/layout.json build/oracle_s4/home 3 build/setup_none 3 hatari/c > /dev/null
   SHOTS=$(awk '/^shot /{n[++k]=$2} /^# *mask /{sub(/^# *mask /,""); split($0,a,":"); m[a[1]]=$0}
     END{for(i=1;i<=k;i++) printf "%s ", (n[i] in m) ? m[n[i]] : n[i]}' oracle/scripts/$S.main)

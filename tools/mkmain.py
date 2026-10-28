@@ -171,6 +171,26 @@ def star_modes(main, cloud, pal, icons, font, dmain, out, prev=None):
         print('MAINS%d: splits' % m, d.splits, 'err %.0f' % d.err)
 
 
+def bridge_modes(dmain, out):
+    """MAING1/G2, MAINC, MAINA, MAINPsm (Phase 6k): MAIN with band 1 (the viewscreen) from
+    assets/bridge/KIND.B1 - fitted by tools/mkbridge.py on the Linux build's own shots of that kind
+    of orbit (gas giants by colour set, gas clouds, asteroid fields, land spheres by state and
+    mode). game/utils2.s u2_design switches."""
+    bdir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'assets', 'bridge')
+    n = 0
+    for fn in sorted(os.listdir(bdir)) if os.path.isdir(bdir) else []:
+        if not fn.endswith('.B1'): continue
+        b = open(os.path.join(bdir, fn), 'rb').read()
+        words = [int.from_bytes(b[2 * i:2 * i + 2], 'big') for i in range(16)]
+        d = bf.Design(list(dmain.splits), list(dmain.table), [l.copy() for l in dmain.luts], list(dmain.reps), dmain.err)
+        d.table[1] = (dmain.splits[1], words)
+        d.luts[1] = np.frombuffer(b[32:288], np.uint8).copy()
+        d.reps[16:32] = list(b[288:304])
+        open(os.path.join(out, 'MAIN%s.ISP' % fn[:-3]), 'wb').write(bytes(d.isp_header(w=0, h=0)))
+        n += 1
+    print('bridge designs:', n)
+
+
 def main_mode(src, out, font, prev=None):
     """MAIN: the bridge (starter.pas initializedata, utils2.pas reloadbackground/readyplanet,
     usecode.pas readystatus, journey.pas text box and cube)"""
@@ -288,6 +308,7 @@ def main_mode(src, out, font, prev=None):
     d = bf.fit(hist, pal, own=own, splits=[0, 12, 140, int(os.environ.get('MAIN_SPLIT3', '188'))])   # (the frame / the viewscreen + panels / text
     snap_to_reps(d, pal)                               # box / cube: the star designs refit band 1)
     star_modes(main, cloud, pal, icons, font, d, out, prev)
+    bridge_modes(d, out)
     # header-only ISP2 (the bridge is composed at run time) + main.cpr and cloud.cpr as chunky
     open(os.path.join(out, 'MAIN.ISP'), 'wb').write(bytes(d.isp_header(w=0, h=0)))
     open(os.path.join(out, 'MAIN.CHK'), 'wb').write(main.astype(np.uint8).tobytes() + bytes(pal.astype(np.uint8).ravel()))

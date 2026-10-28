@@ -44,6 +44,12 @@ surface being generated (the original's random walks, exactly). On an 8 MHz
 STE that takes about 6 s for a planet and 16 s for a star; a planet seen
 again takes about 1 s, and the last four stars visited are remembered.
 
+Colours: the STE shows 16 colours per band of lines, where the PC had 256.
+When a dialog opens over a screen (save, load, yes/no, crew messages, the
+crew chips), it appears at once and its colours settle a moment later: the
+bands under it get a palette chosen for what is on the screen. The planet
+exploration map has a palette per planet type.
+
 The FINALE slot (if present) is a test position: the ship at the Scavengers'
 gate with the Kendar alliance and the faction quests done, a Temporal Anchor
 and full thrust. The whole armada attacks at once - it cannot be shot down:

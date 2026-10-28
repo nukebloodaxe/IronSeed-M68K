@@ -509,6 +509,7 @@ generatescanlist:
 
 ; ---------------------------------------------------------------- setcolors
 setcolors:
+	st	ex_zchg
 	move.w	#50,ex_water
 	st	ex_colorchange
 	bsr	ex_plan
@@ -553,6 +554,7 @@ setcolors:
 ; the colour tables of showzoom (ex_zlut, per zoomscr value) and displaylandform (ex_llut, per
 ; landform value; -1: landcolors keeps its byte), with the original's reals (SSE doubles)
 ex_tables:
+	st	ex_zchg
 	movem.l	d3-d4,-(sp)
 	FSSE
 	FLDI	73			; part := 73/(255-water)
@@ -585,6 +587,7 @@ ex_tables:
 	cmp.w	#255,d3
 	bne.s	.z1
 	move.w	#95,2*255(a0)
+	move.b	#95,ex_zlutb+255
 	bra	.l
 .z1:	cmp.w	ex_water,d3
 	bge.s	.z2
@@ -629,6 +632,8 @@ ex_tables:
 	move.w	d3,d1
 	add.w	d1,d1
 	move.w	d0,0(a0,d1.w)
+	lea	ex_zlutb,a0
+	move.b	d0,0(a0,d3.w)
 .l:	; --- displaylandform
 	cmp.w	ex_water,d3
 	bge.s	.l2
@@ -693,6 +698,7 @@ zoom3x:
 	move.w	d1,d3
 	add.w	#20,d3
 	bsr	ex_rect
+	st	ex_zchg			; (Phase 6k: showzoom transposes again)
 	lea	ex_zoomscr,a5
 	moveq	#0,d4			; a
 .a:	moveq	#0,d5			; b
@@ -808,6 +814,7 @@ zoom2x:
 	move.w	d1,d3
 	add.w	#30,d3
 	bsr	ex_rect
+	st	ex_zchg
 	lea	ex_zoomscr,a5
 	moveq	#0,d4			; a
 .a:	moveq	#0,d5			; b
@@ -883,6 +890,7 @@ zoom1x:
 	move.w	d1,d3
 	add.w	#60,d3
 	bsr	ex_rect
+	st	ex_zchg
 	lea	ex_zoomscr,a1		; move(landform^[x1+a, y1], zoomscr^[a, 1], 60), a = 1..60
 	moveq	#1,d4
 .a:	move.w	d6,d0
@@ -947,26 +955,43 @@ showzoom:
 	movem.l	d3-d7/a3-a5,-(sp)
 	lea	ex_zoomscr,a3
 	lea	ex_tempzoom,a4
-	lea	ex_zlut,a5
-	moveq	#0,d7			; i (row) 0..59 : tempzoom^[i,j] := f(zoomscr^[j,i])
-.i:	move.l	a3,a0
-	add.w	d7,a0
-	moveq	#60-1,d6
+	lea	ex_zlutb,a5		; (Phase 6k: ex_zlut's values as bytes; the columns unrolled)
+	tst.b	ex_zchg			; (Phase 6k) the same zoom, colours and tables as the last
+	bne.s	.new			; time: the kept transposition (ex_ztbase)
+	lea	ex_ztbase,a0
+	move.w	#3600/32-1,d0
+.kc:	movem.l	(a0)+,d1-d7/a1
+	movem.l	d1-d7/a1,(a4)
+	lea	32(a4),a4
+	dbf	d0,.kc
+	move.l	(a0)+,(a4)+		; (3600 = 112*32 + 16)
+	move.l	(a0)+,(a4)+
+	move.l	(a0)+,(a4)+
+	move.l	(a0)+,(a4)+
+	bra	.mz
+.new:	sf	ex_zchg
+	moveq	#0,d0
+	moveq	#60-1,d7		; i (row) 0..59 : tempzoom^[i,j] := f(zoomscr^[j,i])
 	tst.b	ex_colorchange
-	beq.s	.raw
-.j:	moveq	#0,d0
-	move.b	(a0),d0
-	lea	60(a0),a0
-	add.w	d0,d0
-	move.b	1(a5,d0.w),(a4)+
-	dbf	d6,.j
-	bra.s	.ni
-.raw:	move.b	(a0),(a4)+
-	lea	60(a0),a0
-	dbf	d6,.raw
-.ni:	addq.w	#1,d7
-	cmp.w	#60,d7
-	bne.s	.i
+	beq	.raw
+.i:	rept	60
+	move.b	60*REPTN(a3),d0
+	move.b	0(a5,d0.w),(a4)+
+	endr
+	addq.l	#1,a3
+	dbf	d7,.i
+	bra	.ni
+.raw:	rept	60
+	move.b	60*REPTN(a3),(a4)+
+	endr
+	addq.l	#1,a3
+	dbf	d7,.raw
+.ni:	lea	ex_tempzoom,a0		; kept for the frames that follow
+	lea	ex_ztbase,a1
+	move.w	#3600/4-1,d0
+.kk:	move.l	(a0)+,(a1)+
+	dbf	d0,.kk
+.mz:
 	moveq	#2,d0			; if random(2) = 0: a message at [i+52, b+43]
 	bsr	mt_random
 	tst.w	d0
@@ -1025,21 +1050,16 @@ showzoom:
 	ble	.an
 	SETC	47
 	bsr	mousehide
-	moveq	#1,d7			; scrto_move(tempzoom^[i], screen[i+138, 206], 60)
+	move.w	#206,d0		; scrto_move(tempzoom^[i], screen[i+138, 206], 60)
+	move.w	#139,d1
+	bsr	ms_addr			; (x 206 and 60-byte rows: longs at even addresses)
 	lea	ex_tempzoom,a3
-.cp:	move.w	#206,d0
-	move.w	d7,d1
-	add.w	#138,d1
-	bsr	ms_addr
-	moveq	#60/4-1,d0
-.cl:	move.b	(a3)+,(a0)+
-	move.b	(a3)+,(a0)+
-	move.b	(a3)+,(a0)+
-	move.b	(a3)+,(a0)+
-	dbf	d0,.cl
-	addq.w	#1,d7
-	cmp.w	#60,d7
-	ble.s	.cp
+	moveq	#60-1,d7
+.cp:	rept	15
+	move.l	(a3)+,(a0)+
+	endr
+	lea	MS_W-60(a0),a0
+	dbf	d7,.cp
 	move.w	#206,d0
 	move.w	#139,d1
 	move.w	#265,d2
@@ -1361,6 +1381,12 @@ ex_probe:
 	lsl.w	#4,d0
 	add.w	d0,a0
 	rts
+EXICM	macro				; ex_iconm's pixel \1 of a row: copied unless 0
+	move.b	\1(a1),d1
+	beq.s	.n\@
+	move.b	d1,\1(a0)
+.n\@:
+	endm
 ; copy 26 rows x 32 bytes from screen (x d0, y d1 first row) to screen[row+num*40-26, 281]
 ; (num d2), marked
 ex_tobox:
@@ -1377,9 +1403,9 @@ ex_tobox:
 	move.w	#281,d0
 	move.w	d5,d1
 	bsr	ms_addr
-	moveq	#32-1,d0
-.c:	move.b	(a1)+,(a0)+
-	dbf	d0,.c
+	rept	32			; (Phase 6k: unrolled)
+	move.b	(a1)+,(a0)+
+	endr
 	movem.w	(sp)+,d1/d3
 	addq.w	#1,d1
 	addq.w	#1,d5
@@ -1406,9 +1432,9 @@ ex_icon:
 .r:	move.w	#281,d0
 	move.w	d4,d1
 	bsr	ms_addr
-	moveq	#32-1,d0
-.c:	move.b	(a3)+,(a0)+
-	dbf	d0,.c
+	rept	32			; (Phase 6k: unrolled)
+	move.b	(a3)+,(a0)+
+	endr
 	addq.w	#1,d4
 	dbf	d3,.r
 	move.w	#281,d0
@@ -1435,13 +1461,10 @@ ex_iconm:
 	addq.w	#1,d0
 	move.w	d4,d1
 	bsr	ms_addr
-	moveq	#31-1,d0
 	move.l	a3,a1
-.c:	move.b	(a1)+,d1
-	beq.s	.n
-	move.b	d1,(a0)
-.n:	addq.l	#1,a0
-	dbf	d0,.c
+	rept	31			; (Phase 6k: unrolled)
+	EXICM	REPTN
+	endr
 	lea	32(a3),a3
 	addq.w	#1,d4
 	dbf	d3,.r
@@ -4291,7 +4314,24 @@ processkey:
 ex_mainloop:
 	bsr	mouseshow
 	bsr	displayinfogathered
-.l:	moveq	#8,d0			; fadestep(FADESTEP_STEP)
+.l:	PMARK	47			; (PROFILE: one per exploration frame)
+	ifd	CNTDBG
+	move.l	ms_cntc,d0
+	and.l	#$ffffff,d0
+	or.l	#232<<24,d0
+	bsr	scr_dbg
+	move.l	ms_cntv,d0
+	and.l	#$ffffff,d0
+	or.l	#233<<24,d0
+	bsr	scr_dbg
+	move.l	ms_cntf,d0
+	or.l	#234<<24,d0
+	bsr	scr_dbg
+	clr.l	ms_cntc
+	clr.l	ms_cntv
+	clr.l	ms_cntf
+	endif
+	moveq	#8,d0			; fadestep(FADESTEP_STEP)
 	bsr	fadestep
 	bsr	findmouse
 	bsr	kbd_keypressed
@@ -4321,7 +4361,7 @@ ex_mainloop:
 	add.w	d0,d0
 	bsr	delayp			; (paced: the frame's work counts)
 	tst.b	GS_DONE(a6)
-	beq.s	.l
+	beq	.l
 	st	GS_ANYCHANGE(a6)
 	rts
 
@@ -4666,8 +4706,13 @@ exploreplanet:
 	PRT	"SCIENCE: Probes cannot penetrate planetary shield."
 	bra	.x
 .go:	bsr	mousehide
+	st	ex_zchg			; (showzoom: nothing kept yet)
 	bsr	ex_readydata
+	moveq	#1,d0			; (Phase 6k: the flush compares with what is shown here -
+	bsr	ms_mirror		; the zoom window, the texts and icons are drawn every frame)
 	bsr	ex_mainloop
+	moveq	#0,d0
+	bsr	ms_mirror
 	moveq	#1,d7			; 1994 probes: what is on its way home is kept
 .pc:	bsr	ex_pslot
 	move.w	8(a0),d0
@@ -4820,8 +4865,13 @@ ex_lc:		ds.b	LC_SIZE		; landcolors^ (kept between explorations, as the original'
 ex_sumpic:	ds.b	LC_SIZE		; summarypic^
 	even
 ex_scaninfo:	ds.b	52*SCAN_SIZE
+	even
 ex_tempzoom:	ds.b	3600
 ex_zoomscr:	ds.b	3600
+ex_zlutb:	ds.b	256		; (Phase 6k) ex_zlut as bytes
+ex_ztbase:	ds.b	3600		; (Phase 6k) showzoom's last transposition (before the messages)
+ex_zchg:	ds.b	1		; zoomscr / its colours changed since: transpose again
+	even
 ex_msgs:	ds.b	7*MSG_SIZE
 ex_icons:	ds.b	4*ICON_SIZE
 ex_zlut:	ds.w	256

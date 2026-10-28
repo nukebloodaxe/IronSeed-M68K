@@ -38,9 +38,25 @@
 ;              Flushes first; a row whose source line has another LUT (a band split between them)
 ;              is marked dirty instead. A scroll costs a planar copy, not a conversion.
 ;              trashes: d0-d2/a0-a2
+;
+; Phase 6k, two spans per line: a mark joins the span it meets (or comes within MS_GAP of), else
+; the free one, else the nearer (the exploration's map, zoom window and probe icons share lines).
+; Phase 6k, the mirror (ms_mirror: on in the exploration only - where the original redraws much
+; that has not changed every frame; on the bridge most of what is flushed has changed and the
+; compares cost more than they save): ms_shw holds what the planar screen shows, as indices, for
+; every line marked known in ms_shv (1). The flush converts only the 8-pixel cells of a dirty span
+; whose shadow differs from the mirror; a line not known (0) is converted whole at its next flush
+; and known afterwards (2 while that flush runs). Lines become unknown when the planar screen
+; changes behind the shadow: ms_load, ms_unsnap, mousehidep (code that writes the planar screen
+; itself), ms_vscroll's rows, a LUT change (the lines of the bands whose LUT changed, found from
+; kernel vid_lutgen), u2_approach's clear (ms_inval). ms_psetp/ms_psetq keep the mirror.
+; ms_dirtyx marks lines its caller knows changed (makesphere3): converted without comparing.
+; With ms_mon = 0 (the default; the ending clears it too) the flush converts every dirty span.
 
 MS_W		equ	320
 MS_H		equ	200
+MS_SPB		equ	4*MS_H		; ms_x3 - ms_x1: a line's second span
+MS_GAP		equ	32		; marks closer than this join a span
 
 	section	text
 ms_init:
@@ -67,16 +83,36 @@ ms_init:
 	move.l	a0,ms_vbuf
 	move.l	#ms_verify,scr_shot_hook
 	endif
-	move.l	vid_phys,a0
+	sf	ms_mon			; (Phase 6k) the mirror, when there is room for it
+	move.l	#MS_W*MS_H,d0
+	bsr	mem_alloc
+	bcs.s	.nm
+	move.l	a0,ms_shw
+	sub.l	ms_buf,a0
+	move.l	a0,ms_shoff
+	st	ms_mok			; (on where a screen asks for it: ms_mirror)
+	bsr	ms_inval
+.nm:	move.l	vid_phys,a0
 	bsr	gfx_set_target
 	; fall through: nothing dirty
 ms_clean:
 	lea	ms_x1,a0
 	lea	ms_x2,a1
 	move.w	#MS_H-1,d0
-.c:	move.w	#$7fff,(a0)+
-	move.w	#-1,(a1)+
+.c:	move.w	#$7fff,(a0)
+	move.w	#-1,(a1)
+	move.w	#$7fff,MS_SPB(a0)
+	move.w	#-1,MS_SPB(a1)
+	addq.l	#2,a0
+	addq.l	#2,a1
 	dbf	d0,.c
+	lea	ms_xf,a0
+	moveq	#MS_H/4-1,d0
+.cx:	clr.l	(a0)+
+	dbf	d0,.cx
+	move.w	#MS_H,ms_xfmin
+	move.w	#-1,ms_xfmax
+	sf	ms_any2
 	clr.w	ms_any
 	move.w	#MS_H,ms_ymin		; the dirty lines' range: none
 	move.w	#-1,ms_ymax
@@ -91,8 +127,32 @@ ms_dirty_all:				; (keeps d3, as documented)
 	bsr.s	ms_dirty
 	move.w	(sp)+,d3
 	rts
-ms_dirty:
-	move.w	d3,-(sp)
+; ms_dirtyx (Phase 6k): ms_dirty for a caller that knows the span changed (makesphere3 compares
+; itself): the flush converts its lines without comparing them with the mirror.
+ms_dirtyx:
+	movem.l	d1/d3,-(sp)
+	lea	ms_xf,a0
+	tst.w	d1
+	bpl.s	.a
+	moveq	#0,d1
+.a:	cmp.w	#MS_H-1,d3
+	ble.s	.b
+	move.w	#MS_H-1,d3
+.b:	cmp.w	ms_xfmin,d1		; (the range the flush clears)
+	bge.s	.b1
+	move.w	d1,ms_xfmin
+.b1:	cmp.w	ms_xfmax,d3
+	ble.s	.b2
+	move.w	d3,ms_xfmax
+.b2:	sub.w	d1,d3
+	bmi.s	.x
+	add.w	d1,a0
+.c:	st	(a0)+
+	dbf	d3,.c
+.x:	movem.l	(sp)+,d1/d3
+	; fall through
+ms_dirty:				; (Phase 6k) two spans per line: a mark joins the span it meets
+	movem.l	d3-d4,-(sp)		; (or comes within MS_GAP of), else the free one, else the nearer
 	tst.w	d1			; rows clipped to the screen (a bad caller must not make the
 	bpl.s	.y1			; flush walk lines that do not exist)
 	moveq	#0,d1
@@ -108,33 +168,92 @@ ms_dirty:
 	add.w	d1,a1
 	lsr.w	#1,d1
 	sub.w	d1,d3			; rows - 1
-	bmi.s	.x
+	bmi	.x
 	cmp.w	ms_ymin,d1		; the range of dirty lines (the flush walks only those)
 	bge.s	.ya
 	move.w	d1,ms_ymin
 .ya:	add.w	d3,d1
 	cmp.w	ms_ymax,d1
-	ble.s	.r
+	ble.s	.yb
 	move.w	d1,ms_ymax
-.r:	cmp.w	(a0),d0
-	bge.s	.n1
+.yb:	movem.w	d0-d2,-(sp)		; (callers have relied on what the one-span version left in
+					; d0-d2: x1 & ~7, the last row, x2 | 7 - combat's cb_xor loop)
+.r:	move.w	(a0),d1			; span A
+	cmp.w	#$7fff,d1
+	beq.s	.sa
+	sub.w	#MS_GAP,d1
+	cmp.w	d1,d2			; b < x1 - gap: not A
+	blt.s	.na
+	move.w	(a1),d1
+	add.w	#MS_GAP,d1
+	cmp.w	d1,d0			; a > x2 + gap: not A
+	bgt.s	.na
+.ua:	cmp.w	(a0),d0
+	bge.s	.u1
 	move.w	d0,(a0)
-.n1:	addq.l	#2,a0
-	cmp.w	(a1),d2
-	ble.s	.n2
+.u1:	cmp.w	(a1),d2
+	ble	.nx
 	move.w	d2,(a1)
-.n2:	addq.l	#2,a1
+	bra	.nx
+.sa:	move.w	d0,(a0)
+	move.w	d2,(a1)
+	bra	.nx
+.na:	move.w	MS_SPB(a0),d1		; span B
+	cmp.w	#$7fff,d1
+	beq.s	.sb
+	sub.w	#MS_GAP,d1
+	cmp.w	d1,d2
+	blt.s	.far
+	move.w	MS_SPB(a1),d1
+	add.w	#MS_GAP,d1
+	cmp.w	d1,d0
+	bgt.s	.far
+.ub:	cmp.w	MS_SPB(a0),d0
+	bge.s	.u2
+	move.w	d0,MS_SPB(a0)
+.u2:	cmp.w	MS_SPB(a1),d2
+	ble.s	.nx
+	move.w	d2,MS_SPB(a1)
+	bra.s	.nx
+.sb:	move.w	d0,MS_SPB(a0)
+	move.w	d2,MS_SPB(a1)
+	bra.s	.nx
+.far:	move.w	d0,d1			; far from both: the nearer one takes it (the gaps)
+	sub.w	(a1),d1			; a - x2 (A's right side)
+	bpl.s	.ga
+	move.w	(a0),d1
+	sub.w	d2,d1			; x1 - b
+.ga:	move.w	d0,d4
+	sub.w	MS_SPB(a1),d4
+	bpl.s	.gb
+	move.w	MS_SPB(a0),d4
+	sub.w	d2,d4
+.gb:	cmp.w	d4,d1
+	ble	.ua
+	bra.s	.ub
+.nx:	addq.l	#2,a0
+	addq.l	#2,a1
 	dbf	d3,.r
 	move.w	#1,ms_any
-.x:	move.w	(sp)+,d3
+	movem.w	(sp)+,d0-d2
+.x:	movem.l	(sp)+,d3-d4
 	rts
 
 ms_flush:				; (Phase 6h) the cursor stays on the screen: lines under it wait
-	bsr	snd_poll		; for a second pass that takes it off for just those lines and
+	bsr	snd_poll
+	ifd	CNTDBG
+	addq.l	#1,ms_cntf
+	endif		; for a second pass that takes it off for just those lines and
 	tst.w	ms_any			; draws it again at once; meanwhile the VBL may move it, but
 	beq	.none			; never onto the line being converted (kbd_busy)
 	movem.l	d3-d5/a3-a4,-(sp)
-	clr.w	ms_defer
+	tst.b	ms_mon
+	beq.s	.m0
+	move.l	vid_lutgen,d0		; (the mirror: lines of bands whose LUT changed are not known)
+	cmp.l	ms_lutgen,d0
+	beq.s	.m0
+	bsr	ms_lutchk
+.m0:	clr.w	ms_defer
 	lea	ms_x1,a3
 	lea	ms_x2,a4
 	move.w	ms_ymin,d3		; y: the dirty range only
@@ -143,14 +262,134 @@ ms_flush:				; (Phase 6h) the cursor stays on the screen: lines under it wait
 	add.w	d3,a4
 	add.w	d3,a4
 	move.w	ms_ymax,d4
-.y:	move.w	(a3),d0
-	cmp.w	#$7fff,d0
-	beq.s	.n
+.y:	cmp.w	#$7fff,(a3)
+	bne	.a
+	cmp.w	#$7fff,MS_SPB(a3)
+	beq	.n
+.a:	tst.b	ms_mon
+	beq	.e0
+	lea	ms_shv,a0
+	tst.b	0(a0,d3.w)
+	bne	.e0
+	move.b	#2,0(a0,d3.w)		; a line not known: all of it now, known afterwards
+	st	ms_any2
+	clr.w	(a3)
+	move.w	#MS_W-1,(a4)
+	move.w	#$7fff,MS_SPB(a3)
+	move.w	#-1,MS_SPB(a4)
+.e0:
+	ifd	SPANDBG
+	addq.w	#1,ms_dbgn
+	cmp.w	#SPANDBG,ms_dbgn
+	blo	.sd
+	cmp.w	#SPANDBG+400,ms_dbgn
+	bhs	.sd
+	moveq	#0,d0
+	move.w	d3,d0
+	lsl.l	#6,d0
+	move.w	(a3),d1
+	lsr.w	#3,d1
+	and.w	#63,d1
+	or.w	d1,d0
+	lsl.l	#6,d0
+	move.w	(a4),d1
+	lsr.w	#3,d1
+	and.w	#63,d1
+	or.w	d1,d0
+	lsl.l	#6,d0
+	move.w	MS_SPB(a3),d1
+	lsr.w	#3,d1
+	and.w	#63,d1
+	or.w	d1,d0
+	or.l	#230<<24,d0
+	bsr	scr_dbg
+	moveq	#0,d0
+	move.w	MS_SPB(a4),d0
+	or.l	#231<<24,d0
+	bsr	scr_dbg
+.sd:
+	endif
+	bsr	ms_fline		; span A
+	lea	MS_SPB(a3),a3
+	lea	MS_SPB(a4),a4
+	bsr	ms_fline		; span B
+	lea	-MS_SPB(a3),a3
+	lea	-MS_SPB(a4),a4
+.n:	addq.l	#2,a3
+	addq.l	#2,a4
+	addq.w	#1,d3
+	cmp.w	d4,d3
+	ble	.y
+	clr.w	kbd_busy
+	tst.w	ms_defer
+	beq.s	.done
+	ifd	CURSTAT
+	addq.l	#1,kbd_st_p2
+	endif
+	move.w	kbd_cur_on,d5		; the lines under the cursor: off, convert, on again
+	clr.w	kbd_cur_on
+	bsr	kbd_cur_restore
+	lea	ms_x1,a3
+	lea	ms_x2,a4
+	move.w	ms_ymin,d3
+	add.w	d3,a3
+	add.w	d3,a3
+	add.w	d3,a4
+	add.w	d3,a4
+.y2:	cmp.w	#$7fff,(a3)
+	beq.s	.b2
+	bsr	ms_span
+.b2:	cmp.w	#$7fff,MS_SPB(a3)
+	beq.s	.n2
+	lea	MS_SPB(a3),a3
+	lea	MS_SPB(a4),a4
+	bsr	ms_span
+	lea	-MS_SPB(a3),a3
+	lea	-MS_SPB(a4),a4
+.n2:	addq.l	#2,a3
+	addq.l	#2,a4
+	addq.w	#1,d3
+	cmp.w	d4,d3
+	ble.s	.y2
+	tst.w	d5
+	beq.s	.done
+	bsr	kbd_cursor_drawnow
+	move.w	d5,kbd_cur_on
+.done:	tst.b	ms_any2			; (lines converted whole: known now)
+	beq.s	.d0
+	sf	ms_any2
+	bsr	ms_known
+.d0:	move.w	ms_xfmin,d0		; (the lines' "changed" marks: done)
+	move.w	ms_xfmax,d1
+	sub.w	d0,d1
+	bmi.s	.d1
+	lea	ms_xf,a0
+	add.w	d0,a0
+.dx:	clr.b	(a0)+
+	dbf	d1,.dx
+	move.w	#MS_H,ms_xfmin
+	move.w	#-1,ms_xfmax
+.d1:	clr.w	ms_any
+	move.w	#MS_H,ms_ymin
+	move.w	#-1,ms_ymax
+	movem.l	(sp)+,d3-d5/a3-a4
+.none:	rts
+
+; ms_fline: line d3, (a3)/(a4) = one of its spans (x1 = $7fff: none): convert it now, or - when the
+; drawn cursor is on it - the parts beside the cursor now and its 32 pixels in the flush's second
+; pass (ms_defer; the span keeps that part).  trashes: d0-d2/a0-a2
+ms_fline:
+	cmp.w	#$7fff,(a3)
+	beq.s	.x
 	tst.w	kbd_cur_on
 	beq.s	.cv			; off: nothing drawn (the VBL draws nothing either)
 	move.w	d3,d1
 	addq.w	#1,d1
 	move.w	d1,kbd_busy		; first: from here the VBL leaves this line alone
+	move.w	d3,d0			; (Phase 6k: a line outside the drawn cursor's 16 rows needs no
+	sub.w	kbd_save_y,d0		; closer look - the VBL cannot move it here any more)
+	cmp.w	#16,d0
+	bhs.s	.cv
 	bsr	ms_curline		; is the drawn cursor on it, over the span?
 	beq.s	.cv
 	st	ms_defer		; yes: the parts beside it now, its 32 pixels in the second pass
@@ -170,46 +409,8 @@ ms_flush:				; (Phase 6h) the cursor stays on the screen: lines under it wait
 	addq.w	#1,d0
 	bsr	ms_conv			; right+1 .. x2
 .nr:	addq.l	#4,sp
-	bra.s	.n
-.cv:	bsr	ms_span
-.n:	addq.l	#2,a3
-	addq.l	#2,a4
-	addq.w	#1,d3
-	cmp.w	d4,d3
-	ble.s	.y
-	clr.w	kbd_busy
-	tst.w	ms_defer
-	beq.s	.done
-	ifd	CURSTAT
-	addq.l	#1,kbd_st_p2
-	endif
-	move.w	kbd_cur_on,d5		; the lines under the cursor: off, convert, on again
-	clr.w	kbd_cur_on
-	bsr	kbd_cur_restore
-	lea	ms_x1,a3
-	lea	ms_x2,a4
-	move.w	ms_ymin,d3
-	add.w	d3,a3
-	add.w	d3,a3
-	add.w	d3,a4
-	add.w	d3,a4
-.y2:	cmp.w	#$7fff,(a3)
-	beq.s	.n2
-	bsr	ms_span
-.n2:	addq.l	#2,a3
-	addq.l	#2,a4
-	addq.w	#1,d3
-	cmp.w	d4,d3
-	ble.s	.y2
-	tst.w	d5
-	beq.s	.done
-	bsr	kbd_cursor_drawnow
-	move.w	d5,kbd_cur_on
-.done:	clr.w	ms_any
-	move.w	#MS_H,ms_ymin
-	move.w	#-1,ms_ymax
-	movem.l	(sp)+,d3-d5/a3-a4
-.none:	rts
+.x:	rts
+.cv:	bra	ms_span
 
 	ifd	CURSTAT
 ; ms_verify (CURSTAT builds; kernel scr_shot calls it with the cursor off): flush, convert the
@@ -266,6 +467,31 @@ ms_span:
 	move.w	#$7fff,(a3)
 	move.w	#-1,(a4)
 ms_conv:
+	tst.b	ms_mon
+	beq.s	ms_conv0
+	lea	ms_shv,a0
+	cmp.b	#1,0(a0,d3.w)
+	bne.s	.cc
+	lea	ms_xf,a0		; (known to have changed: no comparing)
+	tst.b	0(a0,d3.w)
+	beq	ms_convm
+.cc:
+	movem.w	d0/d2,-(sp)		; a line not known: convert, and the mirror takes it
+	bsr.s	ms_conv0
+	movem.w	(sp)+,d0/d2
+	move.w	d3,d1
+	mulu	#MS_W,d1
+	move.l	ms_buf,a0
+	add.l	d1,a0
+	add.w	d0,a0
+	move.l	a0,a1
+	add.l	ms_shoff,a1
+	sub.w	d0,d2
+	lsr.w	#2,d2			; longs - 1 (spans are whole cells)
+.cp:	move.l	(a0)+,(a1)+
+	dbf	d2,.cp
+	rts
+ms_conv0:
 	sub.w	d0,d2
 	addq.w	#1,d2			; count
 	move.w	d3,d1
@@ -275,6 +501,173 @@ ms_conv:
 	add.w	d0,a0
 	move.w	d3,d1
 	bra	gfx_c4_span
+
+; ms_convm (Phase 6k): line d3 (known), x d0..d2 (whole cells): convert only the runs of cells
+; whose shadow differs from the mirror, and copy them into it.  trashes: d0-d2/a0-a2
+ms_convm:
+	move.w	d3,d1			; first the scan with scratch registers only: most spans are
+	mulu	#MS_W,d1		; as shown (nothing saved, nothing called)
+	move.l	ms_buf,a0
+	add.l	d1,a0
+	add.w	d0,a0			; the shadow
+	move.l	a0,a1
+	add.l	ms_shoff,a1		; the mirror
+	move.w	d2,d1
+	sub.w	d0,d1
+	lsr.w	#3,d1			; cells - 1
+	ifd	CNTDBG
+	move.w	d1,d2
+	addq.w	#1,d2
+	ext.l	d2
+	add.l	d2,ms_cntc
+	endif
+.q:	cmpm.l	(a0)+,(a1)+
+	bne.s	.q1
+	cmpm.l	(a0)+,(a1)+
+	bne.s	.q2
+	addq.w	#8,d0
+	dbf	d1,.q
+	rts
+.q2:	subq.l	#4,a0			; a changed cell: the runs from here
+	subq.l	#4,a1
+.q1:	subq.l	#4,a0
+	subq.l	#4,a1
+	movem.l	d4-d7/a3-a4,-(sp)
+	move.l	a0,a3
+	move.l	a1,a4
+	move.w	d0,d4			; x of the cell
+	move.w	d1,d5			; cells left - 1
+	bra.s	.r
+.s:	cmpm.l	(a3)+,(a4)+		; the same as shown?
+	bne.s	.d1
+	cmpm.l	(a3)+,(a4)+
+	bne.s	.d2
+	addq.w	#8,d4
+	dbf	d5,.s
+	bra.s	.x
+.d2:	subq.l	#4,a3			; (back to the cell's start)
+	subq.l	#4,a4
+.d1:	subq.l	#4,a3
+	subq.l	#4,a4
+.r:	move.w	d4,d6			; a run from here
+	move.l	a3,d7
+.e:	move.l	(a3)+,d0
+	move.l	(a3)+,d1
+	cmp.l	(a4),d0
+	bne.s	.ec
+	cmp.l	4(a4),d1
+	beq.s	.ee
+.ec:	move.l	d0,(a4)+
+	move.l	d1,(a4)+
+	addq.w	#8,d4
+	dbf	d5,.e
+	bsr.s	.cv			; the run reaches the span's end
+	bra.s	.x
+.ee:	addq.l	#8,a4			; this cell is as shown: the run ends before it
+	bsr.s	.cv
+	addq.w	#8,d4
+	dbf	d5,.s
+.x:	movem.l	(sp)+,d4-d7/a3-a4
+	rts
+.cv:	move.l	d7,a0			; convert x d6 .. d4-1
+	move.w	d6,d0
+	move.w	d4,d2
+	sub.w	d6,d2
+	ifd	CNTDBG
+	moveq	#0,d1
+	move.w	d2,d1
+	add.l	d1,ms_cntv
+	endif
+	move.w	d3,d1
+	bra	gfx_c4_span
+
+; ms_mirror (Phase 6k): d0.b <> 0: the mirror on from here (every line unknown first), 0: off.
+; The screens that redraw much that has not changed turn it on (the exploration); on the
+; bridge most of what is flushed has changed (the planet) and the compares cost more than they
+; save.  trashes: d0-d2/a0-a2
+ms_mirror:
+	tst.b	d0
+	beq.s	.off
+	tst.b	ms_mok
+	beq.s	.off
+	ifnd	NOMIRROR		; (ASMDEFS=-DNOMIRROR=1: never on, for comparisons)
+	bsr	ms_flush		; (what is marked goes out the old way)
+	bsr.s	ms_inval
+	st	ms_mon
+	rts
+	endif
+.off:	sf	ms_mon
+	rts
+
+; ms_inval: no line known (the mirror).  trashes: d0/a0
+ms_inval:
+	lea	ms_shv,a0
+	moveq	#MS_H/4-1,d0
+.c:	clr.l	(a0)+
+	dbf	d0,.c
+	rts
+; ms_invrows: lines d0..d1 not known.  trashes: d0-d1/a0
+ms_invrows:
+	lea	ms_shv,a0
+	add.w	d0,a0
+	sub.w	d0,d1
+	bmi.s	.x
+.c:	clr.b	(a0)+
+	dbf	d1,.c
+.x:	rts
+; ms_known: the lines a flush converted whole (2) are known (1).  trashes: d0-d1/a0
+ms_known:
+	lea	ms_shv,a0
+	move.w	ms_ymin,d0
+	move.w	ms_ymax,d1
+	sub.w	d0,d1
+	bmi.s	.x
+	add.w	d0,a0
+.l:	cmp.b	#2,(a0)+
+	bne.s	.n
+	move.b	#1,-1(a0)
+.n:	dbf	d1,.l
+.x:	rts
+; ms_lutchk: the LUTs changed (vid_lutgen): the lines whose LUT is another one or whose band's
+; LUT changed are not known.  trashes: d0-d2/a0-a2
+ms_lutchk:
+	move.l	vid_lutgen,ms_lutgen
+	move.l	d3,-(sp)
+	moveq	#0,d3			; changed bands
+	lea	vid_luts,a0
+	lea	ms_shlut,a1
+	moveq	#0,d2
+.b:	moveq	#256/4-1,d0
+.c:	move.l	(a0)+,d1
+	cmp.l	(a1)+,d1
+	beq.s	.e
+	bset	d2,d3
+.e:	dbf	d0,.c
+	addq.w	#1,d2
+	cmp.w	#4,d2
+	blt.s	.b
+	lea	vid_luts,a0
+	lea	ms_shlut,a1
+	move.w	#1024/4-1,d0
+.cl:	move.l	(a0)+,(a1)+
+	dbf	d0,.cl
+	lea	vid_line_lut,a0
+	lea	ms_shll,a1
+	lea	ms_shv,a2
+	move.w	#MS_H-1,d2
+.y:	move.l	(a0)+,d0
+	cmp.l	(a1),d0
+	bne.s	.inv
+	sub.l	#vid_luts,d0
+	lsr.l	#8,d0			; the band
+	btst	d0,d3
+	beq.s	.ok
+.inv:	clr.b	(a2)
+.ok:	move.l	-4(a0),(a1)+
+	addq.l	#1,a2
+	dbf	d2,.y
+	move.l	(sp)+,d3
+	rts
 
 ; ms_curline: Z clear if the drawn cursor (32 pixels from its group, kbd_save_rows lines) covers
 ; line d3 within its span (a3)/(a4); a cursor on another screen than the flush's target never
@@ -361,7 +754,8 @@ ms_load:
 	bne.s	.np
 	move.l	ms_buf,a0		; (read the whole file again into the shadow + a buffer)
 	bsr	ms_loadpal
-.np:	bsr	ms_clean
+.np:	bsr	ms_inval		; (the mirror: the planar screen is the picture now)
+	bsr	ms_clean
 	movem.l	(sp)+,d3/a3
 	and.b	#$fe,ccr
 	rts
@@ -491,6 +885,7 @@ ms_unsnap:
 	move.w	#SCR_SIZE/4-1,d0
 .c2:	move.l	(a0)+,(a1)+
 	dbf	d0,.c2
+	bsr	ms_inval		; (the mirror: the planar screen is the snapshot's)
 	bsr	ms_clean
 	movem.l	(sp)+,d3/a3
 	rts
@@ -558,7 +953,8 @@ ms_fade:
 ms_print:
 	movem.l	d0-d1/a0,-(sp)
 	bsr	chk_print
-	movem.l	(sp)+,d0-d1/a0
+	movem.l	(sp)+,d0-d1/a0		; (keeps the flags)
+	seq	-(sp)			; (Phase 6k) the same text where it was: nothing to mark
 	move.w	d3,-(sp)
 	moveq	#0,d2
 	move.b	(a0),d2			; x2 = x1 + 4 + 5*len
@@ -568,18 +964,31 @@ ms_print:
 	cmp.w	#MS_W-1,d2
 	ble.s	.w
 	move.w	#MS_W-1,d2
-.w:	move.w	d1,d3
+.w:	tst.b	2(sp)
+	beq.s	.mk
+	and.w	#$fff8,d0		; (unmarked: d0-d2 as ms_dirty would leave them)
+	or.w	#7,d2
+	addq.w	#6,d1
+	cmp.w	#MS_H-1,d1
+	ble.s	.u
+	move.w	#MS_H-1,d1
+.u:	move.w	(sp)+,d3
+	addq.l	#2,sp
+	rts
+.mk:	move.w	d1,d3
 	addq.w	#6,d3
 	cmp.w	#MS_H-1,d3
 	ble.s	.h
 	move.w	#MS_H-1,d3
 .h:	bsr	ms_dirty
 	move.w	(sp)+,d3
+	addq.l	#2,sp
 	rts
 
 mousehide:				; (Phase 6h) the game draws into the shadow only: the cursor
 	bra	kbd_cursor_soft		; stays (kernel kbd.s: off after KBD_SOFTV frames)
 mousehidep:				; for code that writes the planar screen itself
+	bsr	ms_inval		; (the mirror: from here the planar screen is not known)
 	bra	kbd_cursor_hide
 
 mouseshow:
@@ -593,7 +1002,15 @@ ms_psetp:
 	move.l	ms_buf,a0
 	add.l	d1,a0
 	move.b	d2,0(a0,d0.w)
-	move.w	(sp)+,d0
+	tst.b	ms_mon			; (the mirror follows on a known line)
+	beq.s	.nm
+	move.w	2(sp),d1
+	lea	ms_shv,a1
+	tst.b	0(a1,d1.w)
+	beq.s	.nm
+	add.l	ms_shoff,a0
+	move.b	d2,0(a0,d0.w)
+.nm:	move.w	(sp)+,d0
 	move.w	(sp)+,d1
 	move.l	gfx_target,-(sp)
 	move.l	vid_phys,gfx_target
@@ -611,7 +1028,14 @@ ms_psetq:
 	move.l	ms_buf,a0
 	add.l	d1,a0
 	move.b	d2,0(a0,d0.w)		; the shadow
-	lea	vid_line_lut,a0
+	tst.b	ms_mon			; (the mirror follows on a known line)
+	beq.s	.nm
+	lea	ms_shv,a1
+	tst.b	0(a1,d3.w)
+	beq.s	.nm
+	add.l	ms_shoff,a0
+	move.b	d2,0(a0,d0.w)
+.nm:	lea	vid_line_lut,a0
 	move.w	d3,d1
 	lsl.w	#2,d1
 	move.l	0(a0,d1.w),a0
@@ -662,6 +1086,14 @@ ms_vscroll:
 	bpl.s	.up
 	move.w	d3,d6			; dir -1: from y2 down
 .up:	bsr	ms_flush
+	move.w	d6,d0			; (the mirror: the moved rows are not known)
+	move.w	d6,d1
+	tst.w	d4
+	bmi.s	.vd
+	add.w	d7,d1
+	bra.s	.vi
+.vd:	sub.w	d7,d0
+.vi:	bsr	ms_invrows
 	move.w	kbd_cur_on,-(sp)	; 0(sp) cursor, 2(sp) x2, 4(sp) x1
 	beq.s	.off
 	bsr	kbd_cursor_hide
@@ -746,7 +1178,7 @@ ms_path:	dc.b	"DATA",92,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 
 	section	bss
 ms_buf:		ds.l	1
-ms_design:	ds.w	1		; (Phase 6i) the bridge design in use: 0 MAIN, 1-3 MAINSn, -1 another
+ms_design:	ds.w	1		; (Phase 6i/6k) the bridge design in use: u2_design's codes (0 MAIN), -1 another
 ms_snaps:	ds.l	3
 ms_color:	ds.w	1		; graph.setcolor's colour (rectangle, circle in explore)
 ms_any:		ds.w	1
@@ -757,5 +1189,30 @@ kbd_st_p2:	ds.l	1
 	endif
 ms_ymin:	ds.w	1		; first and last line marked dirty since the last flush
 ms_ymax:	ds.w	1
-ms_x1:		ds.w	MS_H
+ms_x1:		ds.w	MS_H		; per line: span A (x1 = $7fff: none) ...
 ms_x2:		ds.w	MS_H
+ms_x3:		ds.w	MS_H		; ... and span B (Phase 6k), MS_SPB bytes after A
+ms_x4:		ds.w	MS_H
+ms_shw:		ds.l	1		; (Phase 6k) the mirror: what the planar screen shows, as indices
+ms_shoff:	ds.l	1		; ms_shw - ms_buf
+ms_lutgen:	ds.l	1		; vid_lutgen when ms_shlut/ms_shll were taken
+ms_shll:	ds.l	MS_H		; vid_line_lut then
+ms_shlut:	ds.b	1024		; vid_luts then
+ms_shv:		ds.b	MS_H		; per line: 0 not known, 1 known, 2 converted whole by this flush
+ms_xf:		ds.b	MS_H		; per line: marked by ms_dirtyx (changed for sure)
+ms_mon:		ds.b	1		; the mirror is on
+ms_mok:		ds.b	1		; the mirror has its buffer
+ms_any2:	ds.b	1		; a flush converted a line not known (ms_known has work)
+	even
+ms_xfmin:	ds.w	1		; the lines ms_dirtyx marked
+ms_xfmax:	ds.w	1
+	even
+	ifd	SPANDBG
+ms_dbgn:	ds.w	1
+	endif
+	ifd	CNTDBG
+ms_cntc:	ds.l	1
+ms_cntv:	ds.l	1
+ms_cntf:	ds.l	1
+	endif
+	even

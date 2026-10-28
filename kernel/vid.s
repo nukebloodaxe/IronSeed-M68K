@@ -332,6 +332,7 @@ vid_set256:
 	rts
 
 vid_set_luts:
+	addq.l	#1,vid_lutgen		; (Phase 6k: MAIN's flush mirror notices LUT changes)
 	move.l	a3,-(sp)
 	move.l	a0,-(sp)
 	bsr	gfx_pair_inval		; (Phase 6j: the pair tables follow the LUTs)
@@ -636,6 +637,7 @@ vid_fadetab:	ds.b	17*16
 vid_luts:	ds.b	4*256
 vid_luts4:	ds.b	4*256		; the same x4 (slot*4: gfx_c4_span), right after vid_luts
 vid_line_lut:	ds.l	SCR_H
+vid_lutgen:	ds.l	1		; (Phase 6k) +1 at every vid_set_luts
 vid_line_band:	ds.b	SCR_H
 vid_reps:	ds.b	64
 vid_best:	ds.b	1

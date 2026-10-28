@@ -719,6 +719,8 @@ gfx_pair_lru:
 .u:	cmp.l	(a0)+,a1
 	beq.s	.n			; in use
 	dbf	d0,.u
+	bsr	gfx_pair_live		; (Phase 6k) or the table of a band's LUT now, not looked for yet
+	beq.s	.n
 	lea	gfx_pstamp,a0
 	move.w	d1,d0
 	add.w	d0,d0
@@ -734,6 +736,32 @@ gfx_pair_lru:
 	addq.w	#1,d1
 	bra.s	.s
 .x:	rts
+
+; gfx_pair_live (Phase 6k): Z set when the slot whose table is at a1 was built from a LUT that a
+; band has now (after gfx_pair_inval the bands find their tables again only when they next
+; convert: such a table must not be replaced meanwhile - the bridge lost its text box's table to
+; the viewscreen's after every design switch).  keeps every register but the flags
+gfx_pair_live:
+	movem.l	d0-d2/a0/a2,-(sp)
+	move.w	vid_bands_src,d2	; bands
+	subq.w	#1,d2
+	bmi.s	.no
+	lea	vid_luts,a2
+.b:	lea	-256(a1),a0		; the slot's key
+	move.l	a2,-(sp)
+	moveq	#256/4-1,d0
+.k:	cmpm.l	(a0)+,(a2)+
+	bne.s	.d
+	dbf	d0,.k
+	addq.l	#4,sp
+	moveq	#0,d0			; Z: live
+	bra.s	.x
+.d:	move.l	(sp)+,a2
+	lea	256(a2),a2
+	dbf	d2,.b
+.no:	moveq	#1,d0			; Z clear
+.x:	movem.l	(sp)+,d0-d2/a0/a2	; (movem keeps the flags)
+	rts
 
 ; gfx_pair_build(a0 = table, a1 = LUT): table[a*256 + b] = slot(a)*256 + slot(b)*16 - 16 distinct
 ; rows (by slot(a)) built into gfx_prow, then copied per a.  trashes: d0-d2/a0-a2

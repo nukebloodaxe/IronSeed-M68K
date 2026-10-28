@@ -163,11 +163,14 @@ ms_circle:
 	bhi	.old
 	cmp.w	mc_r,d7
 	beq.s	.have
+	bsr	mc_swap			; (Phase 6k: two kept lists - the zoom's two circles)
+	cmp.w	mc_r,d7
+	beq.s	.have
 	bsr	mc_build
 .have:	move.w	mc_n,d3
 	beq	.x
 	subq.w	#1,d3
-	lea	mc_list,a1
+	move.l	mc_lp,a1
 	move.w	d5,d0			; the whole circle on the screen: no pixel needs the check
 	sub.w	d7,d0
 	bmi.s	.slow
@@ -265,6 +268,25 @@ ms_circle:
 	move.w	(sp)+,d1
 .pxx:	rts
 
+; mc_swap (Phase 6k): the kept list and the other kept one change places.  trashes: d0/a0
+mc_swap:
+	move.w	mc_r,d0
+	move.w	mc_r2,mc_r
+	move.w	d0,mc_r2
+	move.w	mc_n,d0
+	move.w	mc_n2,mc_n
+	move.w	d0,mc_n2
+	move.w	mc_dymin,d0
+	move.w	mc_dymin2,mc_dymin
+	move.w	d0,mc_dymin2
+	move.w	mc_dymax,d0
+	move.w	mc_dymax2,mc_dymax
+	move.w	d0,mc_dymax2
+	move.l	mc_lp,a0
+	move.l	mc_lp2,mc_lp
+	move.l	a0,mc_lp2
+	rts
+
 ; mc_build: circle(0, 0, r = d7)'s pixels in ms_circle's order into mc_list (8 bytes each: dy*W+dx
 ; long, dx, dy), their dy range.  keeps d5-d7.  trashes d0-d2/a0-a2
 MC_RMAX		equ	63
@@ -275,7 +297,7 @@ mc_build:
 	clr.w	mc_n
 	move.w	#$7fff,mc_dymin
 	move.w	#-$7fff,mc_dymax
-	lea	mc_list,a2
+	move.l	mc_lp,a2
 	moveq	#0,d5
 	moveq	#0,d6
 	moveq	#0,d3			; xx
@@ -349,44 +371,65 @@ ms_rect:
 .a:	cmp.w	d1,d3
 	bge.s	.b
 	exg	d1,d3
-.b:	bsr	ms_dirty
+.b:	movem.w	d0-d3,-(sp)		; (Phase 6k) the four edges, not the box inside
+	move.w	2(sp),d3		; top: x1..x2, y1
+	bsr	ms_dirty
+	movem.w	(sp),d0-d3
+	move.w	d3,d1			; bottom: x1..x2, y2
+	bsr	ms_dirty
+	movem.w	(sp),d0-d3
+	move.w	d0,d2			; left: x1, y1..y2
+	bsr	ms_dirty
+	movem.w	(sp)+,d0-d3
+	move.w	d2,d0			; right: x2, y1..y2
+	bsr	ms_dirty
+	move.b	ms_lcol,d4		; (Phase 6k: whole rows and columns, no call per pixel)
 	movem.w	ms_bx,d0-d3
 	move.w	d0,d5			; horizontal: i from min(x1,x2) to max-1: rows y1 and y2
 	move.w	d2,d6
 	cmp.w	d5,d6
 	bge.s	.h
 	exg	d5,d6
-.h:	cmp.w	d6,d5
-	bge.s	.v
+.h:	sub.w	d5,d6			; count
+	ble.s	.v
+	subq.w	#1,d6
 	move.w	d5,d0
 	move.w	ms_bx+2,d1
-	bsr.s	.px
+	bsr.s	.ad
+	move.l	a0,a1
 	move.w	d5,d0
 	move.w	ms_bx+6,d1
-	bsr.s	.px
-	addq.w	#1,d5
-	bra.s	.h
+	bsr.s	.ad
+.hl:	move.b	d4,(a1)+
+	move.b	d4,(a0)+
+	dbf	d6,.hl
 .v:	move.w	ms_bx+2,d5		; vertical: i from min(y1,y2) to max-1: columns x1 and x2
 	move.w	ms_bx+6,d6
 	cmp.w	d5,d6
 	bge.s	.vl
 	exg	d5,d6
-.vl:	cmp.w	d6,d5
-	bge.s	.x
+.vl:	sub.w	d5,d6
+	ble.s	.x
+	subq.w	#1,d6
 	move.w	ms_bx,d0
 	move.w	d5,d1
-	bsr.s	.px
+	bsr.s	.ad
+	move.l	a0,a1
 	move.w	ms_bx+4,d0
 	move.w	d5,d1
-	bsr.s	.px
-	addq.w	#1,d5
-	bra.s	.vl
+	bsr.s	.ad
+	move.w	#MS_W,d0
+.vc:	move.b	d4,(a1)
+	move.b	d4,(a0)
+	add.w	d0,a1
+	add.w	d0,a0
+	dbf	d6,.vc
 .x:	movem.l	(sp)+,d3-d7
 	rts
-.px:	mulu	#MS_W,d1
+.ad:	mulu	#MS_W,d1		; a0 = shadow (d0, d1)
 	move.l	ms_buf,a0
 	add.l	d1,a0
-	move.b	ms_lcol,0(a0,d0.w)
+	add.w	d0,a0
 	rts
 
 ; c_utils.c pieslice(x d0, y d1, 0, 360, r d2) in fill colour d4: a full disc,
@@ -707,8 +750,15 @@ mc_n:		ds.w	1
 mc_dymin:	ds.w	1
 mc_dymax:	ds.w	1
 mc_list:	ds.l	2*MC_MAX
+mc_n2:		ds.w	1		; (Phase 6k) the other kept list
+mc_dymin2:	ds.w	1
+mc_dymax2:	ds.w	1
+mc_list2:	ds.l	2*MC_MAX
 	section	data
 mc_r:		dc.w	-1		; ms_circle's kept pixel list: its radius (-1 = none); count, dy range
+mc_r2:		dc.w	-1
+mc_lp:		dc.l	mc_list		; the lists' places (mc_swap exchanges them)
+mc_lp2:		dc.l	mc_list2
 	section	bss
 mu_ffr:		ds.w	1		; findfirstplanet's kept result (0 = none) and system
 mu_ffs:		ds.b	1

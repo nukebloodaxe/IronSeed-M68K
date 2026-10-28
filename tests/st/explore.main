@@ -1,0 +1,22 @@
+args /playseed 3
+# explore (timing, real time, PROFILE build: ex_mainloop's tag-47 marks in DBG.BIN = frames): the
+# exploration screen as m8 enters it, the probes launched on scan 1, 20 s, then back and quit
+# vbls 9000
+wait 3000
+key #27
+wait 2000
+key z
+wait 1500
+key e
+wait 8000
+shot X0
+key 1
+wait 20000
+shot X1
+key #27
+wait 4000
+key #291
+wait 1500
+key y
+wait 3000
+quit

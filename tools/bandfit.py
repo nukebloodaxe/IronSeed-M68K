@@ -11,7 +11,9 @@ group member in the middle of its share, so vid_set256 gives it a representative
 hist: float array [200, 256], weighted pixel counts per line and palette index.
 A band that has any line in [y0, y1) of an own group reserves k slots for it."""
 import numpy as np
+import os
 import cpr2st as c
+MEDOIDS = os.environ.get('BANDFIT', 'med') == 'med'   # (Phase 6k: BANDFIT=kmeans = the old fits)
 
 
 class Design:
@@ -69,6 +71,8 @@ def _band(hist_rows, pal, owns, want_err=True, iters=12):
     for i in own_idx: cnt2[i] = 0
     idx = np.nonzero(cnt2)[0]
     free = 16 - nown
+    if MEDOIDS and want_err != 'split' and len(idx):
+        return _band_med(cnt2, pal, owns, own_idx, free)
     if len(idx):
         cent = c.quantise(pal[idx], cnt2[idx], free, reserved=((0, 0, 0),), iters=iters)
     else:
@@ -99,6 +103,41 @@ def _band(hist_rows, pal, owns, want_err=True, iters=12):
     return err, cent, lut.astype(np.uint8), reps, own_slots
 
 
+def _black(pal, cnt, own_idx):
+    """the palette index that stands for slot 0 (black, the border): among the near-black indices
+    (6-bit sum within 8 of the darkest) that are not animated (own groups: vid_setrgb would
+    recolour the slot), the most used one - index 0 on a tie. (A black entry that is rarely used
+    may be one the game recolours - the comms static's 64-127 are black in com.pal.)"""
+    lum = np.asarray(pal, int).sum(1)
+    ok = [i for i in range(len(lum)) if i not in own_idx]
+    m = min(lum[i] for i in ok)
+    dark = [i for i in ok if lum[i] <= m + 8]
+    return int(max(dark, key=lambda i: (cnt[i], i == 0, -i)))
+
+
+def _band_med(cnt2, pal, owns, own_idx, free):
+    """(Phase 6k) the free slots by medoids (tools/medoids.py: reps among the palette indices,
+    scored on the colours the STE shows after vid_set256), own groups as in _band"""
+    import medoids as md
+    err, cent, lut, reps = md.band(cnt2[None, :], pal, k=free, fixed=(_black(pal, cnt2, own_idx),))
+    cent = np.vstack([cent, np.zeros((16 - free, 3), int)])
+    reps = list(reps) + list(range(free, 16))
+    lut = lut.copy()
+    own_slots = []
+    s0 = free
+    for _, _, gidx, k in owns:
+        n = len(gidx)
+        for j, i in enumerate(gidx):
+            lut[i] = s0 + j * k // n
+        for s in range(k):
+            members = [gidx[j] for j in range(n) if j * k // n == s]
+            reps[s0 + s] = members[len(members) // 2]
+            cent[s0 + s] = np.clip(np.round(pal[reps[s0 + s]] * 15 / 63), 0, 15)
+            own_slots.append(s0 + s)
+        s0 += k
+    return err, cent, lut.astype(np.uint8), reps, own_slots
+
+
 def _owns_for(owns, a, b):
     return [o for o in owns if o[0] < b and o[1] > a]
 
@@ -109,7 +148,7 @@ def fit(hist, pal, own=(), nb=4, splits=None, step=2, lo=0, hi=200):
         cache = {}
         def e(a, b):
             if (a, b) not in cache:
-                cache[(a, b)] = _band(hist[a:b], pal, _owns_for(own, a, b), iters=4)[0]
+                cache[(a, b)] = _band(hist[a:b], pal, _owns_for(own, a, b), want_err='split', iters=4)[0]
             return cache[(a, b)]
         splits = [0]
         while len(splits) < nb:

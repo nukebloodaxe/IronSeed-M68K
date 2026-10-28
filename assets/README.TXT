@@ -48,7 +48,9 @@ Colours: the STE shows 16 colours per band of lines, where the PC had 256.
 When a dialog opens over a screen (save, load, yes/no, crew messages, the
 crew chips), it appears at once and its colours settle a moment later: the
 bands under it get a palette chosen for what is on the screen. The planet
-exploration map has a palette per planet type.
+exploration map has a palette per planet type, and the bridge's viewscreen
+one per kind of orbit (each planet type, gas giants, gas clouds, asteroid
+fields, each kind of star), fitted on the original game's own pictures.
 
 The FINALE slot (if present) is a test position: the ship at the Scavengers'
 gate with the Kendar alliance and the faction quests done, a Temporal Anchor

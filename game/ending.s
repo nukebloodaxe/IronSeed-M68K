@@ -9,6 +9,7 @@
 
 	section	text
 endgame:
+	sf	ms_mon			; (Phase 6k: the flush without its mirror - the ending writes the planar screen itself)
 	move.w	#30,GS_TSLICE(a6)	; tslice := 30; tcolor := 15; bkcolor := 255
 	move.w	#15,GS_TCOLOR(a6)
 	move.w	#255,GS_BKCOLOR(a6)

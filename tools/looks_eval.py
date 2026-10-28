@@ -23,7 +23,7 @@ for f in sorted(glob.glob('/tmp/main_m*.txt')):
     for line in open(f):
         p = line.split()
         if len(p) >= 2 and p[1] == mode + '.ISP':
-            for root in ['/root/w/ironseed-ste'] + sorted(glob.glob('/root/r*/ironseed-ste')):
+            for root in ['/root/w/ironseed-ste'] + sorted(glob.glob('/root/r*/ironseed-ste')) + sorted(glob.glob('/home/claude/ironseed-ste*')):
                 raw = '%s/build/oracle_%s/shot_%s.raw' % (root, S, p[0])
                 if os.path.exists(raw): shots.append((S, p[0], raw)); break
 print('%d shots in %s' % (len(shots), mode))

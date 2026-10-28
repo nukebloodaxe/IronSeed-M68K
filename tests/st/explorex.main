@@ -1,0 +1,1952 @@
+args /playseed 3
+# explorex (Phase 6k, CURSTAT build: ms_verify's debris per shot, tools/curstat.py): the exploration
+# screen with the flush's mirror on - the mouse circling over the map, the zoom window and the probe
+# bays while probes fly; shots compare the planar screen with the shadow converted again (must be 0)
+# vbls 14000
+wait 3000
+key #27
+wait 2000
+key z
+wait 1500
+key e
+wait 8000
+shot X0
+key 1
+wait 1500
+key 2
+wait 1500
+move 261 169
+wait 30
+move 260 171
+wait 30
+move 260 174
+wait 30
+move 259 176
+wait 30
+move 258 179
+wait 30
+move 257 181
+wait 30
+move 256 183
+wait 30
+move 254 185
+wait 30
+move 252 187
+wait 30
+move 250 189
+wait 30
+move 248 190
+wait 30
+move 246 191
+wait 30
+move 243 192
+wait 30
+move 241 193
+wait 30
+move 238 193
+wait 30
+move 236 194
+wait 30
+move 233 193
+wait 30
+move 230 193
+wait 30
+move 228 192
+wait 30
+move 225 191
+wait 30
+move 223 190
+wait 30
+move 221 189
+wait 30
+move 219 187
+wait 30
+move 217 185
+wait 30
+move 215 183
+wait 30
+move 214 181
+wait 30
+move 213 179
+wait 30
+move 212 176
+wait 30
+move 211 174
+wait 30
+move 211 171
+wait 30
+move 211 169
+wait 30
+move 211 166
+wait 30
+move 211 163
+wait 30
+move 212 161
+wait 30
+move 213 158
+wait 30
+move 214 156
+wait 30
+move 215 154
+wait 30
+move 217 152
+wait 30
+move 219 150
+wait 30
+move 221 148
+wait 30
+move 223 147
+wait 30
+move 225 146
+wait 30
+move 228 145
+wait 30
+move 230 144
+wait 30
+move 233 144
+wait 30
+move 236 144
+wait 30
+move 238 144
+wait 30
+move 241 144
+wait 30
+move 243 145
+wait 30
+move 246 146
+wait 30
+move 248 147
+wait 30
+move 250 148
+wait 30
+move 252 150
+wait 30
+move 254 152
+wait 30
+move 256 154
+wait 30
+move 257 156
+wait 30
+move 258 158
+wait 30
+move 259 161
+wait 30
+move 260 163
+wait 30
+move 260 166
+wait 30
+move 261 169
+wait 30
+move 260 171
+wait 30
+move 260 174
+wait 30
+move 259 176
+wait 30
+move 258 179
+wait 30
+move 257 181
+wait 30
+move 256 183
+wait 30
+move 254 185
+wait 30
+move 252 187
+wait 30
+move 250 189
+wait 30
+move 248 190
+wait 30
+move 246 191
+wait 30
+move 243 192
+wait 30
+move 241 193
+wait 30
+move 238 193
+wait 30
+move 236 194
+wait 30
+move 233 193
+wait 30
+move 230 193
+wait 30
+move 228 192
+wait 30
+move 225 191
+wait 30
+move 223 190
+wait 30
+move 221 189
+wait 30
+move 219 187
+wait 30
+move 217 185
+wait 30
+move 215 183
+wait 30
+move 214 181
+wait 30
+move 213 179
+wait 30
+move 212 176
+wait 30
+move 211 174
+wait 30
+move 211 171
+wait 30
+move 211 169
+wait 30
+move 211 166
+wait 30
+move 211 163
+wait 30
+move 212 161
+wait 30
+move 213 158
+wait 30
+move 214 156
+wait 30
+move 215 154
+wait 30
+move 217 152
+wait 30
+move 219 150
+wait 30
+move 221 148
+wait 30
+move 223 147
+wait 30
+move 225 146
+wait 30
+move 228 145
+wait 30
+move 230 144
+wait 30
+move 233 144
+wait 30
+move 236 144
+wait 30
+move 238 144
+wait 30
+move 241 144
+wait 30
+move 243 145
+wait 30
+move 246 146
+wait 30
+move 248 147
+wait 30
+move 250 148
+wait 30
+move 252 150
+wait 30
+move 254 152
+wait 30
+move 256 154
+wait 30
+move 257 156
+wait 30
+move 258 158
+wait 30
+move 259 161
+wait 30
+move 260 163
+wait 30
+move 260 166
+wait 30
+shot X1
+move 315 100
+wait 30
+move 314 102
+wait 30
+move 314 105
+wait 30
+move 313 107
+wait 30
+move 312 110
+wait 30
+move 311 112
+wait 30
+move 310 114
+wait 30
+move 308 116
+wait 30
+move 306 118
+wait 30
+move 304 120
+wait 30
+move 302 121
+wait 30
+move 300 122
+wait 30
+move 297 123
+wait 30
+move 295 124
+wait 30
+move 292 124
+wait 30
+move 290 125
+wait 30
+move 287 124
+wait 30
+move 284 124
+wait 30
+move 282 123
+wait 30
+move 279 122
+wait 30
+move 277 121
+wait 30
+move 275 120
+wait 30
+move 273 118
+wait 30
+move 271 116
+wait 30
+move 269 114
+wait 30
+move 268 112
+wait 30
+move 267 110
+wait 30
+move 266 107
+wait 30
+move 265 105
+wait 30
+move 265 102
+wait 30
+move 265 100
+wait 30
+move 265 97
+wait 30
+move 265 94
+wait 30
+move 266 92
+wait 30
+move 267 89
+wait 30
+move 268 87
+wait 30
+move 269 85
+wait 30
+move 271 83
+wait 30
+move 273 81
+wait 30
+move 275 79
+wait 30
+move 277 78
+wait 30
+move 279 77
+wait 30
+move 282 76
+wait 30
+move 284 75
+wait 30
+move 287 75
+wait 30
+move 290 75
+wait 30
+move 292 75
+wait 30
+move 295 75
+wait 30
+move 297 76
+wait 30
+move 300 77
+wait 30
+move 302 78
+wait 30
+move 304 79
+wait 30
+move 306 81
+wait 30
+move 308 83
+wait 30
+move 310 85
+wait 30
+move 311 87
+wait 30
+move 312 89
+wait 30
+move 313 92
+wait 30
+move 314 94
+wait 30
+move 314 97
+wait 30
+move 315 100
+wait 30
+move 314 102
+wait 30
+move 314 105
+wait 30
+move 313 107
+wait 30
+move 312 110
+wait 30
+move 311 112
+wait 30
+move 310 114
+wait 30
+move 308 116
+wait 30
+move 306 118
+wait 30
+move 304 120
+wait 30
+move 302 121
+wait 30
+move 300 122
+wait 30
+move 297 123
+wait 30
+move 295 124
+wait 30
+move 292 124
+wait 30
+move 290 125
+wait 30
+move 287 124
+wait 30
+move 284 124
+wait 30
+move 282 123
+wait 30
+move 279 122
+wait 30
+move 277 121
+wait 30
+move 275 120
+wait 30
+move 273 118
+wait 30
+move 271 116
+wait 30
+move 269 114
+wait 30
+move 268 112
+wait 30
+move 267 110
+wait 30
+move 266 107
+wait 30
+move 265 105
+wait 30
+move 265 102
+wait 30
+move 265 100
+wait 30
+move 265 97
+wait 30
+move 265 94
+wait 30
+move 266 92
+wait 30
+move 267 89
+wait 30
+move 268 87
+wait 30
+move 269 85
+wait 30
+move 271 83
+wait 30
+move 273 81
+wait 30
+move 275 79
+wait 30
+move 277 78
+wait 30
+move 279 77
+wait 30
+move 282 76
+wait 30
+move 284 75
+wait 30
+move 287 75
+wait 30
+move 290 75
+wait 30
+move 292 75
+wait 30
+move 295 75
+wait 30
+move 297 76
+wait 30
+move 300 77
+wait 30
+move 302 78
+wait 30
+move 304 79
+wait 30
+move 306 81
+wait 30
+move 308 83
+wait 30
+move 310 85
+wait 30
+move 311 87
+wait 30
+move 312 89
+wait 30
+move 313 92
+wait 30
+move 314 94
+wait 30
+move 314 97
+wait 30
+shot X2
+move 190 150
+wait 30
+move 189 154
+wait 30
+move 189 158
+wait 30
+move 188 162
+wait 30
+move 186 166
+wait 30
+move 184 170
+wait 30
+move 182 173
+wait 30
+move 179 176
+wait 30
+move 176 179
+wait 30
+move 173 182
+wait 30
+move 170 184
+wait 30
+move 166 186
+wait 30
+move 162 188
+wait 30
+move 158 189
+wait 30
+move 154 189
+wait 30
+move 150 190
+wait 30
+move 145 189
+wait 30
+move 141 189
+wait 30
+move 137 188
+wait 30
+move 133 186
+wait 30
+move 130 184
+wait 30
+move 126 182
+wait 30
+move 123 179
+wait 30
+move 120 176
+wait 30
+move 117 173
+wait 30
+move 115 170
+wait 30
+move 113 166
+wait 30
+move 111 162
+wait 30
+move 110 158
+wait 30
+move 110 154
+wait 30
+move 110 150
+wait 30
+move 110 145
+wait 30
+move 110 141
+wait 30
+move 111 137
+wait 30
+move 113 133
+wait 30
+move 115 130
+wait 30
+move 117 126
+wait 30
+move 120 123
+wait 30
+move 123 120
+wait 30
+move 126 117
+wait 30
+move 129 115
+wait 30
+move 133 113
+wait 30
+move 137 111
+wait 30
+move 141 110
+wait 30
+move 145 110
+wait 30
+move 150 110
+wait 30
+move 154 110
+wait 30
+move 158 110
+wait 30
+move 162 111
+wait 30
+move 166 113
+wait 30
+move 170 115
+wait 30
+move 173 117
+wait 30
+move 176 120
+wait 30
+move 179 123
+wait 30
+move 182 126
+wait 30
+move 184 129
+wait 30
+move 186 133
+wait 30
+move 188 137
+wait 30
+move 189 141
+wait 30
+move 189 145
+wait 30
+move 190 150
+wait 30
+move 189 154
+wait 30
+move 189 158
+wait 30
+move 188 162
+wait 30
+move 186 166
+wait 30
+move 184 169
+wait 30
+move 182 173
+wait 30
+move 179 176
+wait 30
+move 176 179
+wait 30
+move 173 182
+wait 30
+move 170 184
+wait 30
+move 166 186
+wait 30
+move 162 188
+wait 30
+move 158 189
+wait 30
+move 154 189
+wait 30
+move 150 190
+wait 30
+move 145 189
+wait 30
+move 141 189
+wait 30
+move 137 188
+wait 30
+move 133 186
+wait 30
+move 130 184
+wait 30
+move 126 182
+wait 30
+move 123 179
+wait 30
+move 120 176
+wait 30
+move 117 173
+wait 30
+move 115 170
+wait 30
+move 113 166
+wait 30
+move 111 162
+wait 30
+move 110 158
+wait 30
+move 110 154
+wait 30
+move 110 150
+wait 30
+move 110 145
+wait 30
+move 110 141
+wait 30
+move 111 137
+wait 30
+move 113 133
+wait 30
+move 115 130
+wait 30
+move 117 126
+wait 30
+move 120 123
+wait 30
+move 123 120
+wait 30
+move 126 117
+wait 30
+move 130 115
+wait 30
+move 133 113
+wait 30
+move 137 111
+wait 30
+move 141 110
+wait 30
+move 145 110
+wait 30
+move 149 110
+wait 30
+move 154 110
+wait 30
+move 158 110
+wait 30
+move 162 111
+wait 30
+move 166 113
+wait 30
+move 169 115
+wait 30
+move 173 117
+wait 30
+move 176 120
+wait 30
+move 179 123
+wait 30
+move 182 126
+wait 30
+move 184 130
+wait 30
+move 186 133
+wait 30
+move 188 137
+wait 30
+move 189 141
+wait 30
+move 189 145
+wait 30
+shot X3
+move 190 70
+wait 30
+move 189 76
+wait 30
+move 188 82
+wait 30
+move 187 88
+wait 30
+move 184 94
+wait 30
+move 181 100
+wait 30
+move 178 105
+wait 30
+move 174 110
+wait 30
+move 170 114
+wait 30
+move 165 118
+wait 30
+move 160 121
+wait 30
+move 154 124
+wait 30
+move 148 127
+wait 30
+move 142 128
+wait 30
+move 136 129
+wait 30
+move 130 130
+wait 30
+move 123 129
+wait 30
+move 117 128
+wait 30
+move 111 127
+wait 30
+move 105 124
+wait 30
+move 100 121
+wait 30
+move 94 118
+wait 30
+move 89 114
+wait 30
+move 85 110
+wait 30
+move 81 105
+wait 30
+move 78 100
+wait 30
+move 75 94
+wait 30
+move 72 88
+wait 30
+move 71 82
+wait 30
+move 70 76
+wait 30
+move 70 70
+wait 30
+move 70 63
+wait 30
+move 71 57
+wait 30
+move 72 51
+wait 30
+move 75 45
+wait 30
+move 78 39
+wait 30
+move 81 34
+wait 30
+move 85 29
+wait 30
+move 89 25
+wait 30
+move 94 21
+wait 30
+move 99 18
+wait 30
+move 105 15
+wait 30
+move 111 12
+wait 30
+move 117 11
+wait 30
+move 123 10
+wait 30
+move 130 10
+wait 30
+move 136 10
+wait 30
+move 142 11
+wait 30
+move 148 12
+wait 30
+move 154 15
+wait 30
+move 160 18
+wait 30
+move 165 21
+wait 30
+move 170 25
+wait 30
+move 174 29
+wait 30
+move 178 34
+wait 30
+move 181 39
+wait 30
+move 184 45
+wait 30
+move 187 51
+wait 30
+move 188 57
+wait 30
+move 189 63
+wait 30
+move 190 69
+wait 30
+move 189 76
+wait 30
+move 188 82
+wait 30
+move 187 88
+wait 30
+move 184 94
+wait 30
+move 181 99
+wait 30
+move 178 105
+wait 30
+move 174 110
+wait 30
+move 170 114
+wait 30
+move 165 118
+wait 30
+move 159 121
+wait 30
+move 154 124
+wait 30
+move 148 127
+wait 30
+move 142 128
+wait 30
+move 136 129
+wait 30
+move 130 130
+wait 30
+move 123 129
+wait 30
+move 117 128
+wait 30
+move 111 127
+wait 30
+move 105 124
+wait 30
+move 100 121
+wait 30
+move 94 118
+wait 30
+move 89 114
+wait 30
+move 85 110
+wait 30
+move 81 105
+wait 30
+move 78 99
+wait 30
+move 75 94
+wait 30
+move 72 88
+wait 30
+move 71 82
+wait 30
+move 70 76
+wait 30
+move 70 70
+wait 30
+move 70 63
+wait 30
+move 71 57
+wait 30
+move 72 51
+wait 30
+move 75 45
+wait 30
+move 78 40
+wait 30
+move 81 34
+wait 30
+move 85 29
+wait 30
+move 89 25
+wait 30
+move 94 21
+wait 30
+move 100 18
+wait 30
+move 105 15
+wait 30
+move 111 12
+wait 30
+move 117 11
+wait 30
+move 123 10
+wait 30
+move 129 10
+wait 30
+move 136 10
+wait 30
+move 142 11
+wait 30
+move 148 12
+wait 30
+move 154 15
+wait 30
+move 159 18
+wait 30
+move 165 21
+wait 30
+move 170 25
+wait 30
+move 174 29
+wait 30
+move 178 34
+wait 30
+move 181 40
+wait 30
+move 184 45
+wait 30
+move 187 51
+wait 30
+move 188 57
+wait 30
+move 189 63
+wait 30
+shot X4
+move 261 169
+wait 30
+move 260 171
+wait 30
+move 260 174
+wait 30
+move 259 176
+wait 30
+move 258 179
+wait 30
+move 257 181
+wait 30
+move 256 183
+wait 30
+move 254 185
+wait 30
+move 252 187
+wait 30
+move 250 189
+wait 30
+move 248 190
+wait 30
+move 246 191
+wait 30
+move 243 192
+wait 30
+move 241 193
+wait 30
+move 238 193
+wait 30
+move 236 194
+wait 30
+move 233 193
+wait 30
+move 230 193
+wait 30
+move 228 192
+wait 30
+move 225 191
+wait 30
+move 223 190
+wait 30
+move 221 189
+wait 30
+move 219 187
+wait 30
+move 217 185
+wait 30
+move 215 183
+wait 30
+move 214 181
+wait 30
+move 213 179
+wait 30
+move 212 176
+wait 30
+move 211 174
+wait 30
+move 211 171
+wait 30
+move 211 169
+wait 30
+move 211 166
+wait 30
+move 211 163
+wait 30
+move 212 161
+wait 30
+move 213 158
+wait 30
+move 214 156
+wait 30
+move 215 154
+wait 30
+move 217 152
+wait 30
+move 219 150
+wait 30
+move 221 148
+wait 30
+move 223 147
+wait 30
+move 225 146
+wait 30
+move 228 145
+wait 30
+move 230 144
+wait 30
+move 233 144
+wait 30
+move 236 144
+wait 30
+move 238 144
+wait 30
+move 241 144
+wait 30
+move 243 145
+wait 30
+move 246 146
+wait 30
+move 248 147
+wait 30
+move 250 148
+wait 30
+move 252 150
+wait 30
+move 254 152
+wait 30
+move 256 154
+wait 30
+move 257 156
+wait 30
+move 258 158
+wait 30
+move 259 161
+wait 30
+move 260 163
+wait 30
+move 260 166
+wait 30
+move 261 169
+wait 30
+move 260 171
+wait 30
+move 260 174
+wait 30
+move 259 176
+wait 30
+move 258 179
+wait 30
+move 257 181
+wait 30
+move 256 183
+wait 30
+move 254 185
+wait 30
+move 252 187
+wait 30
+move 250 189
+wait 30
+move 248 190
+wait 30
+move 246 191
+wait 30
+move 243 192
+wait 30
+move 241 193
+wait 30
+move 238 193
+wait 30
+move 236 194
+wait 30
+move 233 193
+wait 30
+move 230 193
+wait 30
+move 228 192
+wait 30
+move 225 191
+wait 30
+move 223 190
+wait 30
+move 221 189
+wait 30
+move 219 187
+wait 30
+move 217 185
+wait 30
+move 215 183
+wait 30
+move 214 181
+wait 30
+move 213 179
+wait 30
+move 212 176
+wait 30
+move 211 174
+wait 30
+move 211 171
+wait 30
+move 211 169
+wait 30
+move 211 166
+wait 30
+move 211 163
+wait 30
+move 212 161
+wait 30
+move 213 158
+wait 30
+move 214 156
+wait 30
+move 215 154
+wait 30
+move 217 152
+wait 30
+move 219 150
+wait 30
+move 221 148
+wait 30
+move 223 147
+wait 30
+move 225 146
+wait 30
+move 228 145
+wait 30
+move 230 144
+wait 30
+move 233 144
+wait 30
+move 236 144
+wait 30
+move 238 144
+wait 30
+move 241 144
+wait 30
+move 243 145
+wait 30
+move 246 146
+wait 30
+move 248 147
+wait 30
+move 250 148
+wait 30
+move 252 150
+wait 30
+move 254 152
+wait 30
+move 256 154
+wait 30
+move 257 156
+wait 30
+move 258 158
+wait 30
+move 259 161
+wait 30
+move 260 163
+wait 30
+move 260 166
+wait 30
+shot X5
+move 315 100
+wait 30
+move 314 102
+wait 30
+move 314 105
+wait 30
+move 313 107
+wait 30
+move 312 110
+wait 30
+move 311 112
+wait 30
+move 310 114
+wait 30
+move 308 116
+wait 30
+move 306 118
+wait 30
+move 304 120
+wait 30
+move 302 121
+wait 30
+move 300 122
+wait 30
+move 297 123
+wait 30
+move 295 124
+wait 30
+move 292 124
+wait 30
+move 290 125
+wait 30
+move 287 124
+wait 30
+move 284 124
+wait 30
+move 282 123
+wait 30
+move 279 122
+wait 30
+move 277 121
+wait 30
+move 275 120
+wait 30
+move 273 118
+wait 30
+move 271 116
+wait 30
+move 269 114
+wait 30
+move 268 112
+wait 30
+move 267 110
+wait 30
+move 266 107
+wait 30
+move 265 105
+wait 30
+move 265 102
+wait 30
+move 265 100
+wait 30
+move 265 97
+wait 30
+move 265 94
+wait 30
+move 266 92
+wait 30
+move 267 89
+wait 30
+move 268 87
+wait 30
+move 269 85
+wait 30
+move 271 83
+wait 30
+move 273 81
+wait 30
+move 275 79
+wait 30
+move 277 78
+wait 30
+move 279 77
+wait 30
+move 282 76
+wait 30
+move 284 75
+wait 30
+move 287 75
+wait 30
+move 290 75
+wait 30
+move 292 75
+wait 30
+move 295 75
+wait 30
+move 297 76
+wait 30
+move 300 77
+wait 30
+move 302 78
+wait 30
+move 304 79
+wait 30
+move 306 81
+wait 30
+move 308 83
+wait 30
+move 310 85
+wait 30
+move 311 87
+wait 30
+move 312 89
+wait 30
+move 313 92
+wait 30
+move 314 94
+wait 30
+move 314 97
+wait 30
+move 315 100
+wait 30
+move 314 102
+wait 30
+move 314 105
+wait 30
+move 313 107
+wait 30
+move 312 110
+wait 30
+move 311 112
+wait 30
+move 310 114
+wait 30
+move 308 116
+wait 30
+move 306 118
+wait 30
+move 304 120
+wait 30
+move 302 121
+wait 30
+move 300 122
+wait 30
+move 297 123
+wait 30
+move 295 124
+wait 30
+move 292 124
+wait 30
+move 290 125
+wait 30
+move 287 124
+wait 30
+move 284 124
+wait 30
+move 282 123
+wait 30
+move 279 122
+wait 30
+move 277 121
+wait 30
+move 275 120
+wait 30
+move 273 118
+wait 30
+move 271 116
+wait 30
+move 269 114
+wait 30
+move 268 112
+wait 30
+move 267 110
+wait 30
+move 266 107
+wait 30
+move 265 105
+wait 30
+move 265 102
+wait 30
+move 265 100
+wait 30
+move 265 97
+wait 30
+move 265 94
+wait 30
+move 266 92
+wait 30
+move 267 89
+wait 30
+move 268 87
+wait 30
+move 269 85
+wait 30
+move 271 83
+wait 30
+move 273 81
+wait 30
+move 275 79
+wait 30
+move 277 78
+wait 30
+move 279 77
+wait 30
+move 282 76
+wait 30
+move 284 75
+wait 30
+move 287 75
+wait 30
+move 290 75
+wait 30
+move 292 75
+wait 30
+move 295 75
+wait 30
+move 297 76
+wait 30
+move 300 77
+wait 30
+move 302 78
+wait 30
+move 304 79
+wait 30
+move 306 81
+wait 30
+move 308 83
+wait 30
+move 310 85
+wait 30
+move 311 87
+wait 30
+move 312 89
+wait 30
+move 313 92
+wait 30
+move 314 94
+wait 30
+move 314 97
+wait 30
+shot X6
+move 190 150
+wait 30
+move 189 154
+wait 30
+move 189 158
+wait 30
+move 188 162
+wait 30
+move 186 166
+wait 30
+move 184 170
+wait 30
+move 182 173
+wait 30
+move 179 176
+wait 30
+move 176 179
+wait 30
+move 173 182
+wait 30
+move 170 184
+wait 30
+move 166 186
+wait 30
+move 162 188
+wait 30
+move 158 189
+wait 30
+move 154 189
+wait 30
+move 150 190
+wait 30
+move 145 189
+wait 30
+move 141 189
+wait 30
+move 137 188
+wait 30
+move 133 186
+wait 30
+move 130 184
+wait 30
+move 126 182
+wait 30
+move 123 179
+wait 30
+move 120 176
+wait 30
+move 117 173
+wait 30
+move 115 170
+wait 30
+move 113 166
+wait 30
+move 111 162
+wait 30
+move 110 158
+wait 30
+move 110 154
+wait 30
+move 110 150
+wait 30
+move 110 145
+wait 30
+move 110 141
+wait 30
+move 111 137
+wait 30
+move 113 133
+wait 30
+move 115 130
+wait 30
+move 117 126
+wait 30
+move 120 123
+wait 30
+move 123 120
+wait 30
+move 126 117
+wait 30
+move 129 115
+wait 30
+move 133 113
+wait 30
+move 137 111
+wait 30
+move 141 110
+wait 30
+move 145 110
+wait 30
+move 150 110
+wait 30
+move 154 110
+wait 30
+move 158 110
+wait 30
+move 162 111
+wait 30
+move 166 113
+wait 30
+move 170 115
+wait 30
+move 173 117
+wait 30
+move 176 120
+wait 30
+move 179 123
+wait 30
+move 182 126
+wait 30
+move 184 129
+wait 30
+move 186 133
+wait 30
+move 188 137
+wait 30
+move 189 141
+wait 30
+move 189 145
+wait 30
+move 190 150
+wait 30
+move 189 154
+wait 30
+move 189 158
+wait 30
+move 188 162
+wait 30
+move 186 166
+wait 30
+move 184 169
+wait 30
+move 182 173
+wait 30
+move 179 176
+wait 30
+move 176 179
+wait 30
+move 173 182
+wait 30
+move 170 184
+wait 30
+move 166 186
+wait 30
+move 162 188
+wait 30
+move 158 189
+wait 30
+move 154 189
+wait 30
+move 150 190
+wait 30
+move 145 189
+wait 30
+move 141 189
+wait 30
+move 137 188
+wait 30
+move 133 186
+wait 30
+move 130 184
+wait 30
+move 126 182
+wait 30
+move 123 179
+wait 30
+move 120 176
+wait 30
+move 117 173
+wait 30
+move 115 170
+wait 30
+move 113 166
+wait 30
+move 111 162
+wait 30
+move 110 158
+wait 30
+move 110 154
+wait 30
+move 110 150
+wait 30
+move 110 145
+wait 30
+move 110 141
+wait 30
+move 111 137
+wait 30
+move 113 133
+wait 30
+move 115 130
+wait 30
+move 117 126
+wait 30
+move 120 123
+wait 30
+move 123 120
+wait 30
+move 126 117
+wait 30
+move 130 115
+wait 30
+move 133 113
+wait 30
+move 137 111
+wait 30
+move 141 110
+wait 30
+move 145 110
+wait 30
+move 149 110
+wait 30
+move 154 110
+wait 30
+move 158 110
+wait 30
+move 162 111
+wait 30
+move 166 113
+wait 30
+move 169 115
+wait 30
+move 173 117
+wait 30
+move 176 120
+wait 30
+move 179 123
+wait 30
+move 182 126
+wait 30
+move 184 130
+wait 30
+move 186 133
+wait 30
+move 188 137
+wait 30
+move 189 141
+wait 30
+move 189 145
+wait 30
+shot X7
+move 190 70
+wait 30
+move 189 76
+wait 30
+move 188 82
+wait 30
+move 187 88
+wait 30
+move 184 94
+wait 30
+move 181 100
+wait 30
+move 178 105
+wait 30
+move 174 110
+wait 30
+move 170 114
+wait 30
+move 165 118
+wait 30
+move 160 121
+wait 30
+move 154 124
+wait 30
+move 148 127
+wait 30
+move 142 128
+wait 30
+move 136 129
+wait 30
+move 130 130
+wait 30
+move 123 129
+wait 30
+move 117 128
+wait 30
+move 111 127
+wait 30
+move 105 124
+wait 30
+move 100 121
+wait 30
+move 94 118
+wait 30
+move 89 114
+wait 30
+move 85 110
+wait 30
+move 81 105
+wait 30
+move 78 100
+wait 30
+move 75 94
+wait 30
+move 72 88
+wait 30
+move 71 82
+wait 30
+move 70 76
+wait 30
+move 70 70
+wait 30
+move 70 63
+wait 30
+move 71 57
+wait 30
+move 72 51
+wait 30
+move 75 45
+wait 30
+move 78 39
+wait 30
+move 81 34
+wait 30
+move 85 29
+wait 30
+move 89 25
+wait 30
+move 94 21
+wait 30
+move 99 18
+wait 30
+move 105 15
+wait 30
+move 111 12
+wait 30
+move 117 11
+wait 30
+move 123 10
+wait 30
+move 130 10
+wait 30
+move 136 10
+wait 30
+move 142 11
+wait 30
+move 148 12
+wait 30
+move 154 15
+wait 30
+move 160 18
+wait 30
+move 165 21
+wait 30
+move 170 25
+wait 30
+move 174 29
+wait 30
+move 178 34
+wait 30
+move 181 39
+wait 30
+move 184 45
+wait 30
+move 187 51
+wait 30
+move 188 57
+wait 30
+move 189 63
+wait 30
+move 190 69
+wait 30
+move 189 76
+wait 30
+move 188 82
+wait 30
+move 187 88
+wait 30
+move 184 94
+wait 30
+move 181 99
+wait 30
+move 178 105
+wait 30
+move 174 110
+wait 30
+move 170 114
+wait 30
+move 165 118
+wait 30
+move 159 121
+wait 30
+move 154 124
+wait 30
+move 148 127
+wait 30
+move 142 128
+wait 30
+move 136 129
+wait 30
+move 130 130
+wait 30
+move 123 129
+wait 30
+move 117 128
+wait 30
+move 111 127
+wait 30
+move 105 124
+wait 30
+move 100 121
+wait 30
+move 94 118
+wait 30
+move 89 114
+wait 30
+move 85 110
+wait 30
+move 81 105
+wait 30
+move 78 99
+wait 30
+move 75 94
+wait 30
+move 72 88
+wait 30
+move 71 82
+wait 30
+move 70 76
+wait 30
+move 70 70
+wait 30
+move 70 63
+wait 30
+move 71 57
+wait 30
+move 72 51
+wait 30
+move 75 45
+wait 30
+move 78 40
+wait 30
+move 81 34
+wait 30
+move 85 29
+wait 30
+move 89 25
+wait 30
+move 94 21
+wait 30
+move 100 18
+wait 30
+move 105 15
+wait 30
+move 111 12
+wait 30
+move 117 11
+wait 30
+move 123 10
+wait 30
+move 129 10
+wait 30
+move 136 10
+wait 30
+move 142 11
+wait 30
+move 148 12
+wait 30
+move 154 15
+wait 30
+move 159 18
+wait 30
+move 165 21
+wait 30
+move 170 25
+wait 30
+move 174 29
+wait 30
+move 178 34
+wait 30
+move 181 40
+wait 30
+move 184 45
+wait 30
+move 187 51
+wait 30
+move 188 57
+wait 30
+move 189 63
+wait 30
+shot X8
+key #27
+wait 4000
+key #291
+wait 1500
+key y
+wait 3000
+quit

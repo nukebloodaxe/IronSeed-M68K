@@ -560,6 +560,7 @@ u2_approach:
 	dbf	d0,.c
 	move.l	vid_phys,a0
 	bsr	vid_clear
+	bsr	ms_inval		; (the mirror: Phase 6k)
 	bsr	ms_clean
 	lea	GS_COLORS(a6),a0
 	bsr	set256colors
@@ -585,41 +586,39 @@ u2_unapproach:
 	bsr	ms_unsnap
 	; fall through: the band design for the new orbit (still faded out)
 
-; u2_design (Phase 6i): the bridge's band design for the ship's orbit - around a star (orbiting =
-; 0) MAINSn for the star's mode n (tools/mkmain.py star_modes: its seven shades get their own
-; slots; MAIN's fit gives them one, a flat disc), else MAIN. The designs differ only in band 1
-; (the viewscreen): a switch sets the reps, bands and LUTs, recolours from GS_COLORS (vid_set256:
+; u2_design (Phase 6i, 6k): the bridge's band design for the ship's orbit. The designs differ only
+; in band 1 (the viewscreen, the status panel and lights: lines 12-139), each fitted on what that
+; orbit puts there (tools/mkmain.py star_modes; tools/mkbridge.py for the planets, from the Linux
+; build's own shots). Codes (ms_design): 0 MAIN; around a star (orbiting = 0) 1-3 = MAINSn for the
+; star's mode n; in orbit of a planet 4/5 = MAING1/G2 (a gas giant, creategasplanet's colour set
+; gp_cols 32/48/64 or 112/128/96), 6 = MAINC (a gas cloud: state 0, mode 0/1), 7 = MAINA (an
+; asteroid field: state 6, mode 2), 16 + 4*state + mode = MAINPsm (a land sphere, state 1-6,
+; mode 1-3). A missing file falls back to MAIN. Called while faded out (u2_unapproach): loads
+; the header (DATA\MAINx.ISP), sets reps, bands, LUTs, recolours from GS_COLORS (vid_set256 -
 ; the fade level stays) and marks that band's lines dirty. ms_design (mscr.s, kept by the
 ; snapshots) says which is in use.
 u2_design:
 	movem.l	d3/a3,-(sp)
-	moveq	#0,d3
-	tst.w	GS_SHIP+SHIP_ORBITING(a6)
-	bne.s	.w
-	bsr	u2_curplan		; a3 = the star
-	move.b	PLANET_MODE(a3),d3
-	cmp.w	#3,d3
-	bls.s	.w
-	moveq	#0,d3
+	bsr	u2_dcode
+	move.w	d0,d3
 .w:	cmp.w	ms_design,d3
 	beq	.x
-	lea	u2_dname,a0		; "DATA\MAIN.ISP" / "DATA\MAINSn.ISP"
+	lea	u2_dname,a0		; "DATA\MAIN" + suffix + ".ISP"
 	lea	u2_dpath,a1
 .cp:	move.b	(a0)+,(a1)+
 	bne.s	.cp
-	tst.w	d3
-	beq.s	.nm
-	lea	u2_dpath+9,a1		; after "MAIN"
-	move.b	#'S',(a1)+
-	move.b	d3,d0
-	add.b	#'0',d0
-	move.b	d0,(a1)+
+	subq.l	#1,a1
+	move.w	d3,d0
+	bsr	u2_dsuffix		; a0 = the suffix (0-terminated)
+.cs:	move.b	(a0)+,(a1)+
+	bne.s	.cs
+	subq.l	#1,a1
 	move.b	#'.',(a1)+
 	move.b	#'I',(a1)+
 	move.b	#'S',(a1)+
 	move.b	#'P',(a1)+
 	clr.b	(a1)
-.nm:	bsr	mem_mark
+	bsr	mem_mark
 	move.l	d0,-(sp)
 	move.l	#ISP_DATA+64,d0
 	bsr	mem_alloc
@@ -629,8 +628,14 @@ u2_design:
 	move.l	a3,a1
 	move.l	#ISP_DATA+64,d0
 	bsr	fil_load
-	bcs.s	.r			; (no such file: the design stays)
-	lea	ISP_DATA(a3),a0
+	bcc.s	.ok
+	move.l	(sp)+,d0		; (no such file: MAIN, unless that is the one missing)
+	bsr	mem_release
+	tst.w	d3
+	beq.s	.x
+	moveq	#0,d3
+	bra	.w
+.ok:	lea	ISP_DATA(a3),a0
 	bsr	vid_set_reps
 	lea	ISP_BANDS(a3),a0
 	bsr	vid_set_bands
@@ -651,6 +656,88 @@ u2_design:
 	bsr	mem_release
 .x:	movem.l	(sp)+,d3/a3
 	rts
+
+; u2_dcode: the design code of the ship's orbit (u2_design)   out: d0.w = code   trashes: d1/a0
+u2_dcode:
+	move.l	a3,-(sp)
+	moveq	#0,d0
+	tst.w	GS_SHIP+SHIP_ORBITING(a6)
+	bne.s	.pl
+	bsr	u2_curplan		; a star: its mode 1-3
+	moveq	#0,d0
+	move.b	PLANET_MODE(a3),d0
+	cmp.w	#3,d0
+	bls.s	.x
+	moveq	#0,d0
+	bra.s	.x
+.pl:	bsr	u2_curplan
+	moveq	#0,d0
+	moveq	#0,d1
+	move.b	PLANET_STATE(a3),d0
+	move.b	PLANET_MODE(a3),d1
+	tst.b	d0
+	bne.s	.n0
+	moveq	#6,d0			; state 0: a cloud (mode 0/1) or a gas giant
+	cmp.b	#1,d1
+	bls.s	.x
+	moveq	#4,d0
+	cmp.w	#32,gp_cols
+	beq.s	.x
+	moveq	#5,d0
+	bra.s	.x
+.n0:	cmp.b	#6,d0
+	bne.s	.n6
+	cmp.b	#2,d1
+	bne.s	.n6
+	moveq	#7,d0
+	bra.s	.x
+.n6:	cmp.b	#6,d0			; a land sphere: 16 + 4*state + mode
+	bhi.s	.z
+	subq.b	#1,d1
+	cmp.b	#2,d1
+	bhi.s	.z
+	addq.b	#1,d1
+	lsl.w	#2,d0
+	add.w	d1,d0
+	add.w	#16,d0
+	bra.s	.x
+.z:	moveq	#0,d0
+.x:	move.l	(sp)+,a3
+	rts
+
+; u2_dsuffix: d0.w = a design code -> a0 = its name's suffix after "MAIN"   trashes: d0-d1
+u2_dsuffix:
+	lea	u2_dsbuf,a0
+	tst.w	d0
+	beq.s	.z
+	cmp.w	#16,d0
+	bhs.s	.p
+	cmp.w	#3,d0
+	bhi.s	.o
+	move.b	#'S',(a0)		; 1-3: Sn
+	add.b	#'0',d0
+	move.b	d0,1(a0)
+	clr.b	2(a0)
+	rts
+.o:	subq.w	#4,d0			; 4-7: G1 G2 C A
+	lsl.w	#2,d0
+	lea	u2_dsfx(pc,d0.w),a0
+	rts
+.p:	sub.w	#16,d0			; 16+: Psm
+	move.w	d0,d1
+	lsr.w	#2,d1
+	and.w	#3,d0
+	move.b	#'P',(a0)
+	add.b	#'0',d1
+	move.b	d1,1(a0)
+	add.b	#'0',d0
+	move.b	d0,2(a0)
+	clr.b	3(a0)
+	rts
+.z:	clr.b	(a0)
+	rts
+u2_dsfx: dc.b	"G1",0,0,"G2",0,0,"C",0,0,0,"A",0,0,0
+	even
 
 
 ; ---------------------------------------------------------------
@@ -1563,7 +1650,7 @@ makesphere3:
 	move.w	d5,d1
 	move.w	d3,-(sp)
 	move.w	d5,d3
-	bsr	ms_dirty
+	bsr	ms_dirtyx		; (the span did change: no need to compare it again)
 	move.w	(sp)+,d3
 	movem.l	(sp)+,a0-a1
 .nx:	lea	MS_W(a0),a0
@@ -1760,7 +1847,7 @@ u2_need:				; steps of +7 until 240: ceil((240 - v) / 7), 0 from 240
 	dc.b	3,3,2,2,2,2,2,2,2,1,1,1,1,1,1,1
 	dc.b	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 u2_main:	dc.b	"MAIN",0
-u2_dname:	dc.b	"DATA",92,"MAIN.ISP",0
+u2_dname:	dc.b	"DATA",92,"MAIN",0
 u2_cloud:	dc.b	"CLOUD",0
 u2_s_planet:	dc.b	21,"Approaching planet..."
 u2_s_star:	dc.b	19,"Approaching star..."
@@ -1798,6 +1885,7 @@ u2_altw:	ds.w	128		; per column index: its alt's row offset in u2_tab (alt * 256
 u2_sphw:	ds.w	U2_SPHW		; the radius's rows as words: pm, n, n x index * 2 (sphere_setup)
 u2_sphx:	ds.b	4*U2_SPHW+132*128	; u2_sphere_rows' pixel table (u2_sphx_build)
 u2_dpath:	ds.b	20		; u2_design's file name
+u2_dsbuf:	ds.b	4		; u2_dsuffix's suffix
 u2_xok:		ds.b	1		; u2_sphx holds the sphere's table, up to date
 u2_sxok:	ds.b	1		; u2_sphx holds makestar's table, up to date
 	even
