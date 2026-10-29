@@ -1,7 +1,7 @@
 vtime
 args /playseed 3
 # m4: the left-hand maps and travel: the star map and a star targeted by mouse, the history map,
-# the short and long range scans, orbits by Alt-2 / Alt-N, the targeting panel, a time burst, quit
+# the short and long range scans, orbits by Alt-1 / Alt-N (Phase 6l: was Alt-2 = the orbit s4 is in, which the port now refuses), the targeting panel, a time burst, quit
 wait 3000
 key #27
 wait 2000
@@ -26,7 +26,7 @@ wait 5000
 shot S5
 key #27
 wait 2500
-key @2
+key @1
 wait 8000
 shot S6
 key @n

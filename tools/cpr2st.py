@@ -155,6 +155,37 @@ def convert(img, pal6, splits, reserved=((0, 0, 0),)):
     return table, luts, slot_img, total_err / img.size
 
 
+def convert_medoid(img, pal6, splits):
+    """(Phase 6l) the batch pictures' bands by medoids (tools/medoids.py): the 16 slots are palette
+    indices (reps) shown in their own colours - what vid_set256 shows once the programs set the
+    palette (the intro's fades, crewgen's loop, MAIN's loadscreen), where k-means centroids were
+    replaced by the reps anyway. Slot 0 = a black index (the border). Returns as convert() + reps."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import medoids as md
+    h, w = img.shape
+    bounds = splits + [h]
+    table, luts, slot_img, reps = [], [], np.zeros_like(img), []
+    total_err = 0.0
+    blk = [i for i in range(256) if not pal6[i].any()]
+    for i in range(len(splits)):
+        a, b = bounds[i], bounds[i + 1]
+        cnt = np.bincount(img[a:b].ravel(), minlength=256).astype(float)
+        if blk:
+            f0 = max(blk, key=lambda j: cnt[j])
+        else:
+            f0 = int(np.argmin(pal6.sum(1)))
+        err, cent, lut, rp = md.band([cnt], pal6, 16, fixed=(f0,))
+        slot_img[a:b] = lut[img[a:b]]
+        table.append((a, [to_ste_word(c) for c in cent]))
+        luts.append(lut)
+        reps.append(rp)
+        total_err += err
+    while len(reps) < 4:
+        reps.append([0] * 16)
+    # err in the 0..15 scale like convert(): (x/17)^2
+    return table, luts, slot_img, total_err / img.size / 289.0, bytes(sum(reps, []))
+
+
 def planar(slot_img):
     h, w = slot_img.shape
     W = (w + 15) // 16 * 16
@@ -260,9 +291,13 @@ def main():
         if a.splits: splits = [int(x) for x in a.splits.split(',')]
         elif h >= 16 * a.bands: splits = choose_splits(img, pal6, a.bands)
         else: splits = [0]
-        table, luts, slot_img, err = convert(img, pal6, splits)
+        if os.environ.get('CPR2ST', 'medoid') == 'kmeans':     # (the fits before Phase 6l)
+            table, luts, slot_img, err = convert(img, pal6, splits)
+            reps = compute_reps(img, pal6, table, luts)
+        else:
+            table, luts, slot_img, err, reps = convert_medoid(img, pal6, splits)
         W, pdata = planar(slot_img)
-        write_isp(out, W, h, table, luts, pdata, compute_reps(img, pal6, table, luts))
+        write_isp(out, W, h, table, luts, pdata, reps)
         ncol = len(np.unique(img))
         print('%-12s %3dx%3d %3d colours%s  bands at %-16s mean sq err %.3f  -> %s (%d bytes)' % (
             os.path.basename(inp), w, h, ncol, '' if haspal else ' (default pal)',

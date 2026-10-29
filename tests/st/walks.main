@@ -1,0 +1,21 @@
+vtime
+args /playseed 3
+# walks (Phase 6l, LANDDUMP builds: ASMDEFS=-DLANDDUMP=1): every walk kind - the star (three
+# walks), the other planet (Alt-1: a new seed), home (Alt-2), Alt-1 again (the replay), the star
+# again (the stars' cache). Compare C:\LANDA..E.BIN between builds byte for byte.
+# vbls 160000
+wait 3000
+key #27
+wait 2500
+key @0
+wait 30000
+key @1
+wait 15000
+key @2
+wait 15000
+key @1
+wait 15000
+key @0
+wait 8000
+shot W1
+quit

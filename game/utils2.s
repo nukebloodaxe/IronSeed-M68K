@@ -812,7 +812,8 @@ u2_update:
 
 ; d0.w = random(3) of the generator number before a5 (tempered in full)  d1/d2 cleared
 u2_tie:	move.l	-4(a5),d0
-	move.l	d0,d1			; y ^= y >> 11
+; u2_r3(d0.l = an untempered state word) -> d0.w = random(3) of it  d1/d2 cleared
+u2_r3:	move.l	d0,d1			; y ^= y >> 11
 	moveq	#11,d2
 	lsr.l	d2,d1
 	eor.l	d1,d0
@@ -853,6 +854,7 @@ u2_tinit:
 	lea	u2_tla,a0
 	lea	u2_blo,a1
 	bsr.s	.build
+	bsr	u2_pinit
 	st	u2_tok
 	movem.l	(sp)+,d3/a3
 .x:	rts
@@ -887,6 +889,65 @@ u2_tinit:
 	dbf	d2,.k
 	rts
 
+; u2_clx/u2_cly (top byte -> the step's delta) and u2_pmap's border codes, once
+u2_pinit:
+	lea	u2_clx,a0
+	lea	u2_cly,a1
+	moveq	#0,d0
+.t:	cmp.b	#$55,d0
+	blo.s	.c0
+	beq.s	.ct
+	cmp.b	#$aa,d0
+	blo.s	.c1
+	beq.s	.ct
+	move.w	#U2_PS,d1		; above $AA: random(3) = 2
+	moveq	#1,d2
+	bra.s	.ts
+.c0:	move.w	#-U2_PS,d1		; below $55: 0
+	moveq	#-1,d2
+	bra.s	.ts
+.c1:	moveq	#0,d1			; $56-$A9: 1
+	moveq	#0,d2
+	bra.s	.ts
+.ct:	move.w	#U2_TIE,d1		; $55 / $AA: decided by the lower bytes
+	move.w	d1,d2
+.ts:	move.w	d1,(a0)+
+	move.w	d2,(a1)+
+	addq.b	#1,d0
+	bne.s	.t
+	lea	u2_pmap,a0		; border: $80 + xc*3 + yc
+	moveq	#0,d1			; x
+.x:	moveq	#0,d2			; xc
+	tst.w	d1
+	beq.s	.x1
+	cmp.w	#241,d1
+	bne.s	.x0
+	moveq	#6,d2
+	bra.s	.x0
+.x1:	moveq	#3,d2
+.x0:	clr.b	(a0)+			; (padding)
+	moveq	#0,d0			; y
+.y:	moveq	#0,d3
+	tst.w	d0
+	bne.s	.y1
+	moveq	#1,d3
+	bra.s	.y0
+.y1:	cmp.w	#121,d0
+	bne.s	.y0
+	moveq	#2,d3
+.y0:	add.w	d2,d3
+	beq.s	.in
+	or.b	#$80,d3
+.in:	move.b	d3,(a0)+
+	addq.w	#1,d0
+	cmp.w	#122,d0
+	bne.s	.y
+	clr.b	(a0)+			; (padding)
+	addq.w	#1,d1
+	cmp.w	#242,d1
+	bne.s	.x
+	rts
+
 ; the next run of steps before the countdown: d5 := min(left, 1125 - i) - 1 (dbf); left and
 ; i advance by it
 u2_chunk:
@@ -914,54 +975,166 @@ u2_chunkend:
 ; u2_walkc(x d0, y d1): 75000 steps from (x, y) on the generator as it stands (lazy seeding
 ; done first), each visit counted in u2_cmap (not cleared here), the countdown every 1125 steps
 ; of utils2's i; mt_index follows the numbers used.
+; Phase 6l: the walk runs on u2_pmap, the torus with a one-cell border (x 0..241, y 0..121; cell
+; [x,y] at x*U2_PS + y + 1, so the columns' cells 1..120 are long-aligned). A border cell holds
+; $80 + its wrap code, so a step is: the two draws' deltas from u2_clx/u2_cly (a byte of
+; u2_tha^u2_tla -> dx*U2_PS or dy, a tie -> U2_TIE), add, a sign test, a count (counts stay below
+; 128: at most 63 visits a cell in one walk). The counts are added to u2_cmap at the end (bytes,
+; no carries: < 96 + 64) and u2_pmap's inside cleared again. ~200 cycles a step (was ~264).
+U2_PS		equ	124		; u2_pmap's column stride
+U2_TIE		equ	$3000		; a tie's delta in the draw tables (both: $6000, still > 0)
 u2_walkc:
 	movem.l	d3-d7/a3-a5,-(sp)
-	mulu	#LAND_W,d0
-	move.w	d0,d6			; x * 120
-	move.w	d1,d7			; y
+	mulu	#U2_PS,d0
+	lea	u2_pmap+1,a0		; a0 = the cell [x,y]
+	add.l	d0,a0
+	add.w	d1,a0
 	move.l	#75000,u2_left
+	move.l	a0,-(sp)
 	moveq	#0,d0			; FPC's lazy re-seeding, as the first random() would
 	bsr	mt_skip
 	bsr	mt_own			; (the walk reads mt_state itself)
 	bsr	u2_tinit
-	lea	u2_cmap-LAND_W-1,a4	; [x,y] = a4 + x*120 + y
+	move.l	(sp)+,a0
 	lea	u2_tha,a2
 	lea	u2_tla,a1
+	lea	u2_clx,a3
+	lea	u2_cly,a4
 	lea	mt_state,a5
 	move.w	mt_index,d0
 	lsl.w	#2,d0
 	add.w	d0,a5
-	lea	mt_state+MT_N*4,a3
-	moveq	#0,d1
+	moveq	#0,d0			; d0/d6: only their low bytes are ever written
+	moveq	#0,d6
+	moveq	#0,d1			; d1/d2: clear high words (indexes .l)
 	moveq	#0,d2
 .chunk:	bsr	u2_chunk		; d5 = the chunk's steps - 1
 	addq.w	#1,d5			; steps left in the chunk
-.more:	move.l	a3,d0			; steps the generator's block still has both numbers for
-	sub.l	a5,d0
-	lsr.l	#3,d0
+.more:	moveq	#0,d0			; (calls leave d0's high byte dirty)
+	move.l	#mt_state+MT_N*4,d7	; steps the generator's block still has both numbers for
+	sub.l	a5,d7
+	lsr.l	#3,d7
 	beq	.edge
-	cmp.w	d5,d0
+	cmp.w	d5,d7
 	bls.s	.n
-	move.w	d5,d0
-.n:	sub.w	d0,d5
-	move.w	d0,d4
+	move.w	d5,d7
+.n:	sub.w	d7,d5
+	move.w	d7,d4
 	subq.w	#1,d4
-.fast:	U2_STEP	U2_F3
+.fast:	move.w	(a5)+,d1		; x1 := x1 - 1 + random(3)
+	move.w	(a5)+,d2
+	move.b	0(a2,d1.l),d0
+	move.b	0(a1,d2.l),d2
+	eor.b	d2,d0
+	move.w	d0,d3
+	add.w	d3,d3
+	move.w	0(a3,d3.w),d3
+	move.w	(a5)+,d1		; y1 := y1 - 1 + random(3)
+	move.w	(a5)+,d2
+	move.b	0(a2,d1.l),d6
+	move.b	0(a1,d2.l),d2
+	eor.b	d2,d6
+	move.w	d6,d7
+	add.w	d7,d7
+	add.w	0(a4,d7.w),d3
+	cmp.w	#U2_TIE/2,d3
+	bge.s	.ftie
+.fap:	add.w	d3,a0			; the step; wrapped when it lands on the border
+	tst.b	(a0)
+	bmi.s	.fwr
+.fin:
+	ifd	WALKCHK
+	cmp.l	#u2_pmap+U2_PS+1,a0
+	blo.s	.bad
+	cmp.l	#u2_pmap+241*U2_PS,a0
+	bhs.s	.bad
+	tst.b	(a0)
+	bmi.s	.bad
+	endif
+	addq.b	#1,(a0)			; a visit of [x1,y1]
 	dbf	d4,.fast
-	bra	.cend
-.edge:	U2_STEP	U2_T3			; (a step that crosses the block's end)
+	bra.s	.cend
+.fwr:	bsr	u2_wrap
+	bra	.fin
+	ifd	WALKCHK
+.bad:	illegal
+	endif
+.ftie:	move.l	-8(a5),d0		; a tie (1 in 64 steps): both numbers tempered in full
+	bsr	u2_r3
+	add.w	d0,d0
+	move.w	.dxt(pc,d0.w),d3
+	move.l	-4(a5),d0
+	bsr	u2_r3
+	add.w	d0,d3
+	subq.w	#1,d3
+	moveq	#0,d0
+	bra.s	.fap
+.dxt:	dc.w	-U2_PS,0,U2_PS
+.edge:	bsr	u2_d3			; a step that crosses the block's end: the numbers one by one
+	add.w	d0,d0
+	move.w	.dxt(pc,d0.w),d3
+	move.w	d3,-(sp)
+	bsr	u2_d3
+	move.w	(sp)+,d3
+	add.w	d0,d3
+	subq.w	#1,d3
+	moveq	#0,d0
+	add.w	d3,a0
+	tst.b	(a0)
+	bpl.s	.ein
+	bsr	u2_wrap
+.ein:	addq.b	#1,(a0)
 	subq.w	#1,d5
 .cend:	tst.w	d5
 	bne	.more
-	movem.l	d1-d2/a1-a2,-(sp)	; (the countdown prints)
+	movem.l	d1-d2/a0-a2,-(sp)	; (the countdown prints)
 	bsr	u2_chunkend
-	movem.l	(sp)+,d1-d2/a1-a2
+	movem.l	(sp)+,d1-d2/a0-a2
 	bne	.chunk
 	move.l	a5,d0			; mt_index
 	sub.l	#mt_state,d0
 	lsr.w	#2,d0
 	move.w	d0,mt_index
+	lea	u2_pmap+U2_PS+2,a0	; the counts into u2_cmap (column by column, 30 longs each),
+	lea	u2_cmap,a1		; u2_pmap's inside cleared again
+	move.w	#240-1,d1
+.fc:	moveq	#LAND_W/4-1,d2
+.fl:	move.l	(a0)+,d0
+	beq.s	.f0
+	add.l	d0,(a1)+
+	clr.l	-4(a0)
+	dbf	d2,.fl
+	bra.s	.fe
+.f0:	addq.l	#4,a1
+	dbf	d2,.fl
+.fe:	addq.l	#U2_PS-LAND_W,a0
+	dbf	d1,.fc
 	movem.l	(sp)+,d3-d7/a3-a5
+	rts
+
+; a0 on a border cell of u2_pmap: to its twin inside the torus  trashes d7
+u2_wrap:
+	moveq	#$7f,d7
+	and.b	(a0),d7
+	add.w	d7,d7
+	add.w	.cor(pc,d7.w),a0
+	rts
+.cor:	dc.w	0,120,-120			; code = xc*3 + yc (1: 0 -> 240 / 120, 2: 241 / 121 -> 1)
+	dc.w	240*U2_PS,240*U2_PS+120,240*U2_PS-120
+	dc.w	-240*U2_PS,-240*U2_PS+120,-240*U2_PS-120
+
+; d0.w = random(3) of the next generator number (a new block when needed: a5, d1/d2 as U2_T3)
+u2_d3:	cmp.l	#mt_state+MT_N*4,a5
+	blo.s	.a
+	move.l	a0,-(sp)		; (mt_update trashes a0: the walk's cell)
+	bsr	u2_update
+	move.l	(sp)+,a0
+.a:	U2_F3	.0,.1,.2
+.0:	moveq	#0,d0
+	rts
+.1:	moveq	#1,d0
+	rts
+.2:	moveq	#2,d0
 	rts
 
 	ifd	LANDDUMP
@@ -1861,6 +2034,10 @@ u2_tha:		ds.b	65536		; top byte of the tempered number: high word's part
 u2_tla:		ds.b	65536		; ... low word's part
 u2_tok:		ds.b	1		; the tables are built
 	even
+u2_clx:		ds.w	256		; (6l) top byte -> x step * U2_PS (U2_TIE: a tie)
+u2_cly:		ds.w	256		; ... -> y step
+u2_pmap:	ds.b	242*U2_PS	; (6l) the walk's torus with its border (u2_walkc)
+	even
 u2_snext:	ds.w	1		; the stars' cache: the next slot to fill
 u2_sdata:	ds.b	U2_SN*U2_SREC
 u2_cx:		ds.w	1		; where u2_cmap's walk started
@@ -2630,6 +2807,9 @@ planettravel:
 .f:	addq.w	#1,d5
 	sub.w	d5,d3			; index := index - j (the orbit's rank); j := j + index
 	add.w	d3,d5
+	move.w	d5,d0			; port: already in orbit there -> Science says so, no travel
+	bsr	u2_here
+	bne	.here
 	tst.w	GS_VIEWMODE2(a6)
 	ble.s	.nm
 	bsr	removestarmap
@@ -2676,7 +2856,29 @@ planettravel:
 	bra.s	.cw
 .st:	bsr	readystar
 .cw:	bsr	checkwandering
-	movem.l	(sp)+,d3-d5
+.here:	movem.l	(sp)+,d3-d5
+	rts
+
+; port only (Phase 6l, David's request): travel to the planet or star the ship already orbits.
+; The original travels again (a time burst and a fresh arrival); the port stops and Science says
+; so. in: d0.w = tempplan index j of the destination  out: d0.w = 1 (flags ne) when the ship is
+; already there (message printed in the caller's bkcolor), 0 (eq) otherwise
+; trashes: d1-d2/a0-a2
+u2_here:
+	tst.b	GS_SHOWPLANET(a6)
+	beq.s	.no
+	cmp.w	GS_CURPLAN(a6),d0
+	bne.s	.no
+	TCOL	94
+	PRTLN
+	tst.w	GS_SHIP+SHIP_ORBITING(a6)
+	beq.s	.star
+	PRT	"SCIENCE: We are already in orbit of this planet, my Liege."
+	bra.s	.yes
+.star:	PRT	"SCIENCE: We are already in orbit of this star, my Liege."
+.yes:	moveq	#1,d0
+	rts
+.no:	moveq	#0,d0
 	rts
 
 ; utils2.pas gotoorbit(sys d0, n d1)

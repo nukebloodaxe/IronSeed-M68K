@@ -1403,10 +1403,20 @@ ex_tobox:
 	move.w	#281,d0
 	move.w	d5,d1
 	bsr	ms_addr
-	rept	32			; (Phase 6k: unrolled)
+	move.l	a1,d0			; (Phase 6l) the source odd too (x 281 is): a byte, then longs
+	btst	#0,d0
+	beq.s	.by
+	move.b	(a1)+,(a0)+
+	rept	7
+	move.l	(a1)+,(a0)+
+	endr
+	move.w	(a1)+,(a0)+
+	move.b	(a1)+,(a0)+
+	bra.s	.nx
+.by:	rept	32			; (Phase 6k: unrolled)
 	move.b	(a1)+,(a0)+
 	endr
-	movem.w	(sp)+,d1/d3
+.nx:	movem.w	(sp)+,d1/d3
 	addq.w	#1,d1
 	addq.w	#1,d5
 	dbf	d4,.r

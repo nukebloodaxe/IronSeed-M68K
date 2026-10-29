@@ -41,14 +41,25 @@ files from SOUND in real time as before: same music, slower game.
 
 Arriving at a planet or a star: the "Approaching ..." countdown is the
 surface being generated (the original's random walks, exactly). On an 8 MHz
-STE that takes about 6 s for a planet and 16 s for a star; a planet seen
+STE that takes about 6 s for a planet and 15 s for a star; a planet seen
 again takes about 1 s, and the last four stars visited are remembered.
+Ordering a jump to the planet or star the ship already orbits (Alt-0..4,
+Alt-N/P, the system view's orbit button) does nothing but get a reply from
+Science - the PC version flew there again.
+
+Mega STE: switch it to 16 MHz with the cache on (its control panel) before
+starting. Every screen then runs faster - in Hatari with a 16 MHz CPU the
+bridge's planet turns at the PC game's own pace, the planet exploration
+runs more than twice as fast and a star takes about 7 s. (Not yet tried on
+a real Mega STE.)
 
 Colours: the STE shows 16 colours per band of lines, where the PC had 256.
 When a dialog opens over a screen (save, load, yes/no, crew messages, the
 crew chips), it appears at once and its colours settle a moment later: the
 bands under it get a palette chosen for what is on the screen. The planet
-exploration map has a palette per planet type.
+exploration map has a palette per planet type, and the bridge's viewscreen
+one per kind of orbit (each planet type, gas giants, gas clouds, asteroid
+fields, each kind of star), fitted on the original game's own pictures.
 
 The FINALE slot (if present) is a test position: the ship at the Scavengers'
 gate with the Kendar alliance and the faction quests done, a Temporal Anchor

@@ -952,9 +952,21 @@ ms_fade:
 
 ms_print:
 	movem.l	d0-d1/a0,-(sp)
+	bsr	ms_tmlook		; (Phase 6l) a1 = the memo entry to keep a copy in, d2.b = $ff:
+	tst.b	d2			; the text is there already (nothing to print or mark)
+	bne.s	.hit
+	move.l	a1,-(sp)
+	movem.l	4(sp),d0-d1/a0
 	bsr	chk_print
-	movem.l	(sp)+,d0-d1/a0		; (keeps the flags)
-	seq	-(sp)			; (Phase 6k) the same text where it was: nothing to mark
+	seq	d2			; $ff: chk_print changed nothing
+	move.l	(sp)+,a1
+	move.l	a1,d0
+	beq.s	.hit
+	move.w	d2,-(sp)
+	bsr	ms_tmsave
+	move.w	(sp)+,d2
+.hit:	movem.l	(sp)+,d0-d1/a0
+	move.b	d2,-(sp)		; (Phase 6k) the same text where it was: nothing to mark
 	move.w	d3,-(sp)
 	moveq	#0,d2
 	move.b	(a0),d2			; x2 = x1 + 4 + 5*len
@@ -983,6 +995,189 @@ ms_print:
 .h:	bsr	ms_dirty
 	move.w	(sp)+,d3
 	addq.l	#2,sp
+	rts
+
+; ---------------------------------------------------------------- the text memo (Phase 6l)
+; The original reprints the same labels every frame (the exploration's info box: ~12 % of its
+; frame). chk_print draws a string's characters at (x+5, y+1), 5 pixels each, 6 rows, from the
+; string, tcolor, bkcolor, txt_flat and the font alone (over the pixels there when bkcolor is 255).
+; So when the shadow's rectangle holds exactly what the same print left there before, printing
+; again changes nothing: ms_print skips it (no mark: unchanged pixels need no flush). Entries per
+; position (MS_TMN, round robin); a copy of the rectangle is kept only once a print repeats (text
+; that changes every time costs the key compare only). Only on MAIN's full-screen chk window.
+MS_TMN		equ	16
+MS_TML		equ	40		; longest string memoised
+MS_TMX		equ	0		; entry: x.w, y.w, tcolor.w, bkcolor.w, flat.w, font.l, opt.b,
+MS_TMY		equ	2		; valid.b (the copy), the string (len + MS_TML), the copy
+MS_TMTC		equ	4
+MS_TMBK		equ	6
+MS_TMFL		equ	8
+MS_TMFN		equ	10
+MS_TMOF		equ	14
+MS_TMV		equ	15
+MS_TMS		equ	16
+MS_TMB		equ	16+MS_TML+2	; (even) copy: 6 rows of (5*len+1)&~1 bytes, + 1 for parity
+MS_TMSZ		equ	MS_TMB+6*(5*MS_TML)+2
+; ms_tmlook(x d0, y d1, a0 = string) -> d2.b = $ff: skip; else a1 = entry to save the copy in
+; after printing (0: none)
+; in: d0.w = x, d1.w = y, a0 = string  out: d2.b = skip flag, a1 = entry  trashes: d0-d1/a0/a2
+ms_tmlook:
+	movem.l	d3-d5/a3,-(sp)
+	sub.l	a1,a1
+	moveq	#0,d2
+	move.l	ms_buf,d3
+	cmp.l	chk_buf,d3
+	bne	.x
+	cmp.w	#MS_W,chk_w
+	bne	.x
+	tst.l	chk_x0			; (x0 and y0)
+	bne	.x
+	moveq	#0,d3
+	move.b	(a0),d3			; len
+	beq	.x
+	cmp.w	#MS_TML,d3
+	bhi	.x
+	cmp.w	#-5,d0			; the rectangle on the screen
+	blt	.x
+	move.w	d3,d4
+	mulu	#5,d4
+	add.w	d0,d4
+	cmp.w	#MS_W-5,d4		; x + 5 + 5*len <= 320
+	bgt	.x
+	cmp.w	#-1,d1
+	blt	.x
+	cmp.w	#MS_H-7,d1		; y + 6 <= 199
+	bgt	.x
+	lea	ms_tm,a3		; the entry for (x, y)
+	moveq	#MS_TMN-1,d4
+.f:	cmp.w	MS_TMX(a3),d0
+	bne.s	.fn
+	cmp.w	MS_TMY(a3),d1
+	beq.s	.found
+.fn:	lea	MS_TMSZ(a3),a3
+	dbf	d4,.f
+	move.w	ms_tmnext,d4		; none: the next one (round robin)
+	move.w	d4,d5
+	addq.w	#1,d5
+	and.w	#MS_TMN-1,d5
+	move.w	d5,ms_tmnext
+	mulu	#MS_TMSZ,d4
+	lea	ms_tm,a3
+	add.l	d4,a3
+	bra	.new
+.found:	move.w	GS_TCOLOR(a6),d4	; the same print?
+	cmp.w	MS_TMTC(a3),d4
+	bne	.new
+	move.w	GS_BKCOLOR(a6),d4
+	cmp.w	MS_TMBK(a3),d4
+	bne	.new
+	move.w	txt_flat,d4
+	cmp.w	MS_TMFL(a3),d4
+	bne.s	.new
+	move.l	txt_fontptr,d4
+	cmp.l	MS_TMFN(a3),d4
+	bne.s	.new
+	move.b	GS_SHIP+SHIP_OPTIONS+OPT_FONT-1(a6),d4
+	cmp.b	MS_TMOF(a3),d4
+	bne.s	.new
+	lea	MS_TMS(a3),a1
+	move.l	a0,a2
+	move.w	d3,d4			; len + 1 bytes
+.sc:	cmpm.b	(a2)+,(a1)+
+	bne.s	.new
+	dbf	d4,.sc
+	move.l	a3,a1			; the same print: save a copy after it if there is none yet,
+	tst.b	MS_TMV(a3)		; else compare
+	beq	.x
+	bsr	ms_tmrect		; a0 = the shadow's first byte, a2 = the copy's, d4 = width
+	moveq	#6-1,d5
+.r:	move.l	a0,-(sp)
+	move.l	a2,-(sp)
+	move.w	d4,d0
+	move.l	a0,d1
+	btst	#0,d1
+	beq.s	.re
+	cmpm.b	(a2)+,(a0)+
+	bne.s	.rx
+	subq.w	#1,d0
+.re:	move.w	d0,d1
+	lsr.w	#2,d1
+	bra.s	.rl1
+.rl:	cmpm.l	(a2)+,(a0)+
+	bne.s	.rx
+.rl1:	dbf	d1,.rl
+	and.w	#3,d0
+	bra.s	.rb1
+.rb:	cmpm.b	(a2)+,(a0)+
+	bne.s	.rx
+.rb1:	dbf	d0,.rb
+	move.l	(sp)+,a2
+	move.l	(sp)+,a0
+	lea	MS_W(a0),a0
+	add.w	d3,a2			; (the copy's row stride: d3 = (width+1) & ~1)
+	dbf	d5,.r
+	st	d2			; all equal: skip
+	sub.l	a1,a1
+	bra.s	.x
+.rx:	addq.l	#8,sp			; a difference: print, then keep the new copy
+	bra.s	.x
+.new:	move.w	d0,MS_TMX(a3)		; a new print here: its key, no copy until it repeats
+	move.w	d1,MS_TMY(a3)
+	move.w	GS_TCOLOR(a6),MS_TMTC(a3)
+	move.w	GS_BKCOLOR(a6),MS_TMBK(a3)
+	move.w	txt_flat,MS_TMFL(a3)
+	move.l	txt_fontptr,MS_TMFN(a3)
+	move.b	GS_SHIP+SHIP_OPTIONS+OPT_FONT-1(a6),MS_TMOF(a3)
+	sf	MS_TMV(a3)
+	lea	MS_TMS(a3),a1
+	move.w	d3,d4
+.cs:	move.b	(a0)+,(a1)+
+	dbf	d4,.cs
+	sub.l	a1,a1
+.x:	movem.l	(sp)+,d3-d5/a3
+	rts
+; a3 = entry (x, y, string set): a0 = the shadow at (x+5, y+1), a2 = the copy (same parity),
+; d4 = width 5*len, d3 = the copy's row stride
+; in: a3 = entry  out: a0 = shadow, a2 = copy, d3.w = stride, d4.w = width  trashes: d0-d1
+ms_tmrect:
+	move.w	MS_TMY(a3),d1
+	addq.w	#1,d1
+	mulu	#MS_W,d1
+	move.w	MS_TMX(a3),d0
+	addq.w	#5,d0
+	ext.l	d0
+	add.l	d0,d1
+	move.l	ms_buf,a0
+	add.l	d1,a0
+	lea	MS_TMB(a3),a2
+	move.l	a0,d0
+	and.w	#1,d0
+	add.w	d0,a2
+	moveq	#0,d4
+	move.b	MS_TMS(a3),d4
+	mulu	#5,d4
+	move.w	d4,d3
+	addq.w	#1,d3
+	and.w	#$fffe,d3
+	rts
+; ms_tmsave(a1 = entry): the rectangle as printed into its copy
+; in: a1 = entry  out: -  trashes: d0-d2/a0-a2
+ms_tmsave:
+	movem.l	d3-d5/a3,-(sp)
+	move.l	a1,a3
+	bsr	ms_tmrect
+	moveq	#6-1,d5
+.r:	move.l	a0,a1
+	move.w	d4,d0
+	subq.w	#1,d0
+.b:	move.b	(a1)+,(a2)+		; (a few hundred bytes, once per repeated text)
+	dbf	d0,.b
+	sub.w	d4,a2
+	add.w	d3,a2
+	lea	MS_W(a0),a0
+	dbf	d5,.r
+	st	MS_TMV(a3)
+	movem.l	(sp)+,d3-d5/a3
 	rts
 
 mousehide:				; (Phase 6h) the game draws into the shadow only: the cursor
@@ -1178,6 +1373,8 @@ ms_path:	dc.b	"DATA",92,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 
 	section	bss
 ms_buf:		ds.l	1
+ms_tmnext:	ds.w	1		; (6l) the text memo's next entry
+ms_tm:		ds.b	MS_TMN*MS_TMSZ
 ms_design:	ds.w	1		; (Phase 6i/6k) the bridge design in use: u2_design's codes (0 MAIN), -1 another
 ms_snaps:	ds.l	3
 ms_color:	ds.w	1		; graph.setcolor's colour (rectangle, circle in explore)

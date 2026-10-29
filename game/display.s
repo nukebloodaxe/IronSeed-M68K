@@ -4121,7 +4121,15 @@ displaysystem:
 	bra	.x
 .c6:	cmp.w	#6,d3
 	bne	.c7
-	moveq	#11,d0			; orbit the target planet
+	move.w	GS_VIEWINDEX2(a6),d0	; orbit the target planet
+	bsr	findfirstplanet		; port (6l): first, already in orbit there -> Science says so
+	add.w	GS_VIEWINDEX(a6),d0	; (before the original's scan check: being there answers it)
+	BKCOL	3
+	bsr	u2_here
+	BKCOL	5
+	tst.w	d0
+	bne	.draw
+	moveq	#11,d0
 	bsr	chevent
 	tst.w	d0
 	bne.s	.go

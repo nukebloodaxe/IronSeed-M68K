@@ -1,0 +1,31 @@
+vtime
+args /playseed 3
+# here (ST only, Phase 6l): travel to the orbit the ship is already in is refused with Science's
+# message (the original travels again). Alt-2 = s4's own orbit (the 2nd occupied orbit) (refused), Alt-0 = the star
+# (travels), Alt-0 again (refused: "of this star"); the system view's orbit command (key 1) on the
+# selected body (the star: refused). Checked by tests/st/check_here.py.
+# vbls 60000
+wait 3000
+key #27
+wait 2500
+dump H0
+key @2
+wait 1500
+dump H1
+shot H1
+key @0
+wait 30000
+dump H2
+key @0
+wait 1500
+dump H3
+shot H3
+key z
+wait 1500
+key x
+wait 3000
+key 1
+wait 1500
+dump H4
+shot H4
+quit

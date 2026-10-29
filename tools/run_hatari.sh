@@ -3,6 +3,7 @@
 # Boots a 4 MB STE headless (TOS from $ISTE_ROM, default rom/tos162us.img), C: = hatari/c,
 # takes a screenshot at VBL n and kills the emulator. Typical extra args:
 #   --auto 'C:\PROG.PRG'      start a program after boot
+# HATARI_EXTRA="--cpuclock 16": more options for every run (Phase 6l: the 16 MHz checks)
 # Floppies are disabled so TOS boots straight to C:.
 R=$(cd "$(dirname "$0")/.." && pwd)
 V=$1; OUT=$(readlink -f "$2"); shift 2
@@ -14,7 +15,7 @@ rm -f "$OUT"
 SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy hatari --machine ste --memsize 4096 \
   --tos "$ROM" --harddrive "$R/hatari/c" --gemdos-drive c --drive-a false --drive-b false \
   --fast-forward on --sound off --statusbar off --confirm-quit false \
-  --parse "$T/start.ini" "$@" > "$R/hatari/last.log" 2>&1 < <(sleep $((V / 150 + 600))) &
+  --parse "$T/start.ini" $HATARI_EXTRA "$@" > "$R/hatari/last.log" 2>&1 < <(sleep $((V / 150 + 600))) &
 P=$!
 for i in $(seq 1 $((V / 150 + 300))); do sleep 1; [ -s "$OUT" ] && { sleep 1; break; }; done
 kill -9 $P 2>/dev/null; wait $P 2>/dev/null; rm -rf "$T"
