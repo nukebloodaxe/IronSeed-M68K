@@ -1095,8 +1095,15 @@ u2_walkc:
 	sub.l	#mt_state,d0
 	lsr.w	#2,d0
 	move.w	d0,mt_index
-	lea	u2_pmap+U2_PS+2,a0	; the counts into u2_cmap (column by column, 30 longs each),
-	lea	u2_cmap,a1		; u2_pmap's inside cleared again
+	bsr.s	u2_fold
+	movem.l	(sp)+,d3-d7/a3-a5
+	rts
+
+; the walk's counts into u2_cmap (column by column, 30 longs each), u2_pmap's inside cleared
+; again  trashes d0-d2/a0-a1
+u2_fold:
+	lea	u2_pmap+U2_PS+2,a0
+	lea	u2_cmap,a1
 	move.w	#240-1,d1
 .fc:	moveq	#LAND_W/4-1,d2
 .fl:	move.l	(a0)+,d0
@@ -1109,6 +1116,147 @@ u2_walkc:
 	dbf	d2,.fl
 .fe:	addq.l	#U2_PS-LAND_W,a0
 	dbf	d1,.fc
+	rts
+
+; ---------------------------------------------------------------
+; Fast stars (Phase 6m, the options panel's row 10 = options[10] bit 1, David's choice): a
+; star's three walks on a cheap generator instead of FPC's - the star looks like a star of its
+; kind but not like the PC's. readystar ends with randomize, so no game state depends on the
+; walks. The generator: additive lagged Fibonacci on longs (x[n] = x[n-24] + x[n-55]), seeded
+; by an LCG from seed | mode << 16, consumed a byte a step: 252 values = the 9 steps (28 each,
+; (dx, dy) = (b div 28) div 3 - 1, mod 3 - 1), 4 = stay. tools/faststar.c is the model (land:
+; the landform; scan: every key's largest count of one cell in one walk = 72 < 128, so
+; u2_pmap's sign bit stays the border's). ~70 cycles a step + ~14 for the generator.
+U2_FNB		equ	2048		; longs made per block
+; one fast step (u2_walkf's blocks are entered at a step: all steps the same size): the byte's
+; delta, the wrap on the border, the visit
+U2_FSTEP	macro
+	moveq	#0,d0
+	move.b	(a5)+,d0
+	add.w	d0,d0
+	add.w	0(a3,d0.w),a0
+	tst.b	(a0)
+	bpl.s	.k\@
+	bsr.w	u2_wrap
+.k\@:	addq.b	#1,(a0)			; a visit of [x1,y1]
+	endm
+
+; u2_fseed(key d0.l)  trashes d0-d2/a0
+u2_fseed:
+	lea	u2_fbuf,a0
+	moveq	#55-1,d2
+.s:	move.w	d0,d1			; s := s * 69069 + 1 = (s << 16) + s * 3533 + 1
+	mulu	#3533,d1
+	move.w	d0,-(sp)
+	swap	d0
+	mulu	#3533,d0
+	swap	d0
+	clr.w	d0
+	add.l	d0,d1
+	move.w	(sp)+,d0		; the old high word; s << 16 = the old low word above
+	swap	d0
+	clr.w	d0
+	add.l	d1,d0
+	addq.l	#1,d0
+	move.l	d0,(a0)+
+	dbf	d2,.s
+	or.b	#1,u2_fbuf+3
+	clr.w	u2_fav
+	rts
+
+; a new block: u2_fbuf[55..] from the recurrence, its last 55 longs to the front (the history of
+; the next block); a5 = its first byte, u2_fav = U2_FNB*4  trashes d0-d1/a1-a2
+u2_fblock:
+	lea	u2_fbuf+55*4,a1
+	move.w	#U2_FNB/4-1,d0
+.g:	rept	4
+	move.l	-24*4(a1),d1
+	add.l	-55*4(a1),d1
+	move.l	d1,(a1)+
+	endr
+	dbf	d0,.g
+	lea	u2_fbuf+U2_FNB*4,a1
+	lea	u2_fbuf,a2
+	moveq	#55-1,d0
+.c:	move.l	(a1)+,(a2)+
+	dbf	d0,.c
+	lea	u2_fbuf+55*4,a5
+	move.w	#U2_FNB*4,u2_fav
+	rts
+
+; u2_fdt: the step's pointer delta per byte (dx * U2_PS + dy), once
+u2_fdinit:
+	tst.b	u2_fdok
+	bne.s	.x
+	lea	u2_fdt,a0
+	moveq	#0,d0			; b
+.b:	moveq	#0,d1
+	cmp.w	#252,d0
+	bhs.s	.st
+	move.w	d0,d1			; k = b div 28: dx = k div 3 - 1, dy = k mod 3 - 1
+	divu	#28,d1
+	ext.l	d1
+	divu	#3,d1
+	move.l	d1,d2
+	swap	d2			; dy + 1
+	subq.w	#1,d1
+	muls	#U2_PS,d1
+	add.w	d2,d1
+	subq.w	#1,d1
+.st:	move.w	d1,(a0)+
+	addq.w	#1,d0
+	cmp.w	#256,d0
+	bne.s	.b
+	st	u2_fdok
+.x:	rts
+
+; u2_walkf(x d0, y d1): u2_walkc's walk (75000 steps, the countdown, the counts into u2_cmap)
+; on the fast generator (u2_fseed first; it goes on across calls)
+u2_walkf:
+	movem.l	d3-d7/a3-a5,-(sp)
+	movem.w	d0-d1,-(sp)
+	bsr	u2_tinit		; (u2_pmap's border)
+	bsr	u2_fdinit
+	movem.w	(sp)+,d0-d1
+	mulu	#U2_PS,d0
+	lea	u2_pmap+1,a0		; a0 = the cell [x,y]
+	add.l	d0,a0
+	add.w	d1,a0
+	move.l	#75000,u2_left
+	lea	u2_fdt,a3
+	move.l	u2_fp,a5
+	moveq	#0,d0
+.chunk:	bsr	u2_chunk		; d5 = the chunk's steps - 1
+	move.w	d5,d0
+	addq.w	#1,d0
+	cmp.w	u2_fav,d0
+	bls.s	.ok
+	move.w	d0,-(sp)
+	bsr	u2_fblock
+	move.w	(sp)+,d0
+.ok:	sub.w	d0,u2_fav
+	move.w	d0,d6			; the steps in blocks of 8: the first block entered at its
+	lsr.w	#3,d6			; (8 - n mod 8)-th step, d6 = the blocks after it
+	and.w	#7,d0
+	bne.s	.part
+	subq.w	#1,d6
+	bra.s	.blk
+.part:	neg.w	d0			; (8 - r) steps' bytes in
+	addq.w	#8,d0
+	mulu	#(.blke-.blk)/8,d0
+	lea	.blk(pc),a1
+	add.w	d0,a1
+	jmp	(a1)
+.blk:	rept	8
+	U2_FSTEP
+	endr
+.blke:	dbf	d6,.blk
+	movem.l	d1-d2/a0-a2,-(sp)	; (the countdown prints)
+	bsr	u2_chunkend
+	movem.l	(sp)+,d1-d2/a0-a2
+	bne	.chunk
+	move.l	a5,u2_fp
+	bsr	u2_fold
 	movem.l	(sp)+,d3-d7/a3-a5
 	rts
 
@@ -1481,29 +1629,39 @@ readystar:
 	clr.w	u2_i
 	PMARK	22
 	moveq	#0,d4			; the cache key: seed | mode << 16 (the walks depend on them only:
-	move.b	PLANET_MODE(a3),d4	; the generator was seeded just above)
+	move.b	PLANET_MODE(a3),d4	; the generator was seeded just above), bit 31 = fast stars
 	swap	d4
 	move.w	PLANET_SEED(a3),d4
+	clr.b	u2_fast
+	btst	#OPTB_STARS,GS_SHIP+SHIP_OPTIONS+OPT_PROBES-1(a6)
+	beq.s	.key
+	st	u2_fast
 	move.l	d4,d0
+	bsr	u2_fseed
+	bset	#31,d4
+.key:	move.l	d4,d0
 	bsr	u2_sfind
 	beq.s	.walk
 	bsr	u2_sload		; a star seen before: its landform and generator, the countdown at 0
 	bra.s	.walked
-.walk:	move.w	d3,d0
-	move.w	#200,d1
-	moveq	#90,d2
-	bsr	createstar
-	move.w	d3,d0
+.walk:	moveq	#-1,d0			; (6m) u2_cmap is no longer the planet walk's: a planet seen
+	move.l	d0,u2_wseed		; again must walk again (6g-6l replayed the star's map)
+	bsr	u2_cclear		; (6m) the three createstar walks into one visit map, applied
+	move.w	#200,d0			; once: from a uniform i, three times +1 per visit while below c
+	moveq	#90,d1			; = min(i + all visits, c) (at most 95 a cell: no byte wraps)
+	bsr	u2_swalk
+	moveq	#30,d0
 	moveq	#30,d1
-	moveq	#30,d2
-	bsr	createstar
+	bsr	u2_swalk
+	moveq	#120,d0
+	moveq	#60,d1
+	bsr	u2_swalk
 	move.w	d3,d0
-	moveq	#120,d1
-	moveq	#60,d2
-	bsr	createstar
+	bsr	u2_sapply
 	move.l	d4,d0
 	bsr	u2_sstore
 .walked:
+	clr.b	u2_fast
 	PMARK	23
 	ifd	LANDDUMP
 	bsr	u2_landdump
@@ -1527,22 +1685,37 @@ readystar:
 .rad:	dc.w	2000,3025,900
 .col:	dc.w	120,83,16
 
-; createstar(c d0, xc d1, yc d2): like createplanet, +1 below c, no technology spots; the walks
-; go on with the generator (readystar seeds once for its three)
-createstar:
-	movem.l	d3/d6-d7,-(sp)
-	move.w	d0,d3
-	move.w	d1,d6
-	move.w	d2,d7
-	bsr	u2_cclear
-	move.w	d6,d0
-	move.w	d7,d1
-	bsr	u2_walkc
-	moveq	#0,d0
+; createstar(c, xc, yc) x 3 (utils2.pas): readystar's .walk - u2_swalk(x d0, y d1) = one walk's
+; visits added to u2_cmap (u2_walkc, or u2_walkf for fast stars), then u2_sapply
+u2_swalk:
+	tst.b	u2_fast
+	bne	u2_walkf
+	bra	u2_walkc
+
+; u2_sapply(c d0): landform (all c-6 = readystar's i) := min(i + visits, c) from u2_cmap
+; trashes d0-d2/a0-a2
+u2_sapply:
+	lea	u2_stab,a2		; t[n] = min(i + n, c)
+	move.w	d0,d2
+	subq.w	#6,d0			; i
 	moveq	#0,d1
-	move.w	d3,d2
-	bsr	u2_apply
-	movem.l	(sp)+,d3/d6-d7
+.t:	move.b	d0,(a2)+
+	cmp.w	d2,d0
+	bhs.s	.tc
+	addq.w	#1,d0
+.tc:	addq.w	#1,d1
+	cmp.w	#256,d1
+	bne.s	.t
+	lea	u2_stab,a2
+	lea	u2_cmap,a0
+	move.l	GS_LANDFORM(a6),a1
+	move.w	#28800/8-1,d1
+	moveq	#0,d0
+.c:	rept	8
+	move.b	(a0)+,d0
+	move.b	0(a2,d0.w),(a1)+
+	endr
+	dbf	d1,.c
 	rts
 
 ; ---------------------------------------------------------------
@@ -1560,6 +1733,7 @@ makesphere2:
 	addq.w	#1,d0
 	move.w	GS_MAXSPHEREI(a6),d1
 	; fall through
+U2_RMAX		equ	128		; (6m) the longest sphere row (pixels; the largest radius gives < 120)
 u2_sphere_rows:
 	movem.l	d3-d7/a3-a5,-(sp)
 	tst.b	u2_xok			; (Phase 6i) the pixel table of this radius and shading
@@ -1612,21 +1786,38 @@ u2_sphere_rows:
 	moveq	#0,d1
 	move.b	0(a3,d5.w),d1
 .k:	sub.w	d1,d7
-	subq.w	#1,d1
-	bmi.s	.w
-.p1:	move.w	(a1)+,d0		; colour := u2_tab[alt][landform^[j2, ii]]
+	move.w	d1,d0			; (6m) the run unrolled: jump to its d1-th pixel from the end
+	lsl.w	#2,d0			; (12 bytes a pixel)
+	move.w	d0,d2
+	add.w	d0,d0
+	add.w	d2,d0
+	lea	.p1e(pc),a5
+	sub.w	d0,a5
+	jmp	(a5)
+	rept	U2_RMAX
+	move.w	(a1)+,d0		; colour := u2_tab[alt][landform^[j2, ii]]
 	move.w	(a1)+,d2
 	move.b	0(a4,d0.w),d2
 	move.b	0(a0,d2.w),(a2)+
-	dbf	d1,.p1
-.w:	subq.w	#1,d7
-	bmi.s	.nr
+	endr
+.p1e:	tst.w	d7
+	beq	.nr
 	lea	-240*LAND_W(a4),a4	; the wrapped run
-.p2:	move.w	(a1)+,d0
+	move.w	d7,d0
+	lsl.w	#2,d0
+	move.w	d0,d2
+	add.w	d0,d0
+	add.w	d2,d0
+	lea	.p2e(pc),a5
+	sub.w	d0,a5
+	jmp	(a5)
+	rept	U2_RMAX
+	move.w	(a1)+,d0
 	move.w	(a1)+,d2
 	move.b	0(a4,d0.w),d2
 	move.b	0(a0,d2.w),(a2)+
-	dbf	d7,.p2
+	endr
+.p2e:
 .nr:	lea	128(a3),a1
 	addq.w	#1,d6
 	bra	.row
@@ -2048,6 +2239,14 @@ u2_wstate:	ds.l	MT_N		; the generator after the walk
 u2_wsidx:	ds.w	1
 	even
 u2_left:	ds.l	1
+u2_fbuf:	ds.l	55+U2_FNB	; (6m) fast stars: the generator's history + block
+u2_fp:		ds.l	1		; the next byte
+u2_fav:		ds.w	1		; bytes left in the block
+u2_fdt:		ds.w	256		; byte -> the step's delta
+u2_fast:	ds.b	1		; readystar's walks on the fast generator
+u2_fdok:	ds.b	1
+	even
+u2_stab:	ds.b	256		; (6m) u2_sapply's min(i + n, c)
 u2_sphere:	ds.l	1		; DATA\SPHERE.DAT
 u2_sph:		ds.l	1		; the current radius's record
 u2_index:	ds.w	1		; utils2's index (the countdown)

@@ -1,0 +1,15 @@
+vtime
+args /playseed 3
+# starback (Phase 6m, ST only, LANDDUMP builds): home planet -> the star -> home again: the
+# planet's landform after the star (C:\LANDC.BIN) must equal the one at the start (LANDA.BIN)
+# (createplanet's replay of a kept walk must not use the star's visit map)
+# vbls 90000
+wait 3000
+key #27
+wait 2500
+key @0
+wait 30000
+key @2
+wait 15000
+shot B1
+quit

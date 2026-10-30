@@ -1874,12 +1874,12 @@ jy_panelmouse:
 	bra	.x
 .v6:	cmp.w	#6,d0
 	bne.s	.v7
-	bsr	.inpanel37		; 6: options - viewindex := (y-27) div 9
+	bsr	.inpanel37		; 6: options - viewindex := (y-27) div 9 (6m: ten rows, (y-29) div 8)
 	beq	.x
 	move.w	d4,d0
-	sub.w	#27,d0
+	sub.w	#29,d0
 	ext.l	d0
-	divs	#9,d0
+	divs	#8,d0
 	move.w	d0,GS_VIEWINDEX(a6)
 	bra	.x
 .v7:	cmp.w	#7,d0

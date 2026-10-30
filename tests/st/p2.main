@@ -1,6 +1,7 @@
 vtime
 args /playseed 3
-# p2 (ST only): the options panel's probes row (OPT_PROBES): shown, switched to 1994 and back
+# p2 (ST only): the options panel's probes row (OPT_PROBES): shown, switched to 1994 and back;
+# (6m) row 10 = fast stars: up from row 1 wraps to it, switched on (O4), Z2 = options[10] = 3
 wait 3000
 key #27
 wait 2000
@@ -22,6 +23,12 @@ shot O3
 key #275
 wait 1500
 dump Z1
+key #273
+wait 800
+key #275
+wait 1500
+shot O4
+dump Z2
 key #291
 wait 1500
 key y

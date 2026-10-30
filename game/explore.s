@@ -39,7 +39,7 @@ SETC	macro
 ; it picks the item up, flies back and the item goes into the hold at refuelling (the fit is
 ; checked before the launch).
 CLASSIC	macro
-	tst.b	GS_SHIP+SHIP_OPTIONS+OPT_PROBES-1(a6)
+	btst	#OPTB_PROBES,GS_SHIP+SHIP_OPTIONS+OPT_PROBES-1(a6)
 	endm
 
 	section	text
@@ -1050,35 +1050,103 @@ showzoom:
 	ble	.an
 	SETC	47
 	bsr	mousehide
-	move.w	#206,d0		; scrto_move(tempzoom^[i], screen[i+138, 206], 60)
+	move.w	ex_zoommode,d0		; (6m) circle(236, 169, 8*zoommode) and (.., 4*zoommode) drawn
+	lsl.w	#3,d0			; into tempzoom (both lie inside it: centre = its [30,30],
+	lea	ex_zc1,a2		; r <= 24), then scrto_move row by row: only rows that differ
+	bsr	ex_zcirc		; from the shadow are copied and marked (the same shadow; the
+	move.w	ex_zoommode,d0		; zoom is mostly still: the flush skips it)
+	lsl.w	#2,d0
+	lea	ex_zc2,a2
+	bsr	ex_zcirc
+	move.b	#47,ms_lcol		; (as ms_circle leaves it)
+	move.w	#206,d0			; scrto_move(tempzoom^[i], screen[i+138, 206], 60)
 	move.w	#139,d1
 	bsr	ms_addr			; (x 206 and 60-byte rows: longs at even addresses)
 	lea	ex_tempzoom,a3
-	moveq	#60-1,d7
-.cp:	rept	15
+	moveq	#-1,d5			; the first row of a run of changed rows (-1: none)
+	moveq	#0,d7			; row
+.cp:	move.l	a0,a1
+	move.l	a3,a2
+	rept	15
+	cmpm.l	(a2)+,(a1)+
+	bne.s	.cd
+	endr
+	tst.w	d5			; the same: ends a run
+	bmi.s	.cn
+	bsr.s	.mark
+	moveq	#-1,d5
+	bra.s	.cn
+.cd:	rept	15			; differs: copied
 	move.l	(a3)+,(a0)+
 	endr
-	lea	MS_W-60(a0),a0
-	dbf	d7,.cp
-	move.w	#206,d0
-	move.w	#139,d1
-	move.w	#265,d2
-	move.w	#198,d3
-	bsr	ms_dirty
-	move.w	#236,d0			; circle(236, 169, 8*zoommode), (…, 4*zoommode)
-	move.w	#169,d1
-	move.w	ex_zoommode,d2
-	lsl.w	#3,d2
-	move.w	ms_color,d4
-	bsr	ms_circle
-	move.w	#236,d0
-	move.w	#169,d1
-	move.w	ex_zoommode,d2
-	lsl.w	#2,d2
-	move.w	ms_color,d4
-	bsr	ms_circle
-	bsr	mouseshow
+	lea	-60(a3),a3
+	lea	-60(a0),a0
+	tst.w	d5
+	bpl.s	.cn
+	move.w	d7,d5
+.cn:	lea	60(a3),a3
+	lea	MS_W(a0),a0
+	addq.w	#1,d7
+	cmp.w	#60,d7
+	bne	.cp
+	tst.w	d5
+	bmi.s	.cx
+	bsr.s	.mark
+.cx:	bsr	mouseshow
 	movem.l	(sp)+,d3-d7/a3-a5
+	rts
+.mark:	movem.l	d0-d2/a0-a1,-(sp)	; rows d5 .. d7-1 of the zoom
+	move.w	#206,d0
+	move.w	d5,d1
+	add.w	#139,d1
+	move.w	#265,d2
+	move.w	d7,d3
+	add.w	#139-1,d3
+	bsr	ms_dirty
+	movem.l	(sp)+,d0-d2/a0-a1
+	rts
+; ex_zcirc(r d0, a2 = ex_zc1/ex_zc2): circle(30, 30, r)'s pixels (ms_circle's set: mc_build) in
+; colour ms_color into tempzoom; each slot keeps its radius's offsets (dy*60 + dx)
+EX_ZCN		equ	320		; offsets kept per slot (r <= 24: ~8r pixels)
+ex_zcirc:
+	movem.l	d5-d7,-(sp)
+	cmp.w	(a2),d0
+	beq.s	.draw
+	move.w	d0,d7			; a new radius: its pixels from ms_circle's list
+	move.l	a2,-(sp)
+	cmp.w	mc_r,d7
+	beq.s	.have
+	bsr	mc_swap
+	cmp.w	mc_r,d7
+	beq.s	.have
+	bsr	mc_build
+.have:	move.l	(sp)+,a2
+	move.w	d7,(a2)
+	move.w	mc_n,d1
+	cmp.w	#EX_ZCN,d1
+	bls.s	.nk
+	move.w	#EX_ZCN,d1		; (never: r <= 24)
+.nk:	move.w	d1,2(a2)
+	beq.s	.draw
+	subq.w	#1,d1
+	move.l	mc_lp,a0
+	lea	4(a2),a1
+.b:	move.w	6(a0),d0		; dy * 60 + dx
+	muls	#60,d0
+	add.w	4(a0),d0
+	move.w	d0,(a1)+
+	addq.l	#8,a0
+	dbf	d1,.b
+.draw:	move.w	2(a2),d1
+	beq.s	.x
+	subq.w	#1,d1
+	lea	4(a2),a1
+	lea	ex_tempzoom+30*60+30,a0
+	move.b	ms_color+1,d2
+.p:	move.w	(a1)+,d0
+	move.b	d2,0(a0,d0.w)
+	dbf	d1,.p
+.x:	movem.l	(sp)+,d5-d7
 	rts
 ; d0 := abs(d0), d1 := abs(d1)
 ex_abs01:
@@ -1388,46 +1456,126 @@ EXICM	macro				; ex_iconm's pixel \1 of a row: copied unless 0
 .n\@:
 	endm
 ; copy 26 rows x 32 bytes from screen (x d0, y d1 first row) to screen[row+num*40-26, 281]
-; (num d2), marked
+; (num d2), marked  (6m: by the row stride, not ms_addr per row)
 ex_tobox:
 	movem.l	d3-d5,-(sp)
 	move.w	d2,d5
 	mulu	#40,d5
 	sub.w	#25,d5			; first target row
-	moveq	#26-1,d4
-	move.w	d0,d3
-.r:	movem.w	d1/d3,-(sp)
-	move.w	d3,d0
 	bsr	ms_addr
 	move.l	a0,a1
 	move.w	#281,d0
 	move.w	d5,d1
 	bsr	ms_addr
+	moveq	#26-1,d4
 	move.l	a1,d0			; (Phase 6l) the source odd too (x 281 is): a byte, then longs
 	btst	#0,d0
 	beq.s	.by
-	move.b	(a1)+,(a0)+
+.r:	move.b	(a1)+,(a0)+
 	rept	7
 	move.l	(a1)+,(a0)+
 	endr
 	move.w	(a1)+,(a0)+
 	move.b	(a1)+,(a0)+
-	bra.s	.nx
+	lea	MS_W-32(a1),a1
+	lea	MS_W-32(a0),a0
+	dbf	d4,.r
+	bra.s	.mk
 .by:	rept	32			; (Phase 6k: unrolled)
 	move.b	(a1)+,(a0)+
 	endr
-.nx:	movem.w	(sp)+,d1/d3
-	addq.w	#1,d1
-	addq.w	#1,d5
-	dbf	d4,.r
-	move.w	#281,d0
+	lea	MS_W-32(a1),a1
+	lea	MS_W-32(a0),a0
+	dbf	d4,.by
+.mk:	move.w	#281,d0
+	move.w	d5,d1
 	move.w	d5,d3
-	subq.w	#1,d3
-	move.w	d3,d1
-	sub.w	#25,d1
+	add.w	#25,d3
 	move.w	#312,d2
 	bsr	ms_dirty
 	movem.l	(sp)+,d3-d5
+	rts
+; ex_toboxi(x d0, y d1, num d2) (6m): ex_tobox, then ex_iconm(1, num, 280), in one pass: each row
+; screen[row, 281..312] := the source row with probeicons^[1]'s 31 pixels over it (0: the source),
+; through ex_imd/ex_imm (the icon's bytes and their masks, made by ex_imbuild), one mark
+ex_toboxi:
+	movem.l	d3-d5/a3-a4,-(sp)
+	move.w	d2,d5
+	mulu	#40,d5
+	sub.w	#25,d5			; first target row
+	bsr	ms_addr
+	move.l	a0,a1
+	move.w	#281,d0
+	move.w	d5,d1
+	bsr	ms_addr
+	lea	ex_imd+1,a3		; (rows of 34 bytes: byte i at 1 + i, so 1..28 are long-aligned)
+	lea	ex_imm+1,a4
+	moveq	#26-1,d4
+	move.l	a1,d0
+	btst	#0,d0
+	beq	.ev
+.od:	move.b	(a1)+,d0		; the source odd as the target: a byte, 7 longs, 3 bytes
+	and.b	(a4)+,d0
+	or.b	(a3)+,d0
+	move.b	d0,(a0)+
+	rept	7
+	move.l	(a1)+,d0
+	and.l	(a4)+,d0
+	or.l	(a3)+,d0
+	move.l	d0,(a0)+
+	endr
+	rept	3
+	move.b	(a1)+,d0
+	and.b	(a4)+,d0
+	or.b	(a3)+,d0
+	move.b	d0,(a0)+
+	endr
+	lea	MS_W-32(a1),a1
+	lea	MS_W-32(a0),a0
+	addq.l	#2,a3
+	addq.l	#2,a4
+	dbf	d4,.od
+	bra	.mk
+.ev:	rept	32			; the source even: bytes
+	move.b	(a1)+,d0
+	and.b	(a4)+,d0
+	or.b	(a3)+,d0
+	move.b	d0,(a0)+
+	endr
+	lea	MS_W-32(a1),a1
+	lea	MS_W-32(a0),a0
+	addq.l	#2,a3
+	addq.l	#2,a4
+	dbf	d4,.ev
+.mk:	move.w	#281,d0
+	move.w	d5,d1
+	move.w	d5,d3
+	add.w	#25,d3
+	move.w	#312,d2
+	bsr	ms_dirty
+	movem.l	(sp)+,d3-d5/a3-a4
+	rts
+; ex_imbuild: ex_imd/ex_imm from probeicons^[1] (after the icons are taken from the screen):
+; per row 34 bytes, byte 1+i (i 0..30) = the icon's pixel / $FF where it is 0, byte 32 (x 312:
+; not the icon's) = 0 / $FF, bytes 0 and 33 unused
+ex_imbuild:
+	lea	ex_icons,a0
+	lea	ex_imd,a1
+	lea	ex_imm,a2
+	moveq	#26-1,d1
+.r:	clr.b	(a1)+
+	clr.b	(a2)+
+	moveq	#31-1,d0
+.b:	move.b	(a0)+,d2
+	move.b	d2,(a1)+
+	seq	(a2)+
+	dbf	d0,.b
+	addq.l	#1,a0			; (the icon row's 32nd byte)
+	clr.b	(a1)+
+	st	(a2)+
+	clr.b	(a1)+
+	clr.b	(a2)+
+	dbf	d1,.r
 	rts
 ; probeicons^[k d0 (1-4), i] -> screen[i+num*40-26, 281] (32 bytes, 26 rows), num d1
 ex_icon:
@@ -1438,20 +1586,19 @@ ex_icon:
 	move.w	d1,d4
 	mulu	#40,d4
 	sub.w	#25,d4
-	moveq	#26-1,d3
-.r:	move.w	#281,d0
+	move.w	#281,d0
 	move.w	d4,d1
 	bsr	ms_addr
-	rept	32			; (Phase 6k: unrolled)
+	moveq	#26-1,d3
+.r:	rept	32			; (Phase 6k: unrolled)
 	move.b	(a3)+,(a0)+
 	endr
-	addq.w	#1,d4
+	lea	MS_W-32(a0),a0
 	dbf	d3,.r
 	move.w	#281,d0
+	move.w	d4,d1
 	move.w	d4,d3
-	subq.w	#1,d3
-	move.w	d3,d1
-	sub.w	#25,d1
+	add.w	#25,d3
 	move.w	#312,d2
 	bsr	ms_dirty
 	movem.l	(sp)+,d3-d4/a3
@@ -1466,24 +1613,23 @@ ex_iconm:
 	move.w	d1,d4
 	mulu	#40,d4
 	sub.w	#25,d4
-	moveq	#26-1,d3
-.r:	move.w	d5,d0
+	move.w	d5,d0
 	addq.w	#1,d0
 	move.w	d4,d1
 	bsr	ms_addr
-	move.l	a3,a1
+	moveq	#26-1,d3
+.r:	move.l	a3,a1
 	rept	31			; (Phase 6k: unrolled)
 	EXICM	REPTN
 	endr
 	lea	32(a3),a3
-	addq.w	#1,d4
+	lea	MS_W(a0),a0
 	dbf	d3,.r
 	move.w	d5,d0
 	addq.w	#1,d0
+	move.w	d4,d1
 	move.w	d4,d3
-	subq.w	#1,d3
-	move.w	d3,d1
-	sub.w	#25,d1
+	add.w	#25,d3
 	move.w	d5,d2
 	add.w	#31,d2
 	bsr	ms_dirty
@@ -2935,14 +3081,10 @@ controlprobes:
 	add.w	#12,d1
 	bsr	ms_pset
 	move.w	PR_CURX(a3),d0		; the view (one column further right than moveprobe's)
-	add.w	#12,d0
+	add.w	#12,d0			; with the probe icon over it (ex_tobox + ex_iconm(1, j, 280))
 	move.w	PR_CURY(a3),d1
 	move.w	d7,d2
-	bsr	ex_tobox
-	moveq	#1,d0			; the probe icon over it
-	move.w	d7,d1
-	move.w	#280,d2
-	bsr	ex_iconm
+	bsr	ex_toboxi
 	moveq	#7,d0			; a message: msgs^[a, i, b] at [j*40-7+i, 297+b]
 	bsr	mt_random
 	lea	ex_msgs,a4
@@ -2951,16 +3093,17 @@ controlprobes:
 	move.w	d7,d4
 	mulu	#40,d4
 	subq.w	#7,d4
-	moveq	#8-1,d5
-.mr:	move.w	#297,d0
+	move.w	#297,d0		; (6m: one ms_addr, then the row stride)
 	move.w	d4,d1
 	bsr	ms_addr
-	moveq	#16-1,d0
+	moveq	#8-1,d5
+.mr:	moveq	#16-1,d0
 .mc:	move.b	(a4)+,d1
 	beq.s	.mn
 	move.b	d1,(a0)
 .mn:	addq.l	#1,a0
 	dbf	d0,.mc
+	lea	MS_W-16(a0),a0
 	addq.w	#1,d4
 	dbf	d5,.mr
 	move.w	#297,d0
@@ -4593,6 +4736,7 @@ ex_readydata:
 	addq.w	#1,d3
 	cmp.w	#4,d3
 	ble.s	.pi
+	bsr	ex_imbuild		; (6m) icon 1's bytes and masks for ex_toboxi
 	moveq	#1,d3			; the probes on board: icon 2
 .pd:	cmp.w	ex_numprobes,d3
 	bgt.s	.pde
@@ -4884,6 +5028,10 @@ ex_zchg:	ds.b	1		; zoomscr / its colours changed since: transpose again
 	even
 ex_msgs:	ds.b	7*MSG_SIZE
 ex_icons:	ds.b	4*ICON_SIZE
+ex_zc1:		ds.w	2+EX_ZCN	; (6m) ex_zcirc's slots: radius, count, offsets
+ex_zc2:		ds.w	2+EX_ZCN
+ex_imd:		ds.b	26*34		; (6m) ex_imbuild: icon 1's bytes, rows of 34
+ex_imm:		ds.b	26*34		; ... and masks ($FF = the source shows)
 ex_zlut:	ds.w	256
 ex_llut:	ds.w	256
 ex_probes:	ds.b	4*PR_SIZE

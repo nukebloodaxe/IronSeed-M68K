@@ -14,7 +14,9 @@
 	include	"pmac.i"		; the ported Pascal's drawing/string macros
 
 OPT_FONT_	equ	7		; (ids.i has OPT_FONT; kept for the older code)
-OPT_PROBES	equ	10		; the port's own: options[10] (OPT_UNUSED1) = 1 for the 1994 probes
+OPT_PROBES	equ	10		; the port's own: options[10] (OPT_UNUSED1): bit 0 = the 1994 probes,
+OPTB_PROBES	equ	0		; bit 1 (6m) = fast stars (the options panel's rows 1 and 10)
+OPTB_STARS	equ	1
 					; (explore.s); shown in the options panel's first row (the screen
 					; saver's: commented out in the FPC source, never used)
 SL_LOAD		equ	1		; saveload.s: with sl_loadgame

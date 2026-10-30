@@ -96,14 +96,15 @@ readyoptions:
 	BKCOL	5
 	PXY	168,27,"General Game Options"
 	PXY	183,37,"Probes"		; (the original: 'Screen Saver' - see OPT_PROBES)
-	PXY	173,46,"Time Slice"
-	PXY	186,55,"Sound"
-	PXY	173,64,"Difficulty"
-	PXY	168,73,"General Msgs"
-	PXY	175,82,"Animation"
-	PXY	173,91,"Font Style"
-	PXY	175,100,"Auto-Save"
-	PXY	183,109,"Volume"
+	PXY	173,45,"Time Slice"
+	PXY	186,53,"Sound"
+	PXY	173,61,"Difficulty"
+	PXY	168,69,"General Msgs"
+	PXY	175,77,"Animation"
+	PXY	173,85,"Font Style"
+	PXY	175,93,"Auto-Save"
+	PXY	183,101,"Volume"
+	PXY	186,109,"Stars"		; (6m) ten rows 8 lines apart (the original: nine, 9 apart)
 	LINE	238,36,238,116,2
 	LINE	239,36,239,116,10
 	PSET	238,36,6

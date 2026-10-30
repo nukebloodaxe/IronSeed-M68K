@@ -138,7 +138,11 @@ us_gauge:
 	moveq	#98,d2
 	bsr	us_ratio		; d0 = a
 	move.w	d0,d7
-	moveq	#0,d3			; j
+	cmp.w	#98,d7			; (6m) 0 <= a <= 98: the gauge's 99 columns made once per a
+	bhi.s	.slow			; and copied/marked only where the shadow differs
+	bsr	us_gfast
+	bra	.num
+.slow:	moveq	#0,d3			; j
 .j:	cmp.w	d7,d3
 	bgt.s	.rest
 	moveq	#0,d4			; c := round(j*31/a) (a = 0: 0)
@@ -203,6 +207,94 @@ us_gauge:
 	lea	us_num,a0
 	bsr	printxy
 	movem.l	(sp)+,d3-d7
+	rts
+
+; (6m) us_gauge's rows for 0 <= a (d7) <= 98, row d6: the colours of x 173..271 (j <= a:
+; round(j*31/a) with the ties, the rest 0) kept per gauge (rows 46/66/86/106) and a; each of
+; the 9 rows compared with the shadow, copied where it differs; one mark for the rows changed.
+; The same shadow as the ms_bar per column (which marked every column).  trashes d0-d4/a0-a2
+US_GCS		equ	104		; a cache entry: a (word), the row at +3 (x 173 odd: +4 even)
+us_gfast:
+	movem.l	d5/a3,-(sp)
+	move.w	d6,d0			; the entry: (row - 46) / 20
+	sub.w	#46,d0
+	ext.l	d0
+	divu	#20,d0
+	cmp.w	#3,d0
+	bhi	.x			; (another row: never)
+	mulu	#US_GCS,d0
+	lea	us_gc,a3
+	add.w	d0,a3
+	cmp.w	(a3),d7
+	beq.s	.have
+	move.w	d7,(a3)			; the colours for this a
+	lea	3(a3),a2
+	moveq	#0,d3			; j
+.c:	moveq	#0,d4
+	cmp.w	d7,d3
+	bgt.s	.put			; beyond a: 0
+	tst.w	d7
+	beq.s	.put
+	move.w	d7,d0			; round(j*31/a)
+	move.w	d3,d1
+	moveq	#31,d2
+	bsr	us_ratio
+	move.w	d0,d4
+	move.w	d3,d0			; FPC's j*(31/a) lands below 15.5 for these four
+	add.w	d0,d0
+	cmp.w	d7,d0
+	bne.s	.put
+	lea	us_ties,a0
+.t:	move.w	(a0)+,d0
+	beq.s	.put
+	cmp.w	d0,d7
+	bne.s	.t
+	moveq	#15,d4
+.put:	move.b	d4,(a2)+
+	addq.w	#1,d3
+	cmp.w	#99,d3
+	bne.s	.c
+.have:	move.w	#173,d0
+	move.w	d6,d1
+	bsr	ms_addr			; a0 = the shadow at (173, row): odd
+	moveq	#-1,d4			; first row changed (-1: none)
+	moveq	#0,d5			; last
+	moveq	#0,d3			; r
+.r:	lea	3(a3),a2
+	move.l	a0,a1
+	cmpm.b	(a2)+,(a1)+		; x 173, 174..269 by longs, 270..271
+	bne.s	.cp
+	moveq	#24-1,d0
+.cl:	cmpm.l	(a2)+,(a1)+
+	dbne	d0,.cl
+	bne.s	.cp
+	cmpm.w	(a2)+,(a1)+
+	beq.s	.nx
+.cp:	lea	3(a3),a2		; differs: the row copied
+	move.l	a0,a1
+	move.b	(a2)+,(a1)+
+	moveq	#24-1,d0
+.cc:	move.l	(a2)+,(a1)+
+	dbf	d0,.cc
+	move.w	(a2)+,(a1)+
+	tst.w	d4
+	bpl.s	.c1
+	move.w	d3,d4
+.c1:	move.w	d3,d5
+.nx:	lea	MS_W(a0),a0
+	addq.w	#1,d3
+	cmp.w	#9,d3
+	bne.s	.r
+	tst.w	d4
+	bmi.s	.x
+	move.w	#173,d0			; the rows changed
+	move.w	d6,d1
+	add.w	d4,d1
+	move.w	#271,d2
+	move.w	d6,d3
+	add.w	d5,d3
+	bsr	ms_dirty
+.x:	movem.l	(sp)+,d5/a3
 	rts
 
 ; d0.w = round(d1 / d0 * d2) for 0 <= d1 (the original's real division and round: no ties
@@ -1319,4 +1411,6 @@ us_cursor:	ds.w	1
 us_done:	ds.b	1
 	even
 us_num:		ds.b	12
+	even
+us_gc:		ds.b	4*US_GCS	; (6m) us_gfast's rows per gauge (a = -1: none yet)
 us_s1:		ds.b	64

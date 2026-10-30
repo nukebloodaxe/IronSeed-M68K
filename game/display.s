@@ -87,13 +87,13 @@ displayoptions:
 	bne.s	.c4
 	subq.w	#1,d1			; 3: up
 	bne.s	.vi
-	moveq	#9,d1
+	moveq	#10,d1			; (6m: ten rows, 10 = fast stars)
 .vi:	move.w	d1,GS_VIEWINDEX(a6)
 	bra	.draw
 .c4:	cmp.w	#4,d0
 	bne.s	.c5
 	addq.w	#1,d1			; 4: down
-	cmp.w	#10,d1
+	cmp.w	#11,d1
 	bne.s	.vi
 	moveq	#1,d1
 	bra.s	.vi
@@ -123,23 +123,32 @@ displayoptions:
 	subq.b	#1,OPT_VOLUME(a3)
 .dv:	bsr	setmodvolume
 	bra	.draw
-.d1:	cmp.w	#1,d1			; row 1 is the probes option (OPT_PROBES)
+.d1:	cmp.w	#1,d1			; row 1: the probes option (options[10] bit 0)
+	bne.s	.d10
+	bclr	#OPTB_PROBES,OPT_PROBES(a3)
+	bra	.draw
+.d10:	cmp.w	#10,d1			; row 10: fast stars (options[10] bit 1)
 	bne.s	.dd
-	moveq	#OPT_PROBES,d1
+	bclr	#OPTB_STARS,OPT_PROBES(a3)
+	bra	.draw
 .dd:	tst.b	0(a3,d1.w)
 	beq	.draw
 	subq.b	#1,0(a3,d1.w)
 	bra	.draw
 .inc:	cmp.w	#1,d1			; 2, 7: right
+	bne.s	.i10
+	bset	#OPTB_PROBES,OPT_PROBES(a3)	; row 1: the probes option
+	bra	.draw
+.i10:	cmp.w	#10,d1
 	bne.s	.i2
-	moveq	#OPT_PROBES,d1		; row 1: the probes option, 0 -> 1 below
-	bra	.ie
+	bset	#OPTB_STARS,OPT_PROBES(a3)	; row 10: fast stars
+	bra	.draw
 .i2:	cmp.w	#2,d1
 	bne.s	.i4
 	cmp.b	#250,OPT_TIMESLICE(a3)
-	bhs.s	.ts
+	bhs	.ts
 	addq.b	#1,OPT_TIMESLICE(a3)
-	bra.s	.ts
+	bra	.ts
 .i4:	cmp.w	#4,d1
 	bne.s	.i5
 	cmp.b	#2,OPT_DIFFICULTY(a3)
@@ -170,7 +179,7 @@ displayoptions:
 .draw:	TCOL	191
 	bsr	mousehide
 	BKSEL	GS_VIEWINDEX,1
-	tst.b	OPT_PROBES(a3)		; (the original: the screen saver's Off/On)
+	btst	#OPTB_PROBES,OPT_PROBES(a3)	; (the original: the screen saver's Off/On)
 	bne.s	.ss
 	PXY	246,37," Std"
 	bra.s	.o2
@@ -180,47 +189,53 @@ displayoptions:
 	move.b	OPT_TIMESLICE(a3),d0
 	moveq	#3,d1
 	bsr	dp_str
-	PXYS	251,46,dp_s
+	PXYS	251,45,dp_s
 	BKSEL	GS_VIEWINDEX,3
 	cmp.b	#1,OPT_SOUND(a3)
 	bne.s	.so
-	PXY	251,55," On"
+	PXY	251,53," On"
 	bra.s	.o4
-.so:	PXY	251,55,"Off"
+.so:	PXY	251,53,"Off"
 .o4:	BKSEL	GS_VIEWINDEX,4
 	move.b	OPT_DIFFICULTY(a3),d0	; (another value keeps the last s: never happens)
 	lea	dp_diff,a1
 	bsr	.pick
-	PXYS	251,64,dp_s
+	PXYS	251,61,dp_s
 	BKSEL	GS_VIEWINDEX,5
 	move.b	OPT_MSGS(a3),d0
 	lea	dp_msgs,a1
 	bsr	.pick
-	PXYS	246,73,dp_s
+	PXYS	246,69,dp_s
 	BKSEL	GS_VIEWINDEX,6
 	cmp.b	#1,OPT_ANIMATION(a3)
 	bne.s	.an
-	PXY	251,82," On"
+	PXY	251,77," On"
 	bra.s	.o7
-.an:	PXY	251,82,"Off"
+.an:	PXY	251,77,"Off"
 .o7:	BKSEL	GS_VIEWINDEX,7
 	move.b	OPT_FONT_(a3),d0
 	lea	dp_fonts,a1
 	bsr	.pick
-	PXYS	241,91,dp_s
+	PXYS	241,85,dp_s
 	BKSEL	GS_VIEWINDEX,8
 	cmp.b	#1,OPT_AUTOSAVE(a3)
 	bne.s	.au
-	PXY	251,100," On"
+	PXY	251,93," On"
 	bra.s	.o9
-.au:	PXY	251,100,"Off"
+.au:	PXY	251,93,"Off"
 .o9:	moveq	#0,d0
 	move.b	OPT_VOLUME(a3),d0
 	moveq	#3,d1
 	bsr	dp_str
 	BKSEL	GS_VIEWINDEX,9
-	PXYS	251,109,dp_s
-	bsr	mouseshow
+	PXYS	251,101,dp_s
+	BKSEL	GS_VIEWINDEX,10		; (6m) fast stars
+	btst	#OPTB_STARS,OPT_PROBES(a3)
+	bne.s	.fs
+	PXY	246,109," Std"
+	bra.s	.o10
+.fs:	PXY	246,109,"Fast"
+.o10:	bsr	mouseshow
 	BKCOL	3
 .x:	movem.l	(sp)+,d3/a3
 	rts

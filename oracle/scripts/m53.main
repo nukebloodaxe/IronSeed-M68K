@@ -1,0 +1,22 @@
+vtime
+args /playseed 3
+# m53 (Phase 6m): s4's planet -> the star (Alt-0) -> s4's planet again (Alt-2): the planet must be
+# the same as at the start (6g-6l replayed the star's visit map for a planet seen before the star)
+# vbls 120000
+wait 3000
+key #27
+wait 2500
+shot H1
+key @0
+wait 8000
+shot H2
+key @2
+wait 8000
+shot H3
+wait 3000
+shot H4
+key #291
+wait 1500
+key y
+wait 3000
+quit

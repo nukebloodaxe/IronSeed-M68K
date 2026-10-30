@@ -28,7 +28,12 @@ probes behave (saved with the game):
         sends a free probe to the anomaly and it brings the item back.
 (That row was the screen saver, which the Free Pascal version never had
 working.) Volume sets the music level; on the STE it goes through the
-volume chip, so the sound effects follow it too.
+volume chip, so the sound effects follow it too. The last row, "Stars",
+picks how a star's surface is made when the ship arrives (saved with the
+game; it changes nothing else in the game):
+  Std   the original's random walks, exactly the PC's star (about 15 s)
+  Fast  a quicker generator: a star of the same kind, but not the PC's
+        own pattern (about 4 s)
 
 Music: the MUSIC folder holds the songs pre-rendered; they are streamed from
 the disk, which leaves the 68000 free for the game (combat runs about 1.8
@@ -41,8 +46,9 @@ files from SOUND in real time as before: same music, slower game.
 
 Arriving at a planet or a star: the "Approaching ..." countdown is the
 surface being generated (the original's random walks, exactly). On an 8 MHz
-STE that takes about 6 s for a planet and 15 s for a star; a planet seen
-again takes about 1 s, and the last four stars visited are remembered.
+STE that takes about 6 s for a planet and 15 s for a star (4 s with Stars
+set to Fast); a planet seen again takes about 1 s, and the last four stars
+visited are remembered.
 Ordering a jump to the planet or star the ship already orbits (Alt-0..4,
 Alt-N/P, the system view's orbit button) does nothing but get a reply from
 Science - the PC version flew there again.
@@ -50,8 +56,8 @@ Science - the PC version flew there again.
 Mega STE: switch it to 16 MHz with the cache on (its control panel) before
 starting. Every screen then runs faster - in Hatari with a 16 MHz CPU the
 bridge's planet turns at the PC game's own pace, the planet exploration
-runs more than twice as fast and a star takes about 7 s. (Not yet tried on
-a real Mega STE.)
+runs more than twice as fast and a star takes about 7 s. (Tried in Steem as
+a 16 MHz Mega STE; not yet on a real one.)
 
 Colours: the STE shows 16 colours per band of lines, where the PC had 256.
 When a dialog opens over a screen (save, load, yes/no, crew messages, the

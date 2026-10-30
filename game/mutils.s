@@ -361,30 +361,14 @@ mc_build:
 .pxx:	rts
 
 ; c_utils.c rectangle(x1 d0, y1 d1, x2 d2, y2 d3) in colour d4 (the far corner stays unset)
+; (6m) each edge is marked only when one of its pixels changed (the exploration redraws the
+; zoom's rectangle twice a frame where it already is: four marks of 60 rows each were 7 % of a
+; frame)
 ms_rect:
 	movem.l	d3-d7,-(sp)
 	movem.w	d0-d3,ms_bx
 	move.b	d4,ms_lcol
-	cmp.w	d0,d2			; the dirty box
-	bge.s	.a
-	exg	d0,d2
-.a:	cmp.w	d1,d3
-	bge.s	.b
-	exg	d1,d3
-.b:	movem.w	d0-d3,-(sp)		; (Phase 6k) the four edges, not the box inside
-	move.w	2(sp),d3		; top: x1..x2, y1
-	bsr	ms_dirty
-	movem.w	(sp),d0-d3
-	move.w	d3,d1			; bottom: x1..x2, y2
-	bsr	ms_dirty
-	movem.w	(sp),d0-d3
-	move.w	d0,d2			; left: x1, y1..y2
-	bsr	ms_dirty
-	movem.w	(sp)+,d0-d3
-	move.w	d2,d0			; right: x2, y1..y2
-	bsr	ms_dirty
-	move.b	ms_lcol,d4		; (Phase 6k: whole rows and columns, no call per pixel)
-	movem.w	ms_bx,d0-d3
+	moveq	#0,d7			; changed: bit 0 row y1, 1 row y2, 2 column x1, 3 column x2
 	move.w	d0,d5			; horizontal: i from min(x1,x2) to max-1: rows y1 and y2
 	move.w	d2,d6
 	cmp.w	d5,d6
@@ -395,13 +379,21 @@ ms_rect:
 	subq.w	#1,d6
 	move.w	d5,d0
 	move.w	ms_bx+2,d1
-	bsr.s	.ad
+	bsr	.ad
 	move.l	a0,a1
 	move.w	d5,d0
 	move.w	ms_bx+6,d1
-	bsr.s	.ad
-.hl:	move.b	d4,(a1)+
-	move.b	d4,(a0)+
+	bsr	.ad
+.hl:	cmp.b	(a1),d4
+	beq.s	.h1
+	move.b	d4,(a1)
+	bset	#0,d7
+.h1:	addq.l	#1,a1
+	cmp.b	(a0),d4
+	beq.s	.h2
+	move.b	d4,(a0)
+	bset	#1,d7
+.h2:	addq.l	#1,a0
 	dbf	d6,.hl
 .v:	move.w	ms_bx+2,d5		; vertical: i from min(y1,y2) to max-1: columns x1 and x2
 	move.w	ms_bx+6,d6
@@ -409,21 +401,61 @@ ms_rect:
 	bge.s	.vl
 	exg	d5,d6
 .vl:	sub.w	d5,d6
-	ble.s	.x
+	ble.s	.mk
 	subq.w	#1,d6
 	move.w	ms_bx,d0
 	move.w	d5,d1
-	bsr.s	.ad
+	bsr	.ad
 	move.l	a0,a1
 	move.w	ms_bx+4,d0
 	move.w	d5,d1
-	bsr.s	.ad
+	bsr	.ad
 	move.w	#MS_W,d0
-.vc:	move.b	d4,(a1)
+.vc:	cmp.b	(a1),d4
+	beq.s	.v1
+	move.b	d4,(a1)
+	bset	#2,d7
+.v1:	cmp.b	(a0),d4
+	beq.s	.v2
 	move.b	d4,(a0)
-	add.w	d0,a1
+	bset	#3,d7
+.v2:	add.w	d0,a1
 	add.w	d0,a0
 	dbf	d6,.vc
+.mk:	tst.b	d7
+	beq.s	.x
+	movem.w	ms_bx,d0-d3		; the marks: the box sorted
+	cmp.w	d0,d2
+	bge.s	.a
+	exg	d0,d2
+.a:	cmp.w	d1,d3
+	bge.s	.b
+	exg	d1,d3
+.b:	movem.w	d0-d3,-(sp)
+	btst	#0,d7			; row y1: x1..x2
+	beq.s	.m1
+	move.w	ms_bx+2,d1
+	move.w	d1,d3
+	bsr	ms_dirty
+.m1:	btst	#1,d7			; row y2
+	beq.s	.m2
+	movem.w	(sp),d0-d3
+	move.w	ms_bx+6,d1
+	move.w	d1,d3
+	bsr	ms_dirty
+.m2:	btst	#2,d7			; column x1: y1..y2
+	beq.s	.m3
+	movem.w	(sp),d0-d3
+	move.w	ms_bx,d0
+	move.w	d0,d2
+	bsr	ms_dirty
+.m3:	btst	#3,d7			; column x2
+	beq.s	.m4
+	movem.w	(sp),d0-d3
+	move.w	ms_bx+4,d0
+	move.w	d0,d2
+	bsr	ms_dirty
+.m4:	addq.l	#8,sp
 .x:	movem.l	(sp)+,d3-d7
 	rts
 .ad:	mulu	#MS_W,d1		; a0 = shadow (d0, d1)
