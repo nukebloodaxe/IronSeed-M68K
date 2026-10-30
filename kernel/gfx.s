@@ -396,6 +396,32 @@ gfx_slot4_span:
 	rts
 
 ; ---------------------------------------------------------------
+; GFX_PCELL k: 8 pixels at (a0)+ (words, even) by the pair table a5 and gfx_pos (a3) -> the
+; cell's 4 plane bytes at k(a2)  (trashes d2/d4/d5)
+GFX_PCELL	macro
+	moveq	#0,d2
+	move.w	(a0)+,d2
+	add.l	d2,d2
+	move.w	0(a5,d2.l),d4
+	move.l	0(a3,d4.w),d5
+	moveq	#0,d2
+	move.w	(a0)+,d2
+	add.l	d2,d2
+	move.w	0(a5,d2.l),d4
+	or.l	4(a3,d4.w),d5
+	moveq	#0,d2
+	move.w	(a0)+,d2
+	add.l	d2,d2
+	move.w	0(a5,d2.l),d4
+	or.l	8(a3,d4.w),d5
+	moveq	#0,d2
+	move.w	(a0)+,d2
+	add.l	d2,d2
+	move.w	0(a5,d2.l),d4
+	or.l	12(a3,d4.w),d5
+	movep.l	d5,\1(a2)
+	endm
+
 gfx_c4_span:
 	movem.l	d3-d7/a3-a5,-(sp)
 	ifd	PROFILE
@@ -468,44 +494,40 @@ gfx_c4_span:
 	lsr.w	#3,d7
 	subq.w	#1,d7
 	tst.l	gfx_pcur		; (Phase 6j) pairs: a table, and the pixels at an even address
-	beq.s	.full
+	beq	.full
 	move.l	a0,d1
 	btst	#0,d1
-	bne.s	.full
+	bne	.full
 	movem.l	a3/a5,-(sp)
 	lea	gfx_pos,a3
 	move.l	gfx_pcur,a5
-.pfull:	moveq	#0,d2			; 4 pairs: (word) * 2 -> code * 16 -> its 4 plane bytes' bits
-	move.w	(a0)+,d2
-	add.l	d2,d2
-	move.w	0(a5,d2.l),d4
-	move.l	0(a3,d4.w),d5
-	moveq	#0,d2
-	move.w	(a0)+,d2
-	add.l	d2,d2
-	move.w	0(a5,d2.l),d4
-	or.l	4(a3,d4.w),d5
-	moveq	#0,d2
-	move.w	(a0)+,d2
-	add.l	d2,d2
-	move.w	0(a5,d2.l),d4
-	or.l	8(a3,d4.w),d5
-	moveq	#0,d2
-	move.w	(a0)+,d2
-	add.l	d2,d2
-	move.w	0(a5,d2.l),d4
-	or.l	12(a3,d4.w),d5
-	movep.l	d5,0(a2)
+	addq.w	#1,d7			; (6n) the run's cells: two a loop pass (even + odd cell of a
+	move.w	d7,d1			; group), d3/d6 updated once (.cell recomputes a2 from d3)
+	lsl.w	#3,d1
+	sub.w	d1,d6
 	ifd	PROFILE
-	addq.l	#8,gfx_stat		; (pixels by pairs)
+	ext.l	d1
+	add.l	d1,gfx_stat		; (pixels by pairs)
 	endif
-	subq.w	#8,d6
-	addq.w	#1,d3
-	btst	#0,d3			; next cell: +1 (odd) or +7 (next group)
-	bne.s	.podd
-	addq.l	#6,a2
-.podd:	addq.l	#1,a2
-	dbf	d7,.pfull
+	move.w	d3,d1
+	add.w	d7,d3
+	btst	#0,d1
+	beq.s	.pev
+	GFX_PCELL 0			; an odd first cell
+	addq.l	#7,a2
+	subq.w	#1,d7
+.pev:	move.w	d7,d1
+	lsr.w	#1,d7
+	subq.w	#1,d7
+	bmi.s	.pl
+.pp:	GFX_PCELL 0
+	GFX_PCELL 1
+	addq.l	#8,a2
+	dbf	d7,.pp
+.pl:	btst	#0,d1
+	beq.s	.pe
+	GFX_PCELL 0			; an even last cell
+.pe:
 	movem.l	(sp)+,a3/a5
 	moveq	#0,d2
 	tst.w	d6

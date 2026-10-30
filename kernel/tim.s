@@ -52,6 +52,7 @@ tim_delay:
 ; wait (the next one starts now). The original's loops are work + delay(tslice*n) with work tiny
 ; on a 486: pacing keeps the ST's frame rate near the original's instead of adding the delay to
 ; seconds of work. Game logic is unchanged (it counts frames); virtual time: exactly tim_delay.
+; Phase 6n: catch-up (see .late; ASMDEFS=-DNOCATCH=1 = 6m). in: d0.w = ms  trashes: d0-d2/a0-a2
 tim_pace:
 	ifd	NOPACE
 	bra	tim_delay		; (ASMDEFS=-DNOPACE=1: the old behaviour, for comparisons)
@@ -63,6 +64,7 @@ tim_pace:
 	addq.l	#4,d0
 	divu	#5,d0			; ms -> ticks, rounded up
 	and.l	#$ffff,d0
+	move.l	d0,d2			; the period (ticks)
 	add.l	tim_pdead,d0
 	move.l	HZ200.w,d1
 	cmp.l	d1,d0
@@ -80,7 +82,16 @@ tim_pace:
 	add.l	d1,tim_idlet
 	endif
 	rts
-.late:	move.l	d1,tim_pdead
+.late:	ifnd	NOCATCH
+	mulu	#3,d2			; (Phase 6n) a frame late by up to 3 periods keeps its deadline:
+	add.l	d0,d2			; the next frames wait less, so a loop whose work is uneven (the
+	cmp.l	d1,d2			; bridge: one frame in four turns the planet) keeps the
+	blo.s	.lt			; original's mean pace; later than that: start again from now
+	move.l	d0,tim_pdead
+	bra	scr_tick
+.lt:
+	endif
+	move.l	d1,tim_pdead
 	bra	scr_tick
 
 	section	bss

@@ -1,0 +1,21 @@
+args /playseed 3
+# explore, long (6n: profile window with the probes out, e.g. prof_st.sh explorel 3400 4000)
+# vbls 11000
+wait 3000
+key #27
+wait 2000
+key z
+wait 1500
+key e
+wait 8000
+shot X0
+key 1
+wait 40000
+shot X1
+key #27
+wait 4000
+key #291
+wait 1500
+key y
+wait 3000
+quit

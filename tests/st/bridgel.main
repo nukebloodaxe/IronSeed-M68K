@@ -1,0 +1,12 @@
+args /playseed 3
+# bridge, long (6n: profile window inside the idle bridge, e.g. prof_st.sh bridgel 3300 3900)
+# vbls 8000
+wait 3000
+key #27
+wait 40000
+shot B1
+key #291
+wait 1500
+key y
+wait 3000
+quit

@@ -20,8 +20,8 @@ OPTB_STARS	equ	1
 					; (explore.s); shown in the options panel's first row (the screen
 					; saver's: commented out in the FPC source, never used)
 SL_LOAD		equ	1		; saveload.s: with sl_loadgame
-MN_KEEP		equ	576*1024	; (Phase 6j) the pool left after the pair tables: ~1035 KB are free
-					; there, MAIN's later peak takes ~350 KB more (the ending; tags 60/63)
+MN_KEEP		equ	512*1024	; (Phase 6j) the pool left after the pair tables (6n: 576 -> 512 KB: the sphere code took 59 KB; ~827 KB are free before them)
+					; MAIN's later peak (the ending) leaves ~190 KB free (tags 60/63)
 
 	section	text
 start:	move.l	4(sp),a0
@@ -441,7 +441,8 @@ files:	dc.l	ICONARRAY_SIZEOF,GS_ICONS,0
 	dc.l	64000,GS_SCREEN2,0
 	dc.l	TEXTDISPLAY_SIZEOF+1,GS_TEXTDISPLAY,0
 	dc.l	COLORDISPLAY_SIZEOF,GS_COLORDISPLAY,0
-	dc.l	128+LAND_SIZEOF,GS_LANDFORM,0	; (+128 before: the original writes landform^[0,y])
+	dc.l	128+LAND_SIZEOF+128*120,GS_LANDFORM,0	; (+128 before: the original writes landform^[0,y];
+					; 6n: +128 columns after for u2_srg's copy)
 	dc.l	22000,0,u2_sphere		; DATA\SPHERE.DAT
 	dc.l	12402,GS_STARMAPSCREEN,0
 	dc.l	400,GS_TEMPICON,0

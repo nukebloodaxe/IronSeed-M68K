@@ -124,11 +124,47 @@ ms_dirty_all:				; (keeps d3, as documented)
 	moveq	#0,d1
 	move.w	#MS_W-1,d2
 	move.w	#MS_H-1,d3
-	bsr.s	ms_dirty
+	bsr	ms_dirty
 	move.w	(sp)+,d3
 	rts
 ; ms_dirtyx (Phase 6k): ms_dirty for a caller that knows the span changed (makesphere3 compares
 ; itself): the flush converts its lines without comparing them with the mirror.
+; ms_dirtyx1 (Phase 6n): ms_dirtyx(x1 d0, y d1, x2 d2, y) for one row 0..199: a row with no
+; span yet gets it here (makesphere3's rows: ~60 instead of ~650 cycles), else ms_dirtyx.
+; trashes d0-d2/a0-a1 (does not leave ms_dirty's d0-d2)
+ms_dirtyx1:
+	lea	ms_x1,a0
+	add.w	d1,a0
+	add.w	d1,a0
+	cmp.w	#$7fff,(a0)
+	bne.s	.gen
+	cmp.w	#$7fff,MS_SPB(a0)
+	bne.s	.gen
+	and.w	#$fff8,d0
+	move.w	d0,(a0)
+	or.w	#7,d2
+	move.w	d2,ms_x2-ms_x1(a0)
+	lea	ms_xf,a0
+	st	0(a0,d1.w)
+	cmp.w	ms_xfmin,d1
+	bge.s	.b1
+	move.w	d1,ms_xfmin
+.b1:	cmp.w	ms_xfmax,d1
+	ble.s	.b2
+	move.w	d1,ms_xfmax
+.b2:	cmp.w	ms_ymin,d1
+	bge.s	.c1
+	move.w	d1,ms_ymin
+.c1:	cmp.w	ms_ymax,d1
+	ble.s	.c2
+	move.w	d1,ms_ymax
+.c2:	move.w	#1,ms_any
+	rts
+.gen:	move.w	d3,-(sp)
+	move.w	d1,d3
+	bsr.s	ms_dirtyx
+	move.w	(sp)+,d3
+	rts
 ms_dirtyx:
 	movem.l	d1/d3,-(sp)
 	lea	ms_xf,a0

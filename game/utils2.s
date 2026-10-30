@@ -263,6 +263,7 @@ sphere_find:
 sphere_setup:
 	sf	u2_xok			; (u2_sphere_rows and makestar build their pixel tables again)
 	sf	u2_sxok
+	sf	u2_gok
 	move.w	GS_RADIUS(a6),d0
 	bsr.s	sphere_find
 	move.l	a0,u2_sph
@@ -1736,6 +1737,18 @@ makesphere2:
 U2_RMAX		equ	128		; (6m) the longest sphere row (pixels; the largest radius gives < 120)
 u2_sphere_rows:
 	movem.l	d3-d7/a3-a5,-(sp)
+	ifnd	NOSPHGEN
+	cmp.b	#1,u2_gok		; (Phase 6n) the rows as generated code (u2_sgen)
+	beq	u2_srg
+	tst.b	u2_gok
+	bne.s	.old			; ($FF: it did not fit - the table below)
+	movem.l	d0-d1,-(sp)
+	bsr	u2_sgen
+	movem.l	(sp)+,d0-d1
+	cmp.b	#1,u2_gok
+	beq	u2_srg
+.old:
+	endif
 	tst.b	u2_xok			; (Phase 6i) the pixel table of this radius and shading
 	bne.s	.ok
 	movem.l	d0-d1,-(sp)
@@ -1824,6 +1837,136 @@ u2_sphere_rows:
 .x:	movem.l	(sp)+,d3-d7/a3-a5
 	rts
 
+	ifnd	NOSPHGEN
+; (Phase 6n) u2_srg: u2_sphere_rows by the generated code: rows d0..d1 (saved registers on the
+; stack). landform^ has U2_LEXT bytes after column 240 (main.s): columns 1.. are copied there
+; first, so landform^[index + c, ii] is always base + index * 120 (no wrap inside a row). Each
+; row's code (u2_sgen) reads a4 = landform^[1, ii] + (c - 1) * 120, a0 = u2_tab, writes (a2)+;
+; it uses a5, d1 and d2's low byte (d2's high byte stays 0); a1, a3 = u2_grow entry are free.
+u2_srg:	move.w	d0,d6			; i
+	move.w	d1,d7			; the last row
+	move.w	GS_C(a6),d4
+	move.w	d4,d0			; columns read beyond 240: index (<= 127) + c - 1 - 239
+	add.w	#127-240,d0
+	ble.s	.nx
+	mulu	#LAND_W/4,d0		; longs
+	move.l	GS_LANDFORM(a6),a0
+	lea	240*LAND_W(a0),a1
+	subq.w	#1,d0
+.cx:	move.l	(a0)+,(a1)+
+	dbf	d0,.cx
+.nx:	move.w	d4,d3
+	subq.w	#1,d3
+	muls	#LAND_W,d3		; (c - 1) * 120 (c starts at 0: the margin before landform^)
+	add.l	GS_LANDFORM(a6),d3
+	subq.l	#1,d3			; + ii per row
+	lea	u2_grow,a3
+	move.w	d6,d0
+	subq.w	#6,d0
+	lsl.w	#3,d0
+	add.w	d0,a3			; the row's entry: code, pm
+	moveq	#0,d5			; planet^ row: (i + offset - 1) * 120 + offset
+	move.w	d6,d5
+	add.w	GS_OFFSET(a6),d5
+	subq.w	#1,d5
+	mulu	#120,d5
+	moveq	#0,d0
+	move.w	GS_OFFSET(a6),d0
+	add.l	d0,d5
+	add.l	GS_PLANET(a6),d5
+	lea	u2_tab,a0
+	moveq	#0,d2
+.row:	cmp.w	d7,d6
+	bgt.s	.x
+	move.w	d6,d0			; ii := 60*i div spherei
+	mulu	#60,d0
+	divu	GS_SPHEREI(a6),d0
+	move.l	d3,a4
+	add.w	d0,a4
+	move.l	d5,a2
+	add.w	4(a3),a2		; + pm[i]
+	move.l	(a3),a1
+	jsr	(a1)
+	addq.l	#8,a3
+	moveq	#120,d0
+	add.l	d0,d5
+	addq.w	#1,d6
+	bra.s	.row
+.x:	movem.l	(sp)+,d3-d7/a3-a5
+	rts
+
+; u2_sgen: each row of u2_sphw as code into u2_sphx (u2_grow: per row the code, pm). Per pixel:
+;   lea alt*256(a0),a5          when its alt differs from the previous pixel's
+;   move.b index*120(a4),d2     12 cycles
+;   move.b 0(a5,d2.w),(a2)+     18
+; a pixel with the same index and alt as the one before (the same colour) is move.b d1,(a2)+
+; (8), its group's first then moves its colour through d1. Ends with rts. u2_gok := 1, or $FF
+; when the code does not fit (u2_sphere_rows then uses the table).
+U2_GMAX		equ	102400		; (largest radius: 10.3 k pixels, at most 8 bytes each + the leas)
+u2_sgen:
+	movem.l	d3-d7/a3-a5,-(sp)
+	sf	u2_xok			; (u2_sphx is the code now)
+	sf	u2_sxok
+	lea	u2_sphw,a0
+	lea	u2_sphx,a1
+	lea	u2_grow,a2
+	lea	u2_altw,a3
+	lea	u2_sphx+U2_GMAX-16,a5	; the last place a pixel may start
+	move.w	GS_MAXSPHEREI(a6),d5
+	subq.w	#6,d5			; rows - 1
+.r:	move.l	a1,(a2)+
+	move.w	(a0)+,(a2)+		; pm
+	clr.w	(a2)+
+	move.w	(a0)+,d3		; n
+	moveq	#-1,d6			; a5's alt (none yet)
+	moveq	#-1,d7			; the previous pixel's index * 2 << 16 | alt
+	sub.l	a4,a4			; its colour instruction
+	moveq	#1,d4			; the first pixel
+	subq.w	#1,d3
+	bmi.s	.e
+.p:	cmp.l	a5,a1
+	bhs.s	.full
+	move.w	(a0)+,d0		; index * 2
+	move.w	0(a3,d0.w),d1		; alt * 256
+	tst.w	d4
+	beq.s	.p1
+	moveq	#0,d4
+	tst.w	u2_first
+	bmi.s	.p1
+	move.w	u2_first,d1
+.p1:	move.w	d0,d2
+	swap	d2
+	move.w	d1,d2
+	cmp.l	d7,d2
+	bne.s	.new
+	cmp.w	#$14f5,(a4)		; the group's first stores straight: through d1 instead
+	bne.s	.rp
+	move.w	#$1235,(a4)		; move.b 0(a5,d2.w),d1
+	move.w	#$14c1,(a1)+		; move.b d1,(a2)+ (its own pixel)
+.rp:	move.w	#$14c1,(a1)+		; move.b d1,(a2)+
+	bra.s	.nx
+.new:	move.l	d2,d7
+	cmp.w	d6,d1
+	beq.s	.sa
+	move.w	d1,d6
+	move.w	#$4be8,(a1)+		; lea alt*256(a0),a5
+	move.w	d1,(a1)+
+.sa:	move.w	#$142c,(a1)+		; move.b index*120(a4),d2
+	mulu	#60,d0
+	move.w	d0,(a1)+
+	move.l	a1,a4
+	move.w	#$14f5,(a1)+		; move.b 0(a5,d2.w),(a2)+
+	move.w	#$2000,(a1)+
+.nx:	dbf	d3,.p
+.e:	move.w	#$4e75,(a1)+		; rts
+	dbf	d5,.r
+	move.b	#1,u2_gok
+	bra.s	.x
+.full:	st	u2_gok
+.x:	movem.l	(sp)+,d3-d7/a3-a5
+	rts
+	endif
+
 ; u2_sphx_build: u2_sphx from u2_sphw (the radius's rows), u2_altw and u2_first (the shading): per
 ; row pm, n, per pixel (index * 120, alt * 256 - the first pixel's alt from u2_first when that is
 ; set), then cnt[t] = the pixels with index <= t for t = 0..127 (index rises along a row)
@@ -1874,6 +2017,7 @@ u2_sphx_build:
 	dbf	d5,.r
 	st	u2_xok
 	sf	u2_sxok			; (the star's table shares u2_sphx)
+	sf	u2_gok
 	movem.l	(sp)+,d3-d5/a3
 	rts
 
@@ -1884,6 +2028,7 @@ u2_sphx_build:
 ; pixel of each row), else 0 (the column's own)
 u2_shade:
 	sf	u2_xok
+	sf	u2_gok
 	movem.l	d3-d6/a3,-(sp)
 	lea	u2_tab,a3
 	moveq	#0,d3			; a
@@ -1987,7 +2132,7 @@ makesphere3:
 	moveq	#30-1,d0
 .l:	cmpm.l	(a3)+,(a2)+		; the first differing long from the left
 	dbne	d0,.l
-	beq.s	.nx			; the row is unchanged
+	beq	.nx			; the row is unchanged
 	moveq	#29,d3
 	sub.w	d0,d3			; its index
 	lea	120(a0),a2		; the last differing long from the right
@@ -1996,33 +2141,85 @@ makesphere3:
 .rl:	move.l	-(a3),d1
 	cmp.l	-(a2),d1
 	dbne	d4,.rl
+	ifd	SPHCNT			; (debug: cells of 8 pixels in the span, equal ones)
+	movem.l	d0-d2/a0-a1,-(sp)
+	move.w	d3,d0
+	and.w	#$fffe,d0
+	lsl.w	#2,d0
+	add.w	d0,a0
+	add.w	d0,a1
+	move.w	d4,d1
+	or.w	#1,d1
+	sub.w	d3,d1
+	lsr.w	#1,d1			; cells - 1 (approx)
+.sc:	addq.l	#1,u2_scnt
+	move.l	(a0)+,d0
+	move.l	(a0)+,d2
+	cmp.l	(a1)+,d0
+	bne.s	.sd
+	cmp.l	(a1)+,d2
+	bne.s	.sd2
+	addq.l	#1,u2_scnt+4
+	bra.s	.sn
+.sd:	addq.l	#4,a1
+.sd2:
+.sn:	dbf	d1,.sc
+	movem.l	(sp)+,d0-d2/a0-a1
+	endif
 	movem.l	a0-a1,-(sp)		; copy longs d3..d4
 	move.w	d3,d0
 	lsl.w	#2,d0
 	add.w	d0,a0
 	add.w	d0,a1
-	move.w	d4,d0
+	move.w	d4,d0			; (6n) unrolled: jump to the (d4-d3+1)-th copy from the end
 	sub.w	d3,d0
-.cp:	move.l	(a1)+,(a0)+
-	dbf	d0,.cp
-	move.w	d3,d0			; ms_dirty(28 + 4*d3, y, 28 + 4*d4 + 3, y)
+	add.w	d0,d0
+	neg.w	d0
+	jmp	.cpe-2(pc,d0.w)
+	rept	30
+	move.l	(a1)+,(a0)+
+	endr
+.cpe:	move.w	d3,d0			; ms_dirtyx(28 + 4*d3, y, 28 + 4*d4 + 3, y)
 	lsl.w	#2,d0
 	add.w	#28,d0
 	move.w	d4,d2
 	lsl.w	#2,d2
 	add.w	#28+3,d2
 	move.w	d5,d1
-	move.w	d3,-(sp)
-	move.w	d5,d3
-	bsr	ms_dirtyx		; (the span did change: no need to compare it again)
-	move.w	(sp)+,d3
+	bsr	ms_dirtyx1		; (the span did change: no need to compare it again)
 	movem.l	(sp)+,a0-a1
 .nx:	lea	MS_W(a0),a0
 	lea	120(a1),a1
 	addq.w	#1,d5
 	dbf	d6,.r
 	movem.l	(sp)+,d3-d6/a3
+	ifd	SPHCNT
+	move.l	u2_scnt,d0
+	and.l	#$ffffff,d0
+	or.l	#236<<24,d0
+	bsr	scr_dbg
+	move.l	u2_scnt+4,d0
+	and.l	#$ffffff,d0
+	or.l	#237<<24,d0
+	bsr	scr_dbg
+	clr.l	u2_scnt
+	clr.l	u2_scnt+4
+	move.l	gfx_stat,-(sp)
+	move.l	gfx_stat+4,-(sp)
 	bsr	mouseshow
+	move.l	gfx_stat+4,d0
+	sub.l	(sp)+,d0
+	and.l	#$ffffff,d0
+	or.l	#238<<24,d0
+	bsr	scr_dbg
+	move.l	gfx_stat,d0
+	sub.l	(sp)+,d0
+	and.l	#$ffffff,d0
+	or.l	#239<<24,d0
+	bsr	scr_dbg
+	else
+	bsr	mouseshow
+	endif
 	addq.w	#1,GS_C(a6)
 	cmp.w	#240,GS_C(a6)
 	ble.s	.x
@@ -2184,6 +2381,7 @@ u2_stx_build:
 	dbf	d5,.r
 	st	u2_sxok
 	sf	u2_xok
+	sf	u2_gok
 	movem.l	(sp)+,d3-d5
 	rts
 
@@ -2259,11 +2457,21 @@ u2_rowp:	ds.l	1
 u2_first:	ds.w	1		; alt 10's row offset for each row's first pixel, or -1: its own
 u2_altw:	ds.w	128		; per column index: its alt's row offset in u2_tab (alt * 256)
 u2_sphw:	ds.w	U2_SPHW		; the radius's rows as words: pm, n, n x index * 2 (sphere_setup)
+	ifd	NOSPHGEN
 u2_sphx:	ds.b	4*U2_SPHW+132*128	; u2_sphere_rows' pixel table (u2_sphx_build)
+	else
+u2_sphx:	ds.b	U2_GMAX		; (6n) u2_sgen's code, or u2_sphere_rows'/makestar's tables
+u2_grow:	ds.l	2*132		; (6n) per sphere row: its code, pm
+	endif
 u2_dpath:	ds.b	20		; u2_design's file name
 u2_dsbuf:	ds.b	4		; u2_dsuffix's suffix
 u2_xok:		ds.b	1		; u2_sphx holds the sphere's table, up to date
 u2_sxok:	ds.b	1		; u2_sphx holds makestar's table, up to date
+	ifd	SPHCNT
+	even
+u2_scnt:	ds.l	2
+	endif
+u2_gok:		ds.b	1		; (6n) u2_sphx holds the sphere's code (1), $FF: did not fit
 	even
 u2_tab:		ds.b	32*256		; [alt 0-31][land value] -> colour
 
