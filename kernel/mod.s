@@ -412,9 +412,19 @@ mod_row_:
 	bra	.eend
 .e4:	cmp.w	#8,d6
 	bne.s	.e5
-	cmp.w	#128,d7
-	shs	CH_SIDE(a3)		; $ff = right
+	cmp.w	#$a4,d7		; DMP's 8xx (Phase 6o, modref.py): 00 left, 40 centre,
+	beq.s	.pc			; 80 right, A4 surround = centre; above 80 = right
+	cmp.w	#64,d7
+	beq.s	.pc
+	shi	CH_SIDE(a3)		; the nearer side: $ff = right
 	and.b	#1,CH_SIDE(a3)
+	bra	.eend
+.pc:	move.l	a3,d0			; centre: the channel's own side (L R R L)
+	sub.l	#mod_chans,d0
+	divu	#CH_SIZE,d0
+	and.w	#7,d0
+	lea	mod_sides,a0
+	move.b	0(a0,d0.w),CH_SIDE(a3)
 	bra	.eend
 .e5:	cmp.w	#$e,d6
 	bne	.eend

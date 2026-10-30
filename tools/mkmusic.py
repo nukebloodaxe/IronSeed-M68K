@@ -35,7 +35,9 @@ DRIFT_MAX = 8        # sample bytes: a voice whose note started a sample earlier
 class FastPlayer(modref.Player):
     """modref.Player with the mixer in numpy (same integers). interp=True: a better render the
     ST could never mix in real time - linear interpolation between sample bytes, the volume
-    applied before rounding (the replay, timing and loop points are unchanged)."""
+    applied before rounding, and soft panning at DMP's positions (Phase 6o: a voice at 8xx
+    position p goes (128-p)/128 left and p/128 right; L R R L voices stay hard on their side;
+    the replay, timing and loop points are unchanged)."""
 
     def __init__(self, mod, rate, sfxroom=0, interp=False):
         super().__init__(mod, rate, sfxroom)
@@ -105,8 +107,12 @@ class FastPlayer(modref.Player):
                 ok = p < ln
                 if not ok.all(): m = int(ok.sum())
                 pw = p[:m]; nx = np.minimum(pw + 1, ln); f = f[:m]
-            v = d[pw] + (d[nx] - d[pw]) * f
-            acc[c.side][:m] += v * c.vol / (64.0 * self.vps)
+            v = (d[pw] + (d[nx] - d[pw]) * f) * (c.vol / (64.0 * self.vps))
+            if c.pan <= 0: acc[0][:m] += v
+            elif c.pan >= 128: acc[1][:m] += v
+            else:
+                acc[0][:m] += v * ((128 - c.pan) / 128.0)
+                acc[1][:m] += v * (c.pan / 128.0)
             fe = c.frac + (st & 0xffff) * m
             pn = c.pos + (st >> 16) * m + (fe >> 16)
             if ll and pn >= ls + ll: pn = ls + (pn - ls) % ll
@@ -124,16 +130,16 @@ class FastPlayer(modref.Player):
         ch, pos = [], []
         for c in self.ch:
             sm = c.smp['idx'] if c.smp is not None else -1
-            ch.append((sm, c.period, c.vol, c.on, c.side, c.porta_target, c.porta_speed,
+            ch.append((sm, c.period, c.vol, c.on, c.side, c.pan, c.porta_target, c.porta_speed,
                        c.vib_pos, c.vib_speed, c.vib_depth, c.eff, c.prm, c.offset,
                        c.note_smp, c.note_per, c.delay))
             pos.append((c.pos, c.frac) if c.on else None)
         return (g, tuple(ch)), pos
 
 
-FIELDS = ['smp', 'period', 'vol', 'on', 'side', 'ptarget', 'pspeed', 'vibpos', 'vibspd', 'vibdep',
+FIELDS = ['smp', 'period', 'vol', 'on', 'side', 'pan', 'ptarget', 'pspeed', 'vibpos', 'vibspd', 'vibdep',
           'eff', 'prm', 'offset', 'nsmp', 'nper', 'delay']
-ONDEP = {'smp', 'period', 'vol', 'side'}         # live while the voice plays, whatever comes next
+ONDEP = {'smp', 'period', 'vol', 'side', 'pan'}         # live while the voice plays, whatever comes next
 NEVER = {'eff', 'prm', 'nsmp', 'nper', 'delay'}  # set by every row before use (do_row)
 
 
@@ -162,7 +168,7 @@ def classify(cell):
     if trig: c['period'] = 'W'
     elif porta or eff in (1, 2, 4, 6) or (eff == 0 and prm) or retrig or (eff == 0xE and x in (1, 2)): c['period'] = 'R'
     else: c['period'] = None
-    c['side'] = 'W' if eff == 8 else ('R' if (trig or retrig) else None)
+    c['side'] = c['pan'] = 'W' if eff == 8 else ('R' if (trig or retrig) else None)
     return c
 
 

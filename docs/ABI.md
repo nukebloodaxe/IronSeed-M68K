@@ -108,3 +108,6 @@ Every routine in `kernel/` and in the screen modules follows these rules. A rout
 - **ms_dirtyx1** (mscr.s): ms_dirtyx for one row; a row with no span yet is marked inline (~280 cycles as Hatari counts them, was ~650 through ms_dirtyx + ms_dirty), else ms_dirtyx. Trashes d0-d2/a0-a1 and does **not** leave ms_dirty's d0-d2 (makesphere3 does not need them).
 - **gfx_c4_span's pair path** two cells a pass (`GFX_PCELL` macro, kernel gfx.s): d3/d6 are updated once per run of full cells.
 - **MN_KEEP** 576 -> 512 KB (main.s): MAIN's pool before the pair tables is ~827 KB now; two 131 KB tables still fit.
+
+## Phase 6o: panning
+- **8xx is DMP's** (the 1994 game's player): position 00 left, 40 centre, 80 right, A4 surround (= centre), above 80 = right. `CH_SIDE` (mod.s) is the side a one-side mixer uses: the nearer one, at the exact centre the channel's own (`mod_sides`, L R R L). tools/modref.py `dmp_pan`/`pan_side` is the spec (kts compares). The interpolated renders keep the position itself (`Chan.pan` 0..128, linear soft pan in mkmusic.py mix_interp); `pan` is part of mkmusic's loop-junction state.

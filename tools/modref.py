@@ -13,7 +13,11 @@ Model (both implementations):
   9 offset, A volume slide, B jump, C volume, D break, F speed/bpm, E1/E2 fine slide,
   E9 retrigger, EA/EB fine volume, EC cut, ED delay; others ignored.
 - Finetune ignored (periods used as stored). Periods clamped to 113..856 by slides.
-- Panning: channel c -> side (0,1,1,0)[c%4] (L R R L); 8xx: xx < 128 left, else right.
+- Panning (Phase 6o): channel c -> side (0,1,1,0)[c%4] (L R R L). 8xx is DMP's (the 1994 game's
+  Dual Module Player): position 00 left .. 40 centre .. 80 right, A4 surround (= centre here),
+  above 80 = right. The mixer puts a voice on one side: the nearer one, and at the centre the
+  channel's own side (so a song panned to the middle keeps its L R R L spread). Chan.pan keeps
+  the position (0..128) for renders that pan softly (mkmusic --interp).
 - Mixer: per voice step = steptab[period] (16.16) = floor(3546895 * 65536 / rate / period);
   each output sample reads sample[pos] then advances pos by step; volume table
   vt[v][s] = floor(s * v / (64 * vps)) where vps = channels/2; per side the
@@ -69,9 +73,19 @@ class Mod:
         return (b[0] & 0xf0) | (b[2] >> 4), ((b[0] & 15) << 8) | b[1], b[2] & 15, b[3]
 
 
+def dmp_pan(prm):
+    """8xx -> DMP position 0..128 (00 left, 40 centre, 80 right; A4 surround = centre)."""
+    return 64 if prm == 0xA4 else min(prm, 128)
+
+
+def pan_side(pan, dside):
+    """The side a one-side mixer uses for a position: the nearer, at the centre the channel's own."""
+    return 0 if pan < 64 else 1 if pan > 64 else dside
+
+
 class Chan:
     def __init__(self, side):
-        self.side = side; self.smp = None; self.period = 0; self.vol = 0
+        self.side = side; self.dside = side; self.pan = 128 * side; self.smp = None; self.period = 0; self.vol = 0
         self.pos = 0; self.frac = 0; self.on = False
         self.porta_target = 0; self.porta_speed = 0; self.vib_pos = 0; self.vib_speed = 0; self.vib_depth = 0
         self.eff = 0; self.prm = 0; self.offset = 0; self.out_period = 0
@@ -112,7 +126,7 @@ class Player:
                 else: self.bpm = prm
             elif eff == 0xD: self.brk = (prm >> 4) * 10 + (prm & 15)
             elif eff == 0xB: self.jump = prm
-            elif eff == 0x8: c.side = 0 if prm < 128 else 1
+            elif eff == 0x8: c.pan = dmp_pan(prm); c.side = pan_side(c.pan, c.dside)
             elif eff == 0xE:
                 x, y = prm >> 4, prm & 15
                 if x == 1: c.period = max(113, c.period - y)
