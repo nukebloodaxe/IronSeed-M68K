@@ -760,6 +760,8 @@ ps_readydata:
 	lea	ps_mode_name,a0
 	bsr	ms_load
 	bcs	fatal
+	lea	ps_dspec,a0		; (Phase 7b) the cylinder dithered: bands 0-2, indices 96-127
+	bsr	ms_dither
 	FSSE				; part := 34/100
 	FLDI	34
 	FLDI	100
@@ -976,6 +978,8 @@ ps_mainloop:
 
 	section	data
 ps_mode_name:	dc.b	"PSYCHE",0
+	even
+ps_dspec:	dc.w	0,2,96,127	; (Phase 7b) ms_dither: the psychometry cylinder's colours
 ps_fn_mod:	dc.b	"SOUND",92,"PSYEVAL.MOD",0
 ps_jobs:				; string[13] each
 	dc.b	11,"Psychometry  "

@@ -390,6 +390,8 @@ ci_readydata:
 	lea	ci_mode,a0
 	bsr	ms_load
 	bcs	fatal
+	lea	ci_dspec,a0		; (Phase 7b) the portrait dithered: bands 0-2, indices 161-191
+	bsr	ms_dither
 	tst.b	ci_crewread		; crew.dta (read once)
 	bne.s	.cf
 	st	ci_crewread
@@ -686,6 +688,8 @@ ci_mainloop:
 
 	section	data
 ci_mode:	dc.b	"CHAR2",0
+	even
+ci_dspec:	dc.w	0,2,161,191	; (Phase 7b) ms_dither: the crew portrait's colours
 ci_fn_mod:	dc.b	"SOUND",92,"CREWCOMM.MOD",0
 ci_fn_crew:	dc.b	"DATA",92,"CREW.DTA",0
 	even

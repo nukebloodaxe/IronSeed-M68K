@@ -746,6 +746,7 @@ ms_load:
 	sf	rf_on			; (a whole design replaces a dialog's refit: refit.s)
 	sf	gfx_pnobuild
 	move.w	#-1,ms_design		; (a mode's own design: not one of u2_design's)
+	move.w	#-1,ms_dsb1		; (Phase 7b: and no screen's dithering - ms_dither after it)
 	lea	ms_path+5,a1		; "DATA\" + name + ".ISP"
 .cp:	move.b	(a0)+,(a1)+
 	bne.s	.cp
@@ -801,7 +802,7 @@ ms_load:
 	or.b	#1,ccr
 	rts
 
-MS_SNAP		equ	MS_W*MS_H+SCR_SIZE+(2+4*BAND_SIZE)+1024+64+64+768+2	; (+ ms_design)
+MS_SNAP		equ	MS_W*MS_H+SCR_SIZE+(2+4*BAND_SIZE)+1024+64+64+768+2+8	; (+ ms_design, + the dither spec: 7b)
 
 ms_snap:
 	movem.l	d3/a3,-(sp)
@@ -842,6 +843,8 @@ ms_snap:
 .c7:	move.l	(a0)+,(a1)+
 	dbf	d0,.c7
 	move.w	ms_design,(a1)+
+	move.l	ms_dsb1,(a1)+		; (Phase 7b) the screen's dither spec travels with it
+	move.l	ms_dslo,(a1)+
 	tst.w	(sp)+
 	beq.s	.x
 	bsr	kbd_cursor_show
@@ -914,6 +917,8 @@ ms_unsnap:
 .c7:	move.l	(a0)+,(a1)+
 	dbf	d0,.c7
 	move.w	(a0)+,ms_design
+	move.l	(a0)+,ms_dsb1		; (Phase 7b) its dither spec (made again below)
+	move.l	(a0)+,ms_dslo
 	addq.l	#4,sp
 	bsr	kbd_cursor_hide
 	move.l	a3,a0
@@ -928,32 +933,43 @@ ms_unsnap:
 	movem.l	(sp)+,d3/a3
 	rts
 
+; ms_dither (Phase 7b): a0 = a screen's dither spec (words: first band, last band, lo, hi): its
+; bands dithered over indices lo..hi from now on (call it after the screen's ms_load; ms_load and
+; ms_unsnap end it). Users: egg 2 (portraits), psychometry (the cylinder), crew info (the portrait).
+; in: a0 = spec  trashes: d0-d2/a0-a2
+ms_dither:
+	move.l	(a0)+,ms_dsb1		; (ms_dsb1, ms_dsb2)
+	move.l	(a0),ms_dslo		; (ms_dslo, ms_dshi)
+	lea	GS_COLORS(a6),a0
+	; (falls into ms_dhook)
+
 ; ms_dhook (Phase 7; kernel vid_dhook, called at the end of vid_set256 with a0 = its palette, and
-; after u2_design and ms_unsnap; only for a0 = GS_COLORS): which bands are dithered over which indices - egg 2's portraits
-; (eg_dith: bands 0-2, 1-63) or a bridge design's viewscreen (ms_design >= 0: band 1, 1-127, the
-; planet's and the stars' colours); the bands whose B changed are marked for converting again.
-; in: a0 = palette  trashes: d0-d2/a0-a2
+; after u2_design, ms_unsnap and ms_dither; only for a0 = GS_COLORS): which bands are dithered over
+; which indices - a screen's spec (ms_dither) or a bridge design's viewscreen (ms_design >= 0:
+; band 1, 1-127, the planet's and the stars' colours); the bands whose B changed are marked for
+; converting again.  in: a0 = palette  trashes: d0-d2/a0-a2
 ms_dhook:
-	movem.l	d3-d5/a3,-(sp)
+	movem.l	d3-d6/a3,-(sp)
 	move.l	a0,a3
 	lea	GS_COLORS(a6),a1	; only the game's own colours: a passing palette (bossmode's
 	cmp.l	a1,a0			; black, graypalin's greys, a fade's copy) leaves the dithering
 	bne	.x			; as it is (the screen shows it for a moment only)
-	tst.b	eg_dith
-	beq.s	.br
-	moveq	#0,d4			; first band
-	moveq	#2,d5			; last band
-	move.w	#63,d3			; hi
+	move.w	ms_dsb1,d4
+	bmi.s	.br
+	move.w	ms_dsb2,d5		; a screen's spec
+	move.w	ms_dslo,d6
+	move.w	ms_dshi,d3
 	bra.s	.go
 .br:	tst.w	ms_design
 	bmi.s	.x
 	moveq	#1,d4
 	moveq	#1,d5
+	moveq	#1,d6
 	move.w	#127,d3
 .go:	cmp.w	vid_bands_src,d4	; (a band the design has)
 	bhs.s	.x
 	move.w	d4,d0
-	moveq	#1,d1
+	move.w	d6,d1
 	move.w	d3,d2
 	move.l	a3,a0
 	bsr	vid_dith
@@ -980,7 +996,7 @@ ms_dhook:
 .nb:	addq.w	#1,d4
 	cmp.w	d5,d4
 	bls.s	.go
-.x:	movem.l	(sp)+,d3-d5/a3
+.x:	movem.l	(sp)+,d3-d6/a3
 	rts
 
 ms_slot:				; d0.w slot -> a0 = its buffer (allocated on first use)
@@ -1473,6 +1489,11 @@ delayp:					; delay for a main loop's frame (kernel tim_pace: the frame's
 	bra	tim_pace
 
 	section	data
+	even
+ms_dsb1:	dc.w	-1		; (Phase 7b) a screen's dithering (ms_dither): first band (-1: none),
+ms_dsb2:	dc.w	0		; last band,
+ms_dslo:	dc.w	0		; indices lo..hi
+ms_dshi:	dc.w	0
 ms_path:	dc.b	"DATA",92,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 	even
 
