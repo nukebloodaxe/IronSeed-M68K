@@ -20,7 +20,8 @@ import cpr2st as c, cgmodel as cm, bandfit as bf, mainmodel as mm
 from mkmain import save_mode, snap_to_reps, preview
 
 NOISE = list(range(200, 216)), list(range(216, 232))
-K_OWN = 4
+K_OWN = int(os.environ.get('EGG_KOWN', 3))     # own slots per noise half and band (7c: 4 -> 3)
+W_EGG2 = float(os.environ.get('EGG_W2', 4.0))  # egg 2's weight in EGGN's fit (7c: 1 -> 4, its portraits)
 
 
 def noise(rng):
@@ -107,7 +108,7 @@ def main():
         [lambda i: egg2(i, font, p31, p32), lambda i: egg45(i, font, EGG4), lambda i: egg45(i, font, EGG5)][k % 3](im)
         if k >= 3:
             cm.plainfadearea(im, 80, 146, 240, 160, 3)
-        stack.append(im); weights.append(1.0)
+        stack.append(im); weights.append(W_EGG2 if k % 3 == 0 else 1.0)
     d = bf.fit(bf.hist_of(stack, weights), pal, own=[(0, 200, NOISE[0], K_OWN), (0, 200, NOISE[1], K_OWN)])
     snap_to_reps(d, pal)
     save_mode(out, 'EGGN', d, np.zeros((200, 320), np.uint8))
