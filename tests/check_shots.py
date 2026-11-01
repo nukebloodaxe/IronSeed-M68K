@@ -27,6 +27,9 @@ for arg in sys.argv[4:]:
     cand = [m for m in modes if lines(m[1]) == lines(tab)]
     if len(s) >= 32000 + 138 + 1024:    # (Phase 6j: the shot carries the LUTs in use - a dialog's refit)
         cand.append(('(own)', tab, [np.frombuffer(s[32138 + i * 256:32138 + (i + 1) * 256], np.uint8) for i in range(4)]))
+    lutb = None                         # (Phase 7: and the odd-pixel LUTs - the dithering)
+    if len(s) >= 32000 + 138 + 2048:
+        lutb = [np.frombuffer(s[33162 + i * 256:33162 + (i + 1) * 256], np.uint8) for i in range(4)]
     if not cand:
         print('%-6s no mode with split lines %s' % (name, lines(tab))); bad_total += 1; continue
     best = None
@@ -39,6 +42,10 @@ for arg in sys.argv[4:]:
             x1, y1, x2, y2 = map(int, ex.split(','))
             mask[y1:y2 + 1, x1:x2 + 1] = False
         diff = (ref != st) & mask
+        if lutb is not None and mname == '(own)':   # B on odd (x+y); A there too (single pixels
+            refb = np.array([lutb[lb[y]][lin[y]] for y in range(200)], np.uint8)   # set by LUT)
+            odd = (np.add.outer(np.arange(200), np.arange(320)) & 1).astype(bool)
+            diff = (((ref != st) & ~odd) | ((ref != st) & (refb != st) & odd)) & mask
         if best is None or diff.sum() < best[1].sum(): best = (mname, diff)
     mname, diff = best
     n = int(diff.sum()); bad_total += n

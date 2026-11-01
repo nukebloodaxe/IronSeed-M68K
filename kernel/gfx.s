@@ -41,7 +41,13 @@ gfx_set_target:
 gfx_pset:
 	bsr	vid_lut_y
 	and.w	#$ff,d2
-	move.b	0(a1,d2.w),d2		; slot
+	move.w	d0,-(sp)		; (Phase 7) (x + y) odd: the line's B LUT (the checkerboard)
+	eor.w	d1,(sp)
+	btst	#0,1(sp)
+	addq.l	#2,sp			; (flags kept)
+	beq.s	.ev
+	add.l	#vid_lutsb-vid_luts,a1
+.ev:	move.b	0(a1,d2.w),d2		; slot
 	move.l	gfx_target,a0
 	mulu	#SCR_BPL,d1
 	add.l	d1,a0
@@ -430,13 +436,22 @@ gfx_c4_span:
 	endif
 	move.l	d1,-(sp)
 	bsr	vid_lut_y
-	lea	1024(a1),a5		; this line's slot*4 table (vid_luts4)
+	move.l	a1,d3			; (Phase 7) this line's slot*4 tables: vid_luts4 band * 768,
+	sub.l	#vid_luts,d3		; [A, B, A]; an odd line starts at B (the checkerboard)
+	move.w	d3,d4
+	add.w	d3,d3
+	add.w	d4,d3			; band * 768
+	lea	vid_luts4,a5
+	add.w	d3,a5
+	lsr.w	#5,d4			; (band * 2) * 4
+	btst	#0,3(sp)
+	beq.s	.ev0
+	lea	256(a5),a5
+	addq.w	#4,d4
+.ev0:	move.w	d4,d3			; (band * 2 + parity) * 4: the pair table's index
 	clr.l	gfx_pcur
 	tst.w	gfx_pslots		; (Phase 6j) the band's pair table, if it has one / earns one
 	beq.s	.np
-	move.l	a1,d3
-	sub.l	#vid_luts,d3
-	lsr.w	#6,d3			; band * 4
 	lea	gfx_pband,a2
 	move.l	0(a2,d3.w),d4
 	bne.s	.pt
@@ -494,10 +509,10 @@ gfx_c4_span:
 	lsr.w	#3,d7
 	subq.w	#1,d7
 	tst.l	gfx_pcur		; (Phase 6j) pairs: a table, and the pixels at an even address
-	beq	.full
+	beq	.full0
 	move.l	a0,d1
 	btst	#0,d1
-	bne	.full
+	bne	.full0
 	movem.l	a3/a5,-(sp)
 	lea	gfx_pos,a3
 	move.l	gfx_pcur,a5
@@ -533,30 +548,31 @@ gfx_c4_span:
 	tst.w	d6
 	bne	.cell
 	bra	.done
+.full0:	move.w	#$100,d4		; (Phase 7) the odd pixels' index base: [A, B, A] + 256
 .full:	moveq	#0,d5
 	move.b	(a0)+,d2
 	move.b	0(a5,d2.w),d2
 	or.l	-128(a3,d2.w),d5
-	move.b	(a0)+,d2
-	move.b	0(a5,d2.w),d2
+	move.b	(a0)+,d4		; (odd pixel: d4 = $100 + pixel, the B half on even lines)
+	move.b	0(a5,d4.w),d2
 	or.l	-64(a3,d2.w),d5
 	move.b	(a0)+,d2
 	move.b	0(a5,d2.w),d2
 	or.l	0(a3,d2.w),d5
-	move.b	(a0)+,d2
-	move.b	0(a5,d2.w),d2
+	move.b	(a0)+,d4		; (odd pixel: d4 = $100 + pixel, the B half on even lines)
+	move.b	0(a5,d4.w),d2
 	or.l	64(a3,d2.w),d5
 	move.b	(a0)+,d2
 	move.b	0(a5,d2.w),d2
 	or.l	-128(a4,d2.w),d5
-	move.b	(a0)+,d2
-	move.b	0(a5,d2.w),d2
+	move.b	(a0)+,d4		; (odd pixel: d4 = $100 + pixel, the B half on even lines)
+	move.b	0(a5,d4.w),d2
 	or.l	-64(a4,d2.w),d5
 	move.b	(a0)+,d2
 	move.b	0(a5,d2.w),d2
 	or.l	0(a4,d2.w),d5
-	move.b	(a0)+,d2
-	move.b	0(a5,d2.w),d2
+	move.b	(a0)+,d4		; (odd pixel: d4 = $100 + pixel, the B half on even lines)
+	move.b	0(a5,d4.w),d2
 	or.l	64(a4,d2.w),d5
 	movep.l	d5,0(a2)
 	subq.w	#8,d6
@@ -583,8 +599,14 @@ gfx_c4_span:
 	subq.w	#1,d6
 	addq.b	#1,d7
 	move.b	(a0)+,d2
-	move.b	0(a5,d2.w),d2
-	or.l	64(a4,d2.w),d5
+	btst	#0,d1			; (Phase 7) position 7-d1: odd -> the B half (+256)
+	bne.s	.pa
+	move.w	#$100,d4
+	move.b	d2,d4
+	move.b	0(a5,d4.w),d2
+	bra.s	.pb
+.pa:	move.b	0(a5,d2.w),d2
+.pb:	or.l	64(a4,d2.w),d5
 .nx:	dbf	d1,.px
 	move.b	d7,d1
 	lsl.w	#8,d1
@@ -607,7 +629,7 @@ gfx_c4_span:
 ; ---------------------------------------------------------------- Phase 6j: pair tables
 GFX_PMIN	equ	24000		; pixels a band converts before its table is built
 GFX_PTAB	equ	65536*2		; a table: (pixel pair) -> code * 16, words
-GFX_PSLOT	equ	256+GFX_PTAB	; a slot: the LUT it was built from, the table
+GFX_PSLOT	equ	512+GFX_PTAB	; a slot: the two LUTs it was built from (left, right pixel), the table
 
 gfx_pair_init:
 	move.l	a0,gfx_pbase
@@ -618,7 +640,7 @@ gfx_pair_init:
 	dbf	d0,.c
 gfx_pair_inval:				; (vid_set_luts: every band's LUT may have changed)
 	lea	gfx_pband,a0
-	moveq	#8+4-1,d0		; gfx_pband, gfx_pcnt, gfx_psrch
+	moveq	#3*8-1,d0		; gfx_pband, gfx_pcnt, gfx_psrch (per band and line parity)
 .i:	clr.l	(a0)+
 	dbf	d0,.i
 	rts
@@ -630,10 +652,7 @@ gfx_pair_get:
 	movem.l	d3-d5/a3,-(sp)
 	move.w	d1,d5
 	move.w	d0,d3
-	move.w	d0,d1			; the band's LUT
-	lsl.w	#8,d1
-	lea	vid_luts,a2
-	add.w	d1,a2
+	bsr	gfx_pkey_make		; a2 = the key: (left pixel's LUT, right pixel's LUT)
 	addq.w	#1,gfx_ptick
 	moveq	#0,d4			; slot
 	move.l	gfx_pbase,a3
@@ -644,9 +663,9 @@ gfx_pair_get:
 	add.w	d0,d0
 	tst.w	0(a0,d0.w)
 	beq.s	.fn
-	move.l	a3,a0			; its key = the LUT?
+	move.l	a3,a0			; its key = this one?
 	move.l	a2,a1
-	moveq	#256/4-1,d0
+	moveq	#512/4-1,d0
 .k:	cmpm.l	(a0)+,(a1)+
 	bne.s	.fn
 	dbf	d0,.k
@@ -668,34 +687,40 @@ gfx_pair_get:
 .lru:	bsr	gfx_pair_lru
 	tst.w	d4
 	bpl.s	.slot
+	bsr	gfx_pair_steal		; (Phase 7) a dithered band: a slot only undithered bands use
+	tst.w	d4
+	bpl.s	.slot
 	lea	gfx_pcnt,a0		; none free: this band tries again GFX_PMIN pixels later
 	move.w	d3,d0
 	lsl.w	#2,d0
 	clr.l	0(a0,d0.w)
 	sub.l	a0,a0
 	bra	.out
-.slot:	moveq	#0,d0
+.slot:	move.w	d3,d0			; (the key again: gfx_pair_live used gfx_pkb)
+	bsr	gfx_pkey_make
+	moveq	#0,d0
 	move.w	d4,d0
 	mulu	#GFX_PSLOT/256,d0
 	lsl.l	#8,d0
 	move.l	gfx_pbase,a3
 	add.l	d0,a3
-	lea	256(a3),a0		; a band still using the slot's old table loses it
+	lea	512(a3),a0		; a band still using the slot's old table loses it
 	lea	gfx_pband,a1
-	moveq	#4-1,d0
+	moveq	#8-1,d0
 .ev:	cmp.l	(a1)+,a0
 	bne.s	.evn
 	clr.l	-4(a1)
-	clr.l	16-4(a1)		; (its count starts again)
-	clr.l	32-4(a1)
+	clr.l	32-4(a1)		; (its count starts again)
+	clr.l	64-4(a1)
 .evn:	dbf	d0,.ev
 	move.l	a3,a1			; the key
 	move.l	a2,a0
-	moveq	#256/4-1,d0
+	moveq	#512/4-1,d0
 .ck:	move.l	(a0)+,(a1)+
 	dbf	d0,.ck
-	lea	256(a3),a0
-	move.l	a2,a1
+	lea	512(a3),a0
+	lea	gfx_pkb,a1		; (left LUT, right LUT)
+	lea	gfx_pkb+256,a2
 	ifd	PROFILE
 	addq.l	#1,gfx_stat+8
 	move.l	d0,-(sp)		; (tag 67: band << 8 | slot of a build)
@@ -716,7 +741,7 @@ gfx_pair_get:
 	move.w	d4,d0
 	add.w	d0,d0
 	move.w	gfx_ptick,0(a0,d0.w)
-	lea	256(a3),a0		; the table
+	lea	512(a3),a0		; the table
 	lea	gfx_pband,a1
 	move.w	d3,d0
 	lsl.w	#2,d0
@@ -726,6 +751,46 @@ gfx_pair_get:
 	move.l	a0,d0			; (Z: none)
 	rts
 
+; gfx_pair_steal (Phase 7): d3.w = the asking band * 2 + parity; d4.w := a slot whose table only
+; undithered bands other than the asking one use (they go back to the byte path; a dithered band
+; needs two tables - the checkerboard's parities - and the bridge has two slots), -1 when the
+; asking band is not dithered or there is none.  trashes: d0-d2/a0-a1
+gfx_pair_steal:
+	moveq	#-1,d4
+	move.w	d3,d0
+	lsr.w	#1,d0
+	move.w	d0,gfx_sband
+	lea	vid_ddith,a0
+	tst.b	0(a0,d0.w)
+	beq.s	.x
+	moveq	#0,d1			; slot
+	move.l	gfx_pbase,a1
+	lea	512(a1),a1		; its table
+.s:	cmp.w	gfx_pslots,d1
+	bhs.s	.x
+	lea	gfx_pband,a0
+	moveq	#0,d2			; bp
+.u:	cmp.l	(a0)+,a1
+	bne.s	.un
+	move.w	d2,d0			; used by bp d2: the asking band (either parity) or a
+	lsr.w	#1,d0			; dithered one: not this slot
+	cmp.w	gfx_sband,d0
+	beq.s	.n
+	movem.l	a0,-(sp)
+	lea	vid_ddith,a0
+	tst.b	0(a0,d0.w)
+	movem.l	(sp)+,a0
+	bne.s	.n
+.un:	addq.w	#1,d2
+	cmp.w	#8,d2
+	blo.s	.u
+	move.w	d1,d4			; only undithered users: this one
+	rts
+.n:	add.l	#GFX_PSLOT,a1
+	addq.w	#1,d1
+	bra.s	.s
+.x:	rts
+
 ; d4.w := the slot with the oldest stamp that no band's table pointer (gfx_pband) uses, -1 when
 ; every slot is in use  trashes: d0-d2/a0-a1
 gfx_pair_lru:
@@ -733,11 +798,11 @@ gfx_pair_lru:
 	moveq	#-1,d4
 	moveq	#0,d2			; its age + 1 (0: none yet)
 	move.l	gfx_pbase,a1
-	lea	256(a1),a1		; the slot's table
+	lea	512(a1),a1		; the slot's table
 .s:	cmp.w	gfx_pslots,d1
 	bhs.s	.x
 	lea	gfx_pband,a0
-	moveq	#4-1,d0
+	moveq	#8-1,d0
 .u:	cmp.l	(a0)+,a1
 	beq.s	.n			; in use
 	dbf	d0,.u
@@ -764,36 +829,61 @@ gfx_pair_lru:
 ; convert: such a table must not be replaced meanwhile - the bridge lost its text box's table to
 ; the viewscreen's after every design switch).  keeps every register but the flags
 gfx_pair_live:
-	movem.l	d0-d2/a0/a2,-(sp)
-	move.w	vid_bands_src,d2	; bands
-	subq.w	#1,d2
+	movem.l	d0-d3/a0-a2,-(sp)
+	move.l	a1,d2			; (the slot's table)
+	move.w	vid_bands_src,d3	; bands * 2 parities
+	add.w	d3,d3
+	subq.w	#1,d3
 	bmi.s	.no
-	lea	vid_luts,a2
-.b:	lea	-256(a1),a0		; the slot's key
-	move.l	a2,-(sp)
-	moveq	#256/4-1,d0
+.b:	move.w	d3,d0
+	bsr	gfx_pkey_make
+	move.l	d2,a0
+	lea	-512(a0),a0		; the slot's key
+	moveq	#512/4-1,d0
 .k:	cmpm.l	(a0)+,(a2)+
 	bne.s	.d
 	dbf	d0,.k
-	addq.l	#4,sp
 	moveq	#0,d0			; Z: live
 	bra.s	.x
-.d:	move.l	(sp)+,a2
-	lea	256(a2),a2
-	dbf	d2,.b
+.d:	dbf	d3,.b
 .no:	moveq	#1,d0			; Z clear
-.x:	movem.l	(sp)+,d0-d2/a0/a2	; (movem keeps the flags)
+.x:	movem.l	(sp)+,d0-d3/a0-a2	; (movem keeps the flags)
 	rts
 
-; gfx_pair_build(a0 = table, a1 = LUT): table[a*256 + b] = slot(a)*256 + slot(b)*16 - 16 distinct
-; rows (by slot(a)) built into gfx_prow, then copied per a.  trashes: d0-d2/a0-a2
+; gfx_pkey_make (Phase 7): d0.w = band * 2 + parity -> a2 = gfx_pkb, the pair table's key: the
+; LUT of the left (even) pixel, then the right one's: (A, B) on even lines, (B, A) on odd ones
+; (B = vid_lutsb, = A unless the band is dithered).  trashes: d0-d1/a0-a1
+gfx_pkey_make:
+	move.w	d0,d1
+	lsr.w	#1,d1
+	lsl.w	#8,d1
+	lea	vid_luts,a0
+	add.w	d1,a0
+	lea	vid_lutsb,a1
+	add.w	d1,a1
+	btst	#0,d0
+	beq.s	.e
+	exg	a0,a1
+.e:	lea	gfx_pkb,a2
+	moveq	#256/4-1,d1
+.l:	move.l	(a0)+,(a2)+
+	dbf	d1,.l
+	moveq	#256/4-1,d1
+.r:	move.l	(a1)+,(a2)+
+	dbf	d1,.r
+	lea	gfx_pkb,a2
+	rts
+
+; gfx_pair_build(a0 = table, a1 = left LUT, a2 = right LUT): table[a*256 + b] = slotL(a)*256 +
+; slotR(b)*16 - 16 distinct rows (by slotL(a)) built into gfx_prow, then copied per a.
+; trashes: d0-d2/a0-a2
 gfx_pair_build:
 	movem.l	d3-d7/a3-a5,-(sp)
 	move.l	a0,a4
 	move.l	a1,a5
-	lea	gfx_prow,a0		; row s: s*256 + slot(b)*16
+	lea	gfx_prow,a0		; row s: s*256 + slotR(b)*16
 	moveq	#0,d1			; s*256
-.rs:	move.l	a5,a1
+.rs:	move.l	a2,a1
 	move.w	#256-1,d2
 .rb:	moveq	#0,d0
 	move.b	(a1)+,d0
@@ -901,9 +991,9 @@ GFX_PMAXS	equ	4
 gfx_pbase:	ds.l	1		; (Phase 6j) pair tables: their memory
 gfx_stat:	ds.l	3		; (PROFILE: pixels by pairs, pixels asked for, tables built)
 gfx_pcur:	ds.l	1		; gfx_c4_span: this line's table (0 = none)
-gfx_pband:	ds.l	4		; per band: its table (0 = none yet)
-gfx_pcnt:	ds.l	4		; per band: pixels converted since its LUT changed (follows gfx_pband)
-gfx_psrch:	ds.l	4		; per band: the cache was searched (byte at band*4; follows gfx_pcnt)
+gfx_pband:	ds.l	8		; per band and line parity: its table (0 = none yet)
+gfx_pcnt:	ds.l	8		; per band and parity: pixels converted since its LUT changed (follows gfx_pband)
+gfx_psrch:	ds.l	8		; per band and parity: the cache was searched (byte at bp*4; follows gfx_pcnt)
 gfx_pnobuild:	ds.b	1		; no counting, no table builds: the LUTs are temporary (a dialog's refit)
 	even
 gfx_pkey:	ds.w	GFX_PMAXS	; per slot: it holds a table
@@ -911,6 +1001,8 @@ gfx_pstamp:	ds.w	GFX_PMAXS	; per slot: last use
 gfx_pslots:	ds.w	1
 gfx_ptick:	ds.w	1
 gfx_prow:	ds.w	16*256
+gfx_sband:	ds.w	1		; (Phase 7) gfx_pair_steal's asking band
+gfx_pkb:	ds.b	512		; (Phase 7) a pair table's key being looked for
 gfx_spanbuf:	ds.b	SCR_W
 	even
 gfx_target:	ds.l	1

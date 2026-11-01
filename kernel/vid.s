@@ -294,6 +294,7 @@ vid_rgbchains:
 	rts
 
 vid_set256:
+	move.l	a0,vid_dpal		; (Phase 7: the colours the dithering is made for)
 	movem.l	d3-d5/a3-a4,-(sp)
 	lea	vid_reps,a1
 	lea	vid_keep,a4
@@ -329,7 +330,12 @@ vid_set256:
 	move.w	vid_fade,d0		; rebuild the displayed copy
 	bsr	vid_set_fade
 	movem.l	(sp)+,d3-d5/a3-a4
-	rts
+	move.l	vid_dhook,d0		; (Phase 7) the program's dithering, from these colours
+	beq.s	.nh
+	move.l	d0,a1
+	move.l	vid_dpal,a0
+	jmp	(a1)
+.nh:	rts
 
 vid_set_luts:
 	addq.l	#1,vid_lutgen		; (Phase 6k: MAIN's flush mirror notices LUT changes)
@@ -343,14 +349,25 @@ vid_set_luts:
 	move.w	#1024/4-1,d0
 .cp:	move.l	(a0)+,(a1)+
 	dbf	d0,.cp
-.same:	lea	vid_luts,a0		; slot*4 copies for gfx_c4_span
-	lea	vid_luts4,a1
-	move.w	#1024-1,d0
+.same:	lea	vid_luts,a0		; (Phase 7) per band [A, B, A] slot*4 copies for gfx_c4_span,
+	lea	vid_luts4,a1		; B = A: no dithering until vid_dith says otherwise
+	lea	vid_lutsb,a2
+	moveq	#4-1,d2
+.x4b:	move.w	#256-1,d0
 .x4:	move.b	(a0)+,d1
+	move.b	d1,(a2)+
 	add.b	d1,d1
 	add.b	d1,d1
-	move.b	d1,(a1)+
+	move.b	d1,(a1)
+	move.b	d1,256(a1)
+	move.b	d1,512(a1)
+	addq.l	#1,a1
 	dbf	d0,.x4
+	lea	512(a1),a1
+	dbf	d2,.x4b
+	lea	vid_dvalid,a0		; (the dither caches: inputs to be looked at again)
+	clr.l	(a0)
+	clr.l	vid_ddith		; (no band dithered)
 	lea	vid_bands_src,a0
 	move.w	(a0)+,d2		; band count
 	lea	vid_line_lut,a1
@@ -441,6 +458,297 @@ vid_lut_remap:
 	movem.l	(sp)+,d3-d7/a3-a5
 	lea	vid_luts,a0
 	bra	vid_set_luts
+
+; ---------------------------------------------------------------- Phase 7: dithering
+; vid_dith(d0.w band, d1.w lo, d2.w hi, a0 = 768-byte palette shown, 6-bit): the band's odd-pixel
+; LUT B (gfx_c4_span shows A on (x+y) even, B on odd: a checkerboard). An index lo..hi whose slot A
+; shows a colour from lo..hi (its rep there, not kept) more than VID_DTHR (0-255 RGB distance) from
+; the index's own colour gets as B the slot (rep in lo..hi, not kept) whose average with A comes
+; closest - 5*|A+B-2t|^2 + 2*|A-B|^2, the contrast penalty keeping noise down - if that average is
+; within half of A's error; else B = A. Only colours of the range take part, so animated slots and
+; the screen furniture never mix in. Cached on its inputs (LUT, reps, keep flags, the range's
+; colours): a call with nothing changed costs a compare.
+; out: d0.w = 1 when B changed (the band's lines need converting again)  trashes: d0-d2/a0-a2
+VID_DTHR	equ	14
+VDC_SIZE	equ	256+16+16+768+256	; cache: LUT, reps, keep, palette, the B last made
+vid_dith:
+	movem.l	d3-d7/a3-a5,-(sp)
+	move.w	d0,vid_dband
+	move.w	d1,vid_dlo
+	move.w	d2,vid_dhi
+	move.l	a0,a5			; palette
+	move.w	d0,d3
+	mulu	#VDC_SIZE,d3
+	lea	vid_dcache,a4
+	add.l	d3,a4			; this band's cache
+	move.w	d0,d3
+	lsl.w	#8,d3
+	lea	vid_luts,a3
+	add.w	d3,a3			; A
+	; the inputs as before?
+	lea	vid_dvalid,a0
+	tst.b	0(a0,d0.w)
+	beq	.calc
+	cmp.w	vid_dclo,d1		; (one range for all bands: the program's)
+	bne	.calc
+	cmp.w	vid_dchi,d2
+	bne	.calc
+	move.l	a3,a0
+	move.l	a4,a1
+	moveq	#256/4-1,d3
+.c1:	cmpm.l	(a0)+,(a1)+
+	bne	.calc
+	dbf	d3,.c1
+	move.w	vid_dband,d3
+	lsl.w	#4,d3
+	lea	vid_reps,a0
+	add.w	d3,a0
+	moveq	#4-1,d4
+.c2:	cmpm.l	(a0)+,(a1)+
+	bne	.calc
+	dbf	d4,.c2
+	lea	vid_keep,a0
+	add.w	d3,a0
+	moveq	#4-1,d4
+.c3:	cmpm.l	(a0)+,(a1)+
+	bne	.calc
+	dbf	d4,.c3
+	move.w	d1,d3			; the range's colours
+	mulu	#3,d3
+	lea	0(a5,d3.w),a0
+	add.w	d3,a1
+	move.w	d2,d4
+	sub.w	d1,d4
+	addq.w	#1,d4
+	mulu	#3,d4
+	subq.w	#1,d4
+.c4:	cmpm.b	(a0)+,(a1)+
+	bne	.calc
+	dbf	d4,.c4
+	moveq	#0,d0			; nothing changed
+	bra	.out
+.calc:	move.w	vid_dband,d0		; the inputs into the cache
+	lea	vid_dvalid,a0
+	st	0(a0,d0.w)
+	move.w	vid_dlo,vid_dclo
+	move.w	vid_dhi,vid_dchi
+	move.l	a3,a0
+	move.l	a4,a1
+	moveq	#256/4-1,d3
+.k1:	move.l	(a0)+,(a1)+
+	dbf	d3,.k1
+	lsl.w	#4,d0
+	lea	vid_reps,a0
+	add.w	d0,a0
+	moveq	#4-1,d3
+.k2:	move.l	(a0)+,(a1)+
+	dbf	d3,.k2
+	lea	vid_keep,a0
+	add.w	d0,a0
+	moveq	#4-1,d3
+.k3:	move.l	(a0)+,(a1)+
+	dbf	d3,.k3
+	move.l	a5,a0
+	move.w	#768/4-1,d3
+.k4:	move.b	(a0)+,(a1)+
+	move.b	(a0)+,(a1)+
+	move.b	(a0)+,(a1)+
+	move.b	(a0)+,(a1)+
+	dbf	d3,.k4
+	; the slots: usable (rep in range, not kept) and their colours as shown (0-255)
+	lea	vid_reps,a0
+	add.w	d0,a0
+	lea	vid_keep,a1
+	add.w	d0,a1
+	lea	vid_dslot,a2		; per slot: usable.w, r.w, g.w, b.w
+	moveq	#16-1,d7
+.sl:	moveq	#0,d3
+	move.b	(a0)+,d3		; rep
+	clr.w	(a2)
+	tst.b	(a1)+
+	bne.s	.sk
+	cmp.w	vid_dlo,d3
+	blo.s	.sk
+	cmp.w	vid_dhi,d3
+	bhi.s	.sk
+	move.w	#1,(a2)
+.sk:	mulu	#3,d3
+	lea	0(a5,d3.w),a3
+	lea	2(a2),a2
+	moveq	#3-1,d6
+.sc:	moveq	#0,d4
+	move.b	(a3)+,d4		; 6-bit -> STE nibble -> level -> * 17
+	lea	vid_c6tab,a4
+	move.b	0(a4,d4.w),d4
+	lea	vid_dec4,a4
+	move.b	0(a4,d4.w),d4
+	mulu	#17,d4
+	move.w	d4,(a2)+
+	dbf	d6,.sc
+	dbf	d7,.sl
+	; B for every index: A outside the range
+	move.w	vid_dband,d0
+	lsl.w	#8,d0
+	lea	vid_luts,a3
+	add.w	d0,a3			; A
+	lea	vid_dnew,a4		; B being made
+	move.l	a3,a0
+	move.l	a4,a1
+	moveq	#256/4-1,d3
+.cb:	move.l	(a0)+,(a1)+
+	dbf	d3,.cb
+	move.w	vid_dlo,d7		; index
+.ix:	cmp.w	vid_dhi,d7
+	bhi	.made
+	moveq	#0,d6
+	move.b	0(a3,d7.w),d6		; A
+	lea	vid_dslot,a2
+	move.w	d6,d0
+	lsl.w	#3,d0
+	add.w	d0,a2
+	tst.w	(a2)+			; A's colour from the range?
+	beq	.nx
+	movem.w	(a2),d0-d2		; cA
+	move.w	d7,d3			; t (0-255)
+	mulu	#3,d3
+	lea	0(a5,d3.w),a0
+	lea	vid_c6v,a1
+	moveq	#0,d3
+	move.b	(a0)+,d3
+	move.b	0(a1,d3.w),d3
+	moveq	#0,d4
+	move.b	(a0)+,d4
+	move.b	0(a1,d4.w),d4
+	moveq	#0,d5
+	move.b	(a0),d5
+	move.b	0(a1,d5.w),d5
+	movem.w	d3-d5,vid_dt
+	movem.w	d0-d2,vid_dca
+	sub.w	d0,d3			; eA^2
+	muls	d3,d3
+	sub.w	d1,d4
+	muls	d4,d4
+	add.l	d4,d3
+	sub.w	d2,d5
+	muls	d5,d5
+	add.l	d5,d3
+	cmp.l	#VID_DTHR*VID_DTHR,d3
+	bls	.nx
+	move.l	d3,vid_dea		; |A+B-2t|^2 must not exceed eA^2 (half the error)
+	move.l	#$7fffffff,vid_dbest
+	move.w	d6,vid_dbs
+	lea	vid_dslot,a2
+	moveq	#0,d5			; slot s
+.s:	cmp.w	d6,d5
+	beq	.sn
+	tst.w	(a2)
+	beq	.sn
+	movem.w	2(a2),d0-d2		; cs
+	movem.w	vid_dca,d3-d4		; (r, g of A)
+	move.w	d0,a0			; keep cs.r
+	add.w	d3,d0			; A + B - 2t, per channel
+	sub.w	vid_dt,d0
+	sub.w	vid_dt,d0
+	muls	d0,d0
+	add.w	d4,d1
+	sub.w	vid_dt+2,d1
+	sub.w	vid_dt+2,d1
+	muls	d1,d1
+	add.l	d1,d0
+	move.w	vid_dca+4,d1
+	add.w	d1,d2
+	sub.w	vid_dt+4,d2
+	sub.w	vid_dt+4,d2
+	muls	d2,d2
+	add.l	d2,d0			; S1
+	cmp.l	vid_dea,d0
+	bhi	.sn
+	move.l	d0,d1
+	add.l	d1,d1
+	add.l	d1,d1
+	add.l	d1,d0			; 5*S1
+	move.w	a0,d1			; |A - B|^2
+	sub.w	d3,d1
+	muls	d1,d1
+	move.w	4(a2),d2
+	sub.w	d4,d2
+	muls	d2,d2
+	add.l	d2,d1
+	move.w	6(a2),d2
+	sub.w	vid_dca+4,d2
+	muls	d2,d2
+	add.l	d2,d1
+	add.l	d1,d1
+	add.l	d1,d0			; + 2*S2
+	cmp.l	vid_dbest,d0
+	bhs.s	.sn
+	move.l	d0,vid_dbest
+	move.w	d5,vid_dbs
+.sn:	lea	8(a2),a2
+	addq.w	#1,d5
+	cmp.w	#16,d5
+	blo	.s
+	move.b	vid_dbs+1,0(a4,d7.w)
+.nx:	addq.w	#1,d7
+	bra	.ix
+.made:	move.w	vid_dband,d0		; changed from the B made last time?
+	mulu	#VDC_SIZE,d0
+	lea	vid_dcache+256+16+16+768,a1
+	add.l	d0,a1
+	move.l	a4,a0
+	moveq	#0,d5
+	moveq	#256/4-1,d3
+.cm:	cmpm.l	(a0)+,(a1)+
+	beq.s	.cme
+	moveq	#1,d5
+.cme:	dbf	d3,.cm
+	sub.w	#256,a1			; (keep it)
+	move.l	a4,a0
+	moveq	#256/4-1,d3
+.kb:	move.l	(a0)+,(a1)+
+	dbf	d3,.kb
+	; into vid_lutsb and the band's B quarter of vid_luts4 (always: vid_set_luts reset them)
+	move.w	vid_dband,d0
+	move.w	d0,d1
+	lsl.w	#8,d1
+	lea	vid_lutsb,a1
+	add.w	d1,a1
+	move.w	d0,d1
+	mulu	#768,d1
+	lea	vid_luts4+256,a2
+	add.w	d1,a2
+	move.l	a4,a0
+	moveq	#0,d6			; any different from the B in use?
+	move.w	#256-1,d3
+.wb:	move.b	(a0)+,d1
+	cmp.b	(a1),d1
+	beq.s	.ws
+	moveq	#1,d6
+.ws:	move.b	d1,(a1)+
+	add.b	d1,d1
+	add.b	d1,d1
+	move.b	d1,(a2)+
+	dbf	d3,.wb
+	move.w	vid_dband,d0		; dithered at all? (gfx_pair_get: such a band's two pair
+	lea	vid_ddith,a0		; tables may take slots from undithered bands)
+	sf	0(a0,d0.w)
+	lsl.w	#8,d0
+	lea	vid_luts,a1
+	add.w	d0,a1
+	move.l	a4,a2
+	move.w	#256-1,d3
+.dd:	cmpm.b	(a1)+,(a2)+
+	dbne	d3,.dd
+	beq.s	.dn
+	move.w	vid_dband,d0
+	st	0(a0,d0.w)
+.dn:	tst.w	d6
+	beq.s	.same
+	addq.l	#1,vid_lutgen		; (the flush's mirror and the pair tables follow)
+	bsr	gfx_pair_inval
+.same:	move.w	d5,d0
+.out:	movem.l	(sp)+,d3-d7/a3-a5
+	rts
 
 vid_lut_y:
 	move.l	d1,-(sp)
@@ -606,6 +914,12 @@ vid_c6tab:				; 6-bit VGA level -> STE nibble: round(c*15/63), LSB moved to bit 
 	dc.b	4,4,4,4,12,12,12,12,5,5,5,5,5,13,13,13,13,6,6,6,6,14,14,14,14,7,7,7,7,15,15,15
 vid_dec4:				; STE nibble -> level 0-15
 	dc.b	0,2,4,6,8,10,12,14,1,3,5,7,9,11,13,15
+vid_c6v:				; (Phase 7) 6-bit level -> 0-255: round(c*255/63)
+c	set	0
+	rept	64
+	dc.b	(c*255+31)/63
+c	set	c+1
+	endr
 vid_black_bands:
 	dc.w	1,0
 	dcb.w	16,0
@@ -635,7 +949,25 @@ vid_bands_a:	ds.b	2+4*BAND_SIZE
 vid_bands_b:	ds.b	2+4*BAND_SIZE
 vid_fadetab:	ds.b	17*16
 vid_luts:	ds.b	4*256
-vid_luts4:	ds.b	4*256		; the same x4 (slot*4: gfx_c4_span), right after vid_luts
+vid_luts4:	ds.b	4*768		; per band [A, B, A] x4 (slot*4: gfx_c4_span; Phase 7)
+vid_lutsb:	ds.b	4*256		; (Phase 7) the odd-pixel LUTs (= vid_luts unless dithered)
+vid_dhook:	ds.l	1		; (Phase 7) called at the end of vid_set256, a0 = its palette
+vid_dpal:	ds.l	1		; the palette of the last vid_set256
+vid_dvalid:	ds.b	4		; per band: its dither cache holds inputs
+vid_ddith:	ds.b	4		; per band: some index has B <> A
+vid_dband:	ds.w	1
+vid_dlo:	ds.w	1
+vid_dhi:	ds.w	1
+vid_dclo:	ds.w	1
+vid_dchi:	ds.w	1
+vid_dt:		ds.w	3
+vid_dca:	ds.w	3
+vid_dbs:	ds.w	1
+vid_dea:	ds.l	1
+vid_dbest:	ds.l	1
+vid_dslot:	ds.w	16*4
+vid_dnew:	ds.b	256
+vid_dcache:	ds.b	4*VDC_SIZE
 vid_line_lut:	ds.l	SCR_H
 vid_lutgen:	ds.l	1		; (Phase 6k) +1 at every vid_set_luts
 vid_line_band:	ds.b	SCR_H

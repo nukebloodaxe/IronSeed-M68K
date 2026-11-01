@@ -550,10 +550,14 @@ us_sprinkle:
 	add.l	GS_PLANET(a6),d2
 	move.l	d2,(a1)+
 	move.w	d1,(a1)+		; y (sprinkle2's test)
-	lea	10(a1),a1		; (32 bytes a row)
+	move.l	-14(a1),d2		; (Phase 7) the line's B LUT (dithering: odd x + y)
+	sub.l	#vid_luts,d2
+	add.l	#vid_lutsb,d2
+	move.l	d2,(a1)+
+	lea	6(a1),a1		; (32 bytes a row)
 	addq.w	#1,d3
 	cmp.w	us_sh,d3
-	bls.s	.t
+	bls	.t
 	lea	us_sxt,a1		; columns xo = 0..w-1: group offset, bit, a, x
 	moveq	#0,d3
 .u:	move.w	us_sx1,d1
@@ -623,8 +627,14 @@ us_sprinkle:
 	move.b	0(a0,d0.w),d2
 .put:	move.l	4(a5),a0
 	move.b	d2,0(a0,d6.w)		; screen[y, x]: the shadow
-	move.l	8(a5),a0
-	move.b	0(a0,d2.w),d2		; the slot of the line's band
+	move.w	6(a2),d0		; (Phase 7) x + y odd: the B LUT
+	add.w	20(a5),d0
+	btst	#0,d0
+	beq.s	.pa
+	move.l	22(a5),a0
+	bra.s	.pb
+.pa:	move.l	8(a5),a0
+.pb:	move.b	0(a0,d2.w),d2		; the slot of the line's band
 	move.l	(a5),a0
 	add.w	(a2)+,a0		; the group
 	move.w	(a2),d1			; the bit

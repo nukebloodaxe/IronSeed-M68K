@@ -52,6 +52,7 @@ eg_noisescreen:
 
 ; the common end: fading; mousehide; loadscreen(current2); set256colors(colors); bkcolor := d0
 eg_end:
+	sf	eg_dith			; (Phase 7: egg 2's portraits dithered no more)
 	move.w	d0,-(sp)
 	bsr	fading
 	bsr	mousehide
@@ -184,6 +185,7 @@ easteregg2:
 	movem.l	d3-d4/a3,-(sp)
 	clr.w	eg_by
 	bsr	eg_noisescreen
+	st	eg_dith			; (Phase 7) the portraits dithered (from the loop's first colours)
 	TCOL	188
 	PXY	139,70,"Welcome"
 	PXY	141,80,"To The"
@@ -555,6 +557,8 @@ eg_songs:	dc.b	12,"SENGZHAC.MOD"	; weird.pas easteregg3's case, by column then r
 	even
 
 	section	bss
+eg_dith:	ds.b	1		; (Phase 7) egg 2: its portraits dithered (mscr.s ms_dhook)
+	even
 eg_by:		ds.w	1
 eg_pp:		ds.l	1
 eg_sample:	ds.b	SMP_SIZE

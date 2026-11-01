@@ -923,7 +923,64 @@ ms_unsnap:
 	dbf	d0,.c2
 	bsr	ms_inval		; (the mirror: the planar screen is the snapshot's)
 	bsr	ms_clean
+	lea	GS_COLORS(a6),a0	; (Phase 7) the snapshot's design dithered again
+	bsr	ms_dhook
 	movem.l	(sp)+,d3/a3
+	rts
+
+; ms_dhook (Phase 7; kernel vid_dhook, called at the end of vid_set256 with a0 = its palette, and
+; after u2_design and ms_unsnap; only for a0 = GS_COLORS): which bands are dithered over which indices - egg 2's portraits
+; (eg_dith: bands 0-2, 1-63) or a bridge design's viewscreen (ms_design >= 0: band 1, 1-127, the
+; planet's and the stars' colours); the bands whose B changed are marked for converting again.
+; in: a0 = palette  trashes: d0-d2/a0-a2
+ms_dhook:
+	movem.l	d3-d5/a3,-(sp)
+	move.l	a0,a3
+	lea	GS_COLORS(a6),a1	; only the game's own colours: a passing palette (bossmode's
+	cmp.l	a1,a0			; black, graypalin's greys, a fade's copy) leaves the dithering
+	bne	.x			; as it is (the screen shows it for a moment only)
+	tst.b	eg_dith
+	beq.s	.br
+	moveq	#0,d4			; first band
+	moveq	#2,d5			; last band
+	move.w	#63,d3			; hi
+	bra.s	.go
+.br:	tst.w	ms_design
+	bmi.s	.x
+	moveq	#1,d4
+	moveq	#1,d5
+	move.w	#127,d3
+.go:	cmp.w	vid_bands_src,d4	; (a band the design has)
+	bhs.s	.x
+	move.w	d4,d0
+	moveq	#1,d1
+	move.w	d3,d2
+	move.l	a3,a0
+	bsr	vid_dith
+	tst.w	d0
+	beq.s	.nb
+	move.w	d4,d0			; its lines: from its first to the next band's - 1
+	mulu	#BAND_SIZE,d0
+	lea	vid_bands_src+2,a0
+	move.w	0(a0,d0.w),d1
+	move.w	#MS_H-1,d2
+	move.w	d4,d0
+	addq.w	#1,d0
+	cmp.w	vid_bands_src,d0
+	bhs.s	.l
+	mulu	#BAND_SIZE,d0
+	move.w	0(a0,d0.w),d2
+	subq.w	#1,d2
+.l:	move.w	d3,-(sp)
+	move.w	d2,d3
+	moveq	#0,d0
+	move.w	#MS_W-1,d2
+	bsr	ms_dirty
+	move.w	(sp)+,d3
+.nb:	addq.w	#1,d4
+	cmp.w	d5,d4
+	bls.s	.go
+.x:	movem.l	(sp)+,d3-d5/a3
 	rts
 
 ms_slot:				; d0.w slot -> a0 = its buffer (allocated on first use)
@@ -1270,7 +1327,12 @@ ms_psetq:
 	move.w	d3,d1
 	lsl.w	#2,d1
 	move.l	0(a0,d1.w),a0
-	and.w	#$ff,d2
+	move.w	d0,d1			; (Phase 7) (x + y) odd: the B LUT (dithering)
+	eor.w	d3,d1
+	btst	#0,d1
+	beq.s	.pe
+	add.l	#vid_lutsb-vid_luts,a0
+.pe:	and.w	#$ff,d2
 	move.b	0(a0,d2.w),d2		; the slot of the line's band
 	mulu	#SCR_BPL,d3
 	move.l	vid_phys,a0
@@ -1355,8 +1417,15 @@ ms_vscroll:
 	add.w	d0,d1
 	move.l	0(a0,d0.w),d2
 	cmp.l	0(a0,d1.w),d2
+	bne.s	.conv
+	btst	#0,d4			; (Phase 7) an odd move in a dithered band flips the
+	beq.s	.copy			; checkerboard's phase: converted instead
+	sub.l	#vid_luts,d2
+	lsr.l	#8,d2
+	lea	vid_ddith,a0
+	tst.b	0(a0,d2.w)
 	beq.s	.copy
-	move.w	4(sp),d0		; another LUT: convert this row from the shadow later
+.conv:	move.w	4(sp),d0		; another LUT: convert this row from the shadow later
 	move.w	d6,d1
 	move.w	2(sp),d2
 	move.w	d3,-(sp)

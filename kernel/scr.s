@@ -396,6 +396,10 @@ scr_shot:
 	move.l	#1024,-(sp)
 	move.w	d3,-(sp)
 	GEMDOS	GD_FWRITE,12
+	pea	vid_lutsb		; (Phase 7: the odd-pixel LUTs - the dithering)
+	move.l	#1024,-(sp)
+	move.w	d3,-(sp)
+	GEMDOS	GD_FWRITE,12
 	move.w	d3,-(sp)
 	GEMDOS	GD_FCLOSE,4
 	tst.l	scr_dbgn		; the debug ring, if anything was logged

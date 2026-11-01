@@ -39,6 +39,7 @@ start:	move.l	4(sp),a0
 ; ---------------------------------------------------------------
 ; data.pas init_everything + the units' initialisation parts
 init_everything:
+	move.l	#ms_dhook,vid_dhook	; (Phase 7) the dithering: the bridge's viewscreen, egg 2
 	move.w	#22,GS_TCOLOR(a6)
 	clr.w	GS_BKCOLOR(a6)
 	lea	fn_mainpal,a0		; readygraph: colors := main.pal

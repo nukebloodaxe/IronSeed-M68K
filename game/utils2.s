@@ -653,6 +653,8 @@ u2_design:
 	bsr	ms_dirty
 	move.w	(sp)+,d3
 	move.w	d3,ms_design
+	lea	GS_COLORS(a6),a0	; (Phase 7) the viewscreen dithered
+	bsr	ms_dhook
 .r:	move.l	(sp)+,d0
 	bsr	mem_release
 .x:	movem.l	(sp)+,d3/a3
