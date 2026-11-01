@@ -918,7 +918,10 @@ snd_out:
 ; ---------------------------------------------------------------
 ; the stream, main-code side
 snd_poll:
-	tst.w	st_on
+	tst.b	mod_defer		; (Phase 8) a song waiting for its disk (floppies)
+	beq.s	.st
+	bsr	mod_retry
+.st:	tst.w	st_on
 	beq.s	.x
 	tst.w	st_eof
 	bne.s	.x
@@ -953,7 +956,7 @@ st_read:
 .r1:	move.l	a3,-(sp)		; Fread(h, n, buf)
 	move.l	d4,-(sp)
 	move.w	st_h,-(sp)
-	GEMDOS	GD_FREAD,12
+	FDOS	GD_FREAD,12
 	cmp.l	d4,d0
 	bne.s	.err			; error or short file: stop reading (the ring drains)
 	add.l	d0,a3
@@ -974,10 +977,10 @@ st_read:
 	move.w	st_hsize,d1
 	add.l	d1,d0
 	move.l	d0,-(sp)
-	GEMDOS	GD_FSEEK,10
+	FDOS	GD_FSEEK,10
 	tst.l	d0
 	bmi.s	.err
-	bra.s	.r
+	bra	.r
 .err:	addq.w	#1,st_errs
 .eof:	move.w	#1,st_eof
 .x:	movem.l	(sp)+,d3-d4/a3
@@ -1010,14 +1013,14 @@ st_open:
 	clr.b	(a1)
 	clr.w	-(sp)			; Fopen(name, read)
 	pea	st_name
-	GEMDOS	GD_FOPEN,8
+	FDOS	GD_FOPEN,8
 	tst.l	d0
 	bmi	.no
 	move.w	d0,st_h
 	pea	st_hdr			; Fread(h, 32, header)
 	pea	32.w
 	move.w	st_h,-(sp)
-	GEMDOS	GD_FREAD,12
+	FDOS	GD_FREAD,12
 	cmp.l	#32,d0
 	bne	.bad
 	lea	st_hdr,a3
@@ -1051,7 +1054,7 @@ st_open:
 	moveq	#0,d0
 	move.w	st_hsize,d0
 	move.l	d0,-(sp)
-	GEMDOS	GD_FSEEK,10
+	FDOS	GD_FSEEK,10
 	tst.l	d0
 	bmi.s	.bad
 	move.w	8(a3),mod_ch		; (the effects' volume table)
@@ -1070,7 +1073,7 @@ st_open:
 	and.b	#$fe,ccr
 	rts
 .bad:	move.w	st_h,-(sp)
-	GEMDOS	GD_FCLOSE,4
+	FDOS	GD_FCLOSE,4
 .no:	movem.l	(sp)+,d3/a3
 	or.b	#1,ccr
 	rts
@@ -1081,7 +1084,7 @@ st_close:
 	clr.w	mod_on
 	clr.w	st_on
 	move.w	st_h,-(sp)
-	GEMDOS	GD_FCLOSE,4
+	FDOS	GD_FCLOSE,4
 .x:	rts
 
 	section	data

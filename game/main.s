@@ -20,6 +20,7 @@ OPTB_STARS	equ	1
 					; (explore.s); shown in the options panel's first row (the screen
 					; saver's: commented out in the FPC source, never used)
 SL_LOAD		equ	1		; saveload.s: with sl_loadgame
+FLP_CACHE	equ	192*1024	; (Phase 8) kernel flp.s: the RAM cache on the floppies (the bridge)
 MN_KEEP		equ	512*1024	; (Phase 6j) the pool left after the pair tables (6n: 576 -> 512 KB: the sphere code took 59 KB; ~827 KB are free before them)
 					; MAIN's later peak (the ending) leaves ~190 KB free (tags 60/63)
 
@@ -32,7 +33,10 @@ start:	move.l	4(sp),a0
 	bsr	vid_set_fade
 	bsr	ms_init
 	bsr	init_everything
-	bsr	checkparams
+	tst.w	flp_on			; (Phase 8) on the floppies the portraits now, from MAIN's disk:
+	beq.s	.np			; they are read once anyway, and later any screen may want them
+	bsr	mb_portraits
+.np:	bsr	checkparams
 	bsr	readydata
 	bra	journeyon
 

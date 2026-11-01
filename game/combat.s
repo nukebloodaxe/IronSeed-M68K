@@ -3651,7 +3651,7 @@ cb_savevictories:
 	movem.l	d3-d4,-(sp)
 	move.w	#2,-(sp)
 	pea	cm_fn_contacts2
-	GEMDOS	GD_FOPEN,8
+	FDOS	GD_FOPEN,8
 	move.w	d0,d3
 	bmi	fatal
 	moveq	#-1,d4			; i
@@ -3659,7 +3659,7 @@ cb_savevictories:
 	pea	cb_t
 	move.l	#ALIEN_SIZEOF,-(sp)
 	move.w	d3,-(sp)
-	GEMDOS	GD_FREAD,12
+	FDOS	GD_FREAD,12
 	cmp.l	#ALIEN_SIZEOF,d0
 	bne	fatal
 	move.w	cb_t+ALIEN_ID,d0
@@ -3670,7 +3670,7 @@ cb_savevictories:
 	move.w	d4,d0
 	mulu	#ALIEN_SIZEOF,d0
 	move.l	d0,-(sp)
-	GEMDOS	GD_FSEEK,10
+	FDOS	GD_FSEEK,10
 	move.w	cb_nships,d0		; victory += max(nships div 4, 1); + nships with no damage taken
 	lsr.w	#2,d0
 	bne.s	.v
@@ -3700,9 +3700,9 @@ cb_savevictories:
 .w:	pea	cb_t
 	move.l	#ALIEN_SIZEOF,-(sp)
 	move.w	d3,-(sp)
-	GEMDOS	GD_FWRITE,12
+	FDOS	GD_FWRITE,12
 	move.w	d3,-(sp)
-	GEMDOS	GD_FCLOSE,4
+	FDOS	GD_FCLOSE,4
 	movem.l	(sp)+,d3-d4
 	rts
 

@@ -500,22 +500,22 @@ c2_loadlog:
 	move.l	d0,-(sp)
 	clr.w	-(sp)
 	pea	c2_fn_log
-	GEMDOS	GD_FOPEN,8
+	FDOS	GD_FOPEN,8
 	move.w	d0,d3
 	bmi	fatal
 	move.l	(sp)+,d0
 	clr.w	-(sp)
 	move.w	d3,-(sp)
 	move.l	d0,-(sp)
-	GEMDOS	GD_FSEEK,10
+	FDOS	GD_FSEEK,10
 	move.l	c2_l,-(sp)
 	move.l	#LOGPAGE,-(sp)
 	move.w	d3,-(sp)
-	GEMDOS	GD_FREAD,12
+	FDOS	GD_FREAD,12
 	cmp.l	#LOGPAGE,d0
 	bne	fatal
 	move.w	d3,-(sp)
-	GEMDOS	GD_FCLOSE,4
+	FDOS	GD_FCLOSE,4
 	move.l	(sp)+,d3
 	rts
 

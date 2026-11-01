@@ -380,41 +380,41 @@ scr_shot:
 	lea	scr_name,a0
 	clr.w	-(sp)
 	move.l	a0,-(sp)
-	GEMDOS	GD_FCREATE,8
+	FDOS	GD_FCREATE,8
 	tst.l	d0
 	bmi	.x
 	move.w	d0,d3
 	move.l	vid_phys,-(sp)
 	move.l	#SCR_SIZE,-(sp)
 	move.w	d3,-(sp)
-	GEMDOS	GD_FWRITE,12
+	FDOS	GD_FWRITE,12
 	pea	vid_bands_src
 	move.l	#2+4*BAND_SIZE,-(sp)
 	move.w	d3,-(sp)
-	GEMDOS	GD_FWRITE,12
+	FDOS	GD_FWRITE,12
 	pea	vid_luts		; (Phase 6j: the LUTs in use - run-time refits)
 	move.l	#1024,-(sp)
 	move.w	d3,-(sp)
-	GEMDOS	GD_FWRITE,12
+	FDOS	GD_FWRITE,12
 	pea	vid_lutsb		; (Phase 7: the odd-pixel LUTs - the dithering)
 	move.l	#1024,-(sp)
 	move.w	d3,-(sp)
-	GEMDOS	GD_FWRITE,12
+	FDOS	GD_FWRITE,12
 	move.w	d3,-(sp)
-	GEMDOS	GD_FCLOSE,4
+	FDOS	GD_FCLOSE,4
 	tst.l	scr_dbgn		; the debug ring, if anything was logged
 	beq.s	.x
 	clr.w	-(sp)
 	pea	scr_fn_dbg
-	GEMDOS	GD_FCREATE,8
+	FDOS	GD_FCREATE,8
 	move.w	d0,d3
 	bmi.s	.x
 	pea	scr_dbgn
 	move.l	#4+SCR_DBGN*4,-(sp)
 	move.w	d3,-(sp)
-	GEMDOS	GD_FWRITE,12
+	FDOS	GD_FWRITE,12
 	move.w	d3,-(sp)
-	GEMDOS	GD_FCLOSE,4
+	FDOS	GD_FCLOSE,4
 .x:	tst.w	(sp)+
 	beq.s	.h
 	bsr	kbd_cursor_show

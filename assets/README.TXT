@@ -4,13 +4,31 @@ IRON SEED for the Atari STE
 A port of Iron Seed (Channel 7, 1994; the open-source Free Pascal version at
 github.com/nukebloodaxe/ironseed_fpc) to the Atari STE, in 68000 assembler.
 
-Needs: an STE (or Mega STE) with 4 MB of RAM and TOS 1.62 or later, a hard
-disk (or Hatari with this folder as drive C:). Tested in Hatari (STE, 4 MB,
-TOS 1.62 US, 60 Hz); not yet on real hardware.
+Needs: an STE (or Mega STE) with 4 MB of RAM and TOS 1.62 or later, and a
+hard disk (or Hatari with this folder as drive C:) - or the floppy version:
+nine 720 KB double-sided disks. Tested in Hatari (STE, 4 MB, TOS 1.62 US,
+60 Hz); not yet on real hardware.
 
 Start:  copy the IRONSEED folder to the hard disk and run IS.PRG from it.
         (Hatari: hatari --machine ste --memsize 4096 --tos YOUR_TOS.IMG
          --harddrive IRONSEED --gemdos-drive c, then run C:\IS.PRG.)
+
+Floppies: IRONSEED1.ST - IRONSEED8.ST are the game, IRONSEED9.ST the save
+disk (write them to 720 KB disks, or use the images in an emulator). Boot
+from disk 1: the game starts by itself (or run IS.PRG on disk 1 from the
+desktop). Leave disks 1-8 write-protected; the save disk must not be. When
+the game needs another disk it says which: "Please insert Iron Seed disk N"
+(or the save disk); put it in drive A and press a key or click. Esc there
+cancels (a game would then stop with an error - only for when no disk can
+be found). Loading and saving go to the save disk, whose saves are the same
+files as on a hard disk. On the floppies the music is mixed in real time
+from the MOD files (the pre-rendered packs do not fit), and a disk never
+changes for the music alone: a song on another disk starts once that disk
+is in. The bridge, once seen, stays in memory, so coming back to it from
+another screen needs no disk. Disk 1 holds the intro, 2 the crew
+generation and combat, 3 the main program and the bridge, 4 the screens used
+most (exploration, logs, crew, creation), 5 the ending; the sector map and
+the alien races' contacts are spread over the others.
 
 The title menu: New game (crew generation), Continue (load a game), the
 intro, quit. The game is the original's, screen by screen; the keys and the
@@ -41,8 +59,8 @@ times faster, the title screen twice as smoothly). Two packs, pick one and
 put its MUSIC folder here (the programs follow the rate in the files):
   6258 Hz   about 56 MB   the ST mixer's own sound, rendered exactly
   12517 Hz  about 112 MB  interpolated, brighter (twice the disk reads)
-Without the folder - a small disk, or floppies - the programs mix the MOD
-files from SOUND in real time as before: same music, slower game.
+Without the folder - a small disk, or the floppies - the programs mix the
+MOD files from SOUND in real time as before: same music, slower game.
 
 Arriving at a planet or a star: the "Approaching ..." countdown is the
 surface being generated (the original's random walks, exactly). On an 8 MHz

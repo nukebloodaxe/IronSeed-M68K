@@ -15,13 +15,13 @@ checkwandering:
 	blt	.x
 	clr.w	-(sp)			; reset(confile)
 	pea	cm_fn_contacts
-	GEMDOS	GD_FOPEN,8
+	FDOS	GD_FOPEN,8
 	move.w	d0,d3
 	bmi	fatal
 .r:	pea	cm_rec			; repeat read(confile, alien) until alien.id = curplan or EOF
 	move.l	#ALIEN_SIZEOF,-(sp)
 	move.w	d3,-(sp)
-	GEMDOS	GD_FREAD,12
+	FDOS	GD_FREAD,12
 	cmp.l	#ALIEN_SIZEOF,d0
 	bne.s	.e
 	lea	cm_rec,a0
@@ -33,7 +33,7 @@ checkwandering:
 	cmp.w	GS_CURPLAN(a6),d0
 	bne.s	.r
 .e:	move.w	d3,-(sp)
-	GEMDOS	GD_FCLOSE,4
+	FDOS	GD_FCLOSE,4
 	move.w	GS_ALIEN+ALIEN_ID(a6),d0
 	cmp.w	GS_CURPLAN(a6),d0
 	bne.s	.x
@@ -111,7 +111,7 @@ getspecial:
 	move.w	d0,d3
 	clr.w	-(sp)			; contact0.dta record n-1
 	pea	cm_fn_contact0
-	GEMDOS	GD_FOPEN,8
+	FDOS	GD_FOPEN,8
 	move.w	d0,d1
 	bmi	fatal
 	move.w	d1,-(sp)		; (the handle, for the close)
@@ -121,14 +121,14 @@ getspecial:
 	subq.w	#1,d0
 	mulu	#ALIEN_SIZEOF,d0
 	move.l	d0,-(sp)
-	GEMDOS	GD_FSEEK,10
+	FDOS	GD_FSEEK,10
 	pea	GS_ALIEN(a6)
 	move.l	#ALIEN_SIZEOF,-(sp)
 	move.w	4+4(sp),-(sp)
-	GEMDOS	GD_FREAD,12
+	FDOS	GD_FREAD,12
 	cmp.l	#ALIEN_SIZEOF,d0
 	bne	fatal
-	GEMDOS	GD_FCLOSE,4		; (the handle pushed above)
+	FDOS	GD_FCLOSE,4		; (the handle pushed above)
 .id:	move.w	d4,GS_ALIEN+ALIEN_ID(a6)
 	movem.l	(sp)+,d3-d4
 	rts
@@ -138,13 +138,13 @@ addtofile:
 	movem.l	d3-d4,-(sp)
 	move.w	#2,-(sp)		; read/write
 	pea	cm_fn_contacts
-	GEMDOS	GD_FOPEN,8
+	FDOS	GD_FOPEN,8
 	move.w	d0,d3
 	bmi	fatal
 .r:	pea	cm_rec
 	move.l	#ALIEN_SIZEOF,-(sp)
 	move.w	d3,-(sp)
-	GEMDOS	GD_FREAD,12
+	FDOS	GD_FREAD,12
 	cmp.l	#ALIEN_SIZEOF,d0
 	bne.s	.end			; (end of file: append)
 	move.w	cm_rec+ALIEN_ID,d0
@@ -154,13 +154,13 @@ addtofile:
 .end:	move.w	#2,-(sp)		; Fseek(0, h, 2): the end
 	move.w	d3,-(sp)
 	clr.l	-(sp)
-	GEMDOS	GD_FSEEK,10
+	FDOS	GD_FSEEK,10
 	pea	GS_ALIEN(a6)
 	move.l	#ALIEN_SIZEOF,-(sp)
 	move.w	d3,-(sp)
-	GEMDOS	GD_FWRITE,12
+	FDOS	GD_FWRITE,12
 .cl:	move.w	d3,-(sp)
-	GEMDOS	GD_FCLOSE,4
+	FDOS	GD_FCLOSE,4
 	movem.l	(sp)+,d3-d4
 	rts
 

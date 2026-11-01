@@ -1016,25 +1016,12 @@ ms_slot:				; d0.w slot -> a0 = its buffer (allocated on first use)
 	rts
 
 ; read NAME.CHK's palette (bytes 64000-64767, ms_path) into GS_COLORS
-ms_loadpal:
-	movem.l	d3,-(sp)
-	clr.w	-(sp)
-	pea	ms_path
-	GEMDOS	GD_FOPEN,8
-	move.w	d0,d3
-	bmi.s	.x
-	clr.w	-(sp)			; Fseek(64000, h, 0)
-	move.w	d3,-(sp)
-	move.l	#MS_W*MS_H,-(sp)
-	GEMDOS	GD_FSEEK,10
-	pea	GS_COLORS(a6)
-	move.l	#768,-(sp)
-	move.w	d3,-(sp)
-	GEMDOS	GD_FREAD,12
-	move.w	d3,-(sp)
-	GEMDOS	GD_FCLOSE,4
-.x:	movem.l	(sp)+,d3
-	rts
+ms_loadpal:				; (Phase 8: kernel fil_loadat - the file may be packed)
+	lea	ms_path,a0
+	lea	GS_COLORS(a6),a1
+	move.l	#MS_W*MS_H,d0
+	move.l	#768,d1
+	bra	fil_loadat		; (a missing file: nothing, as before)
 
 ms_pset:
 	movem.l	d0-d3,-(sp)

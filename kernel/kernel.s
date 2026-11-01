@@ -16,6 +16,8 @@
 	include	"tim.s"
 	include	"mem.s"
 	include	"fil.s"
+	include	"inflate.s"
+	include	"flp.s"
 	include	"vid.s"
 	include	"kbd.s"
 	include	"snd.s"

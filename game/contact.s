@@ -1433,7 +1433,7 @@ cm_getname:
 	sub.w	d0,d3
 	clr.w	-(sp)
 	pea	cm_fn_planname
-	GEMDOS	GD_FOPEN,8
+	FDOS	GD_FOPEN,8
 	move.w	d0,d1
 	bmi	fatal
 	move.w	d1,-(sp)		; (for the close)
@@ -1443,14 +1443,14 @@ cm_getname:
 	ext.l	d0
 	lsl.l	#4,d0			; string[15] = 16 bytes
 	move.l	d0,-(sp)
-	GEMDOS	GD_FSEEK,10
+	FDOS	GD_FSEEK,10
 	pea	GS_ALIEN+ALIEN_NAME(a6)
 	pea	16
 	move.w	4+4(sp),-(sp)
-	GEMDOS	GD_FREAD,12
+	FDOS	GD_FREAD,12
 	cmp.l	#16,d0
 	bne	fatal
-	GEMDOS	GD_FCLOSE,4
+	FDOS	GD_FCLOSE,4
 	movem.l	(sp)+,d3
 	rts
 
@@ -1583,13 +1583,13 @@ cm_findcontact:
 	move.l	a0,a3
 	clr.w	-(sp)
 	pea	cm_fn_contacts2
-	GEMDOS	GD_FOPEN,8
+	FDOS	GD_FOPEN,8
 	move.w	d0,d3
 	bmi	fatal
 .r:	pea	cm_rec2
 	move.l	#ALIEN_SIZEOF,-(sp)
 	move.w	d3,-(sp)
-	GEMDOS	GD_FREAD,12
+	FDOS	GD_FREAD,12
 	cmp.l	#ALIEN_SIZEOF,d0
 	bne.s	.end
 	lea	cm_rec2,a0
@@ -1602,11 +1602,11 @@ cm_findcontact:
 	cmp.w	d4,d0
 	bne.s	.r
 	move.w	d3,-(sp)
-	GEMDOS	GD_FCLOSE,4
+	FDOS	GD_FCLOSE,4
 	moveq	#0,d0
 	bra.s	.x
 .end:	move.w	d3,-(sp)
-	GEMDOS	GD_FCLOSE,4
+	FDOS	GD_FCLOSE,4
 	moveq	#1,d0
 .x:	movem.l	(sp)+,d3-d4/a3
 	tst.w	d0
@@ -1680,28 +1680,36 @@ cm_loadchk:
 	lea	ms_path,a0
 	bsr	fil_size
 	move.l	d0,d4
-	bmi	fatal
-	clr.w	-(sp)
-	pea	ms_path
-	GEMDOS	GD_FOPEN,8
-	move.w	d0,d3
-	bmi	fatal
+	bcs	fatal
+	bsr	mem_mark		; (Phase 8) the file in one load into a temporary block (it may
+	move.l	d0,-(sp)		; be packed), then the picture and the palette
+	move.l	d4,d0
+	bsr	mem_alloc
+	bcs	fatal
+	move.l	a0,-(sp)
+	move.l	a0,a1
+	lea	ms_path,a0
+	move.l	d4,d0
+	bsr	fil_load
+	bcs	fatal
 	move.l	d4,d0			; picture bytes: the size without the palette
 	cmp.l	#64000,d0
 	bls.s	.np
 	sub.l	#768,d0
-.np:	move.l	a3,-(sp)
-	move.l	d0,-(sp)
-	move.w	d3,-(sp)
-	GEMDOS	GD_FREAD,12
+.np:	move.l	(sp),a0
+	move.l	a3,a1
+	bsr	fil_copy
 	cmp.l	#64000,d4
 	bls.s	.cl
-	pea	GS_COLORS(a6)
-	move.l	#768,-(sp)
-	move.w	d3,-(sp)
-	GEMDOS	GD_FREAD,12
-.cl:	move.w	d3,-(sp)
-	GEMDOS	GD_FCLOSE,4
+	move.l	(sp),a0			; the palette after the picture
+	add.l	d4,a0
+	sub.w	#768,a0
+	lea	GS_COLORS(a6),a1
+	move.l	#768,d0
+	bsr	fil_copy
+.cl:	addq.l	#4,sp
+	move.l	(sp)+,d0
+	bsr	mem_release
 	movem.l	(sp)+,d3-d4/a3
 	rts
 
@@ -2522,7 +2530,7 @@ cm_readevents:
 	move.w	d0,d3
 	clr.w	-(sp)
 	pea	cm_fn_event
-	GEMDOS	GD_FOPEN,8
+	FDOS	GD_FOPEN,8
 	move.w	d0,d1
 	bmi	fatal
 	move.w	d1,-(sp)
@@ -2531,14 +2539,14 @@ cm_readevents:
 	move.w	d3,d0
 	mulu	#2600,d0
 	move.l	d0,-(sp)
-	GEMDOS	GD_FSEEK,10
+	FDOS	GD_FSEEK,10
 	pea	cm_t
 	move.l	#2600,-(sp)
 	move.w	4+4(sp),-(sp)
-	GEMDOS	GD_FREAD,12
+	FDOS	GD_FREAD,12
 	cmp.l	#2600,d0
 	bne	fatal
-	GEMDOS	GD_FCLOSE,4
+	FDOS	GD_FCLOSE,4
 	movem.l	(sp)+,d3
 	rts
 

@@ -192,6 +192,7 @@ mod_start:
 	rts
 mod_stop:
 	clr.w	mod_on
+	clr.b	mod_defer		; (Phase 8: a song waiting for its disk is no longer wanted)
 	bra	st_close
 
 ; ---------------------------------------------------------------
@@ -665,7 +666,7 @@ mod_chans:	ds.b	8*CH_SIZE
 
 	section	text
 mod_region_init:			; called once from snd_init
-	move.l	#MOD_REGION,d0
+	move.l	mod_rsize,d0		; (Phase 8: FLP_REGION on the floppies, kernel flp.s)
 	bsr	mem_alloc
 	bcs.s	.x
 	move.l	a0,mod_rbase
@@ -715,16 +716,21 @@ mod_load1:				; d0.w = 1: play once (the stream only; a mixed MOD loops)
 	bcs.s	.err
 	move.l	d0,d3
 	move.l	mod_rbase,a1		; file goes to the top of the region
-	add.l	#MOD_REGION,a1
+	add.l	mod_rsize,a1
 	sub.l	d3,a1
 	move.l	a1,d0
 	and.w	#$fff0,d0
 	move.l	d0,a1
 	move.l	a1,mod_rlim		; samples may grow up to the file
 	move.l	mod_rbase,mod_rtop
+	move.l	mod_rbase,fil_tmp	; (Phase 8) a packed MOD's bytes below the file
+	move.l	a1,d0
+	sub.l	mod_rbase,d0
+	move.l	d0,fil_tmpn
 	move.l	a3,a0
 	move.l	d3,d0
 	bsr	fil_load
+	clr.l	fil_tmpn
 	bcs.s	.err
 	move.l	mod_rlim,a0
 	bsr	mod_init
@@ -734,11 +740,66 @@ mod_load1:				; d0.w = 1: play once (the stream only; a mixed MOD loops)
 	and.b	#$fe,ccr
 	rts
 .err:	clr.l	mod_rlim
+	bsr	mod_deferit
 	movem.l	(sp)+,d3/a3
 	or.b	#1,ccr
 	rts
 
+; (Phase 8) a3 = a song that failed to load, d3.w = play once: on the floppies, when it is
+; music on another disk (flp.s), remember it; snd_poll starts it once its disk is in the drive
+; (mod_retry). Keeps every register.
+mod_deferit:
+	tst.w	flp_on
+	beq.s	.x
+	movem.l	d0-d2/a0-a2/a4,-(sp)
+	bsr	flp_class
+	cmp.w	#3,d0
+	bne.s	.n
+	move.w	TE_FLAGS(a4),d0
+	and.w	#TF_MUSIC,d0
+	beq.s	.n
+	move.l	a4,mod_defent
+	move.w	d3,mod_defonce
+	move.l	a3,a0
+	lea	mod_defer,a1
+	moveq	#31-1,d0
+.c:	move.b	(a0)+,(a1)+
+	dbeq	d0,.c
+	clr.b	(a1)
+.n:	movem.l	(sp)+,d0-d2/a0-a2/a4
+.x:	rts
+
+; (Phase 8, from snd_poll) the waiting song's disk in the drive? then load it now. Keeps every
+; register and the flags.
+mod_retry:
+	move.w	sr,-(sp)
+	movem.l	d0-d7/a0-a6,-(sp)
+	move.w	flp_cur,d1
+	beq.s	.x
+	bsr	flp_bit
+	move.l	mod_defent,a0
+	and.w	TE_MASK(a0),d1
+	beq.s	.x
+	lea	mod_defer,a0		; (mod_load clears mod_defer: take the name first)
+	lea	mod_defname,a1
+.c:	move.b	(a0)+,(a1)+
+	bne.s	.c
+	clr.b	mod_defer
+	lea	mod_defname,a0
+	move.w	mod_defonce,d0
+	bsr	mod_load1
+.x:	movem.l	(sp)+,d0-d7/a0-a6
+	rtr
+
 	section	bss
 mod_rbase:	ds.l	1
+mod_defent:	ds.l	1		; (Phase 8) the waiting song's table entry (flp.s)
+mod_defonce:	ds.w	1
+mod_defer:	ds.b	32		; its name (0: none)
+mod_defname:	ds.b	32
+	even
+	section	data
+mod_rsize:	dc.l	MOD_REGION	; (Phase 8) the region's size: flp_init sets it
+	section	bss
 mod_rtop:	ds.l	1
 mod_rlim:	ds.l	1

@@ -7,6 +7,13 @@ GEMDOS	macro
 	trap	#1
 	lea	\2(sp),sp
 	endm
+; (Phase 8) file calls: Fopen, Fcreate, Fclose, Fread, Fwrite, Fseek, Dcreate, Fdelete go
+; through the kernel's flp_dos (flp.s: the floppy version; trap #1 otherwise)
+FDOS	macro
+	move.w	#\1,-(sp)
+	jsr	flp_dos
+	lea	\2(sp),sp
+	endm
 BIOS	macro
 	move.w	#\1,-(sp)
 	trap	#13

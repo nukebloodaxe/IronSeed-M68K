@@ -23,7 +23,7 @@ orc_dump:
 	dbf	d1,.dg
 	clr.w	-(sp)
 	pea	orc_name
-	GEMDOS	GD_FCREATE,8
+	FDOS	GD_FCREATE,8
 	tst.l	d0
 	bmi	.out
 	move.w	d0,d3
@@ -55,7 +55,7 @@ orc_dump:
 	pea	orc_hdr
 	move.l	#28,-(sp)
 	move.w	d3,-(sp)
-	GEMDOS	GD_FWRITE,12
+	FDOS	GD_FWRITE,12
 	move.w	(sp)+,d0
 	lea	0(a6,d0.w),a0
 	move.l	a0,-(sp)
@@ -63,7 +63,7 @@ orc_dump:
 	move.w	d4,d1
 	move.l	d1,-(sp)
 	move.w	d3,-(sp)
-	GEMDOS	GD_FWRITE,12
+	FDOS	GD_FWRITE,12
 	bra.s	.blk
 .cl:	move.l	GS_TEMPPLAN(a6),d0	; tempplan^ (the planets), when the program has it
 	beq.s	.cl2
@@ -80,11 +80,11 @@ orc_dump:
 	pea	orc_hdr
 	move.l	#28,-(sp)
 	move.w	d3,-(sp)
-	GEMDOS	GD_FWRITE,12
+	FDOS	GD_FWRITE,12
 	move.l	a4,-(sp)
 	move.l	#PLANARRAY_SIZEOF,-(sp)
 	move.w	d3,-(sp)
-	GEMDOS	GD_FWRITE,12
+	FDOS	GD_FWRITE,12
 .cl2:	move.l	orc_scrbuf,d0		; the chunky shadow (MAIN.PRG), like the Linux build's screen[]
 	beq.s	.cl3
 	move.l	d0,a4
@@ -100,13 +100,13 @@ orc_dump:
 	pea	orc_hdr
 	move.l	#28,-(sp)
 	move.w	d3,-(sp)
-	GEMDOS	GD_FWRITE,12
+	FDOS	GD_FWRITE,12
 	move.l	a4,-(sp)
 	move.l	#64000,-(sp)
 	move.w	d3,-(sp)
-	GEMDOS	GD_FWRITE,12
+	FDOS	GD_FWRITE,12
 .cl3:	move.w	d3,-(sp)
-	GEMDOS	GD_FCLOSE,4
+	FDOS	GD_FCLOSE,4
 .out:	movem.l	(sp)+,d3-d4/a3-a4
 .x:	rts
 

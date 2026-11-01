@@ -109,6 +109,7 @@ sys_init:
 	bsr	tim_init
 	bsr	vid_init		; VBL, Timer B, wrappers
 	bsr	kbd_init		; IKBD mouse hook
+	bsr	flp_init		; (Phase 8) the floppy version? before the music region
 	bsr	snd_init
 	rts
 
@@ -155,6 +156,7 @@ sys_restore:
 	move.l	sys_oldvec+24,VEC_ACIA.w
 	move.l	sys_oldvec+28,VEC_TIMERB.w
 	move.b	sys_oldmfp+2,MFP_TBCR.w
+	bsr	flp_exit
 	EI
 	lea	sys_oldpal,a0
 	lea	VID_PAL.w,a1
