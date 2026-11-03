@@ -9,7 +9,7 @@ whole game is ported: the intro, crew generation, the bridge, planets and stars,
 comms and trade with every race, the sector map, combat, the crew screens, inventory and creation, the
 easter eggs and the ending. Game logic is checked against the Linux build of ironseed_fpc, which serves as
 a reference oracle: the same input scripts run on both, and state dumps and screenshots are compared
-(53 game sessions, from crew generation to winning the game).
+(53 game sessions, from crew generation to winning the game).  This is indeed an AI-aided project, using Claude.
 
 By Nuke Bloodaxe M68K Ports.
 
