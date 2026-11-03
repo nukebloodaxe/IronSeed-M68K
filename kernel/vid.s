@@ -51,6 +51,14 @@
 ;                 trash d0-d7/a0-a3 only, no TOS calls, keep it short (the mixer waits).
 
 BAND_SIZE	equ	2+32
+	ifd	TBLOG
+TBS_N		equ	0		; splits
+TBS_LATE	equ	4		; palette written after the line's first pixels had started
+TBS_MAX		equ	8		; the latest, in bytes (2 pixels each)
+TBS_BIG		equ	12		; late by 8 bytes (16 pixels) or more
+TBS_ENT		equ	16		; the interrupt itself arrived after the line had begun
+TBS_SIZE	equ	20
+	endc
 
 	section	text
 vid_init:
@@ -874,11 +882,40 @@ vid_tb_handler:
 	movem.l	(a2)+,d1-d7/a3		; the 16 colours
 	lea	VID_COUNT.w,a1
 	move.l	vid_tb_target,a2
+	ifd	TBLOG			; (kit/hwcheck.s only: the split's timing statistics)
+	movep.l	0(a1),d0
+	clr.b	d0
+	cmp.l	a2,d0
+	blo.s	.w
+	move.w	vid_tbsel,d0		; the interrupt came after the split line had begun
+	lea	vid_tbst,a0
+	addq.l	#1,TBS_ENT(a0,d0.w)
+	move.l	vid_tb_ptr,a0
+	endc
 .w:	movep.l	0(a1),d0
 	clr.b	d0
 	cmp.l	a2,d0
 	blo.s	.w
 	movem.l	d1-d7/a3,VID_PAL.w
+	ifd	TBLOG			; the counter after the write: still the line's start = in the
+	movep.l	0(a1),d0		; blank before it (on time); past it = the first pixels of the
+	clr.b	d0			; line showed the old colours
+	sub.l	a2,d0
+	lsr.l	#8,d0			; bytes late (1 byte = 2 pixels)
+	lea	vid_tbst,a3
+	add.w	vid_tbsel,a3
+	addq.l	#1,TBS_N(a3)
+	tst.l	d0
+	beq.s	.tbok
+	addq.l	#1,TBS_LATE(a3)
+	cmp.l	TBS_MAX(a3),d0
+	bls.s	.tbm
+	move.l	d0,TBS_MAX(a3)
+.tbm:	cmp.l	#8,d0
+	blo.s	.tbok
+	addq.l	#1,TBS_BIG(a3)
+.tbok:
+	endc
 	; schedule the next band (not time critical any more)
 	clr.b	MFP_TBCR.w
 	subq.w	#1,vid_tb_left
@@ -943,6 +980,10 @@ vid_vbl_hook:	ds.l	1
 vid_tb_ptr:	ds.l	1
 vid_tb_target:	ds.l	1
 vid_tb_left:	ds.w	1
+	ifd	TBLOG			; Timer B statistics (kit/hwcheck.s): two sets, vid_tbsel = 0 or
+vid_tbsel:	ds.w	1		; TBS_SIZE picks the one counted (e.g. while a disk read runs)
+vid_tbst:	ds.b	2*TBS_SIZE
+	endc
 vid_fade:	ds.w	1
 vid_bands_src:	ds.b	2+4*BAND_SIZE
 vid_bands_a:	ds.b	2+4*BAND_SIZE

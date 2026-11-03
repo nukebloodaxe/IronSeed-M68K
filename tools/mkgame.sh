@@ -20,6 +20,7 @@ for p in is intro crewgen main; do
   python3 -I "$R/tools/fixbranches.py" "$R/game/$p.s" > /dev/null
   "$R/tools/asm.sh" "$R/game/$p.s" "$OUT/$(echo $p | tr a-z A-Z).PRG"
 done
+"$R/tools/asm.sh" "$R/kit/hwcheck.s" "$OUT/HWCHECK.PRG"   # (Phase 8) the real-hardware check (kit/, docs/HWCHECK.md)
 [ -d "$R/build/pics" ] && [ "$(ls "$R/build/pics" | wc -l)" -ge 80 ] || \
   python3 -I "$R/tools/cpr2st.py" --batch "$S/data" "$R/build/pics" --pal "$S/data/main.pal" > "$R/build/cpr2st.log"
 cp "$R"/build/pics/*.ISP "$OUT/DATA/"

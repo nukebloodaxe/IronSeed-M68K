@@ -218,6 +218,8 @@ def main():
             g for g in grp if placed.get(g) == d or g in ('intro', 'main'))))
     img = Floppy(serial=0x495399, label='IS SAVE')
     img.add('ISSAVE.ID', b'Iron Seed save disk\r\n')
+    if os.path.exists(os.path.join(gd, 'HWCHECK.PRG')):    # the hardware check: writes its report here
+        img.add('HWCHECK.PRG', open(os.path.join(gd, 'HWCHECK.PRG'), 'rb').read())
     for f in sorted(os.listdir(gd)):
         p = os.path.join(gd, f)
         if f == 'SAVEGAME.DIR':
